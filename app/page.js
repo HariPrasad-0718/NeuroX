@@ -120,38 +120,63 @@ export default function HomePage() {
       </div>
 
       {/* Design Thinking Stages */}
-      <div className="mb-12">
-        <h2 className="text-2xl font-semibold text-[#1f2937] mb-6">Design Thinking Stages</h2>
-        {isLoadingStages ? (
-          <div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#702dff]" /></div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-6">
-            {designStages.map((stage, index) => {
-              const count = templatesSummary[stage.stageId?.toLowerCase()] || 3;
-              return (
-                <div key={stage.stageId || index} onClick={() => router.push(`/templates?stage=${stage.stageName}`)} className="bg-white rounded-xl shadow-sm border border-[#e5e7eb] overflow-hidden hover:shadow-md transition-shadow cursor-pointer">
-                  <div className="h-32 overflow-hidden">
-                    <img src={stage.image} alt={stage.stageName} className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
-                  </div>
-                  <div className="p-4">
-                    <h3 className="font-semibold text-[#1f2937] mb-2">{stage.stageName}</h3>
-                    <p className="text-sm text-[#6b7280] mb-4">{stage.description}</p>
-                    {isSummaryLoading ? (
-                      <div className="animate-pulse h-6 w-32 bg-gray-200 rounded" />
-                    ) : (
-                      <button className="flex items-center gap-2 text-sm text-[#6366F1] hover:text-[#4f46e5] font-medium transition-colors group">
-                        <span>Templates Available {count}</span>
-                        <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+<div className="mb-12">
+  <h2 className="text-2xl font-semibold text-[#1f2937] mb-6">
+    Design Thinking Stages
+  </h2>
 
+  {isLoadingStages ? (
+    <div className="flex justify-center items-center h-64">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#702dff]" />
+    </div>
+  ) : (
+    <div className="grid gap-6 grid-cols-[repeat(auto-fit,minmax(260px,1fr))]">
+      {designStages.map((stage, index) => {
+        const count =
+          templatesSummary[stage.stageId?.toLowerCase()] || 3;
+
+        return (
+          <div
+            key={stage.stageId || index}
+            onClick={() =>
+              router.push(`/templates?stage=${stage.stageName}`)
+            }
+            className="bg-white rounded-xl shadow-sm border border-[#e5e7eb] overflow-hidden hover:shadow-md transition-shadow cursor-pointer flex flex-col h-full"
+          >
+            {/* Image */}
+            <div className="h-32 overflow-hidden">
+              <img
+                src={stage.image}
+                alt={stage.stageName}
+                className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+              />
+            </div>
+
+            {/* Content */}
+            <div className="p-4 flex flex-col flex-grow">
+              <h3 className="font-semibold text-[#1f2937] mb-2">
+                {stage.stageName}
+              </h3>
+
+              <p className="text-sm text-[#6b7280] mb-4 flex-grow">
+                {stage.description}
+              </p>
+
+              {isSummaryLoading ? (
+                <div className="animate-pulse h-6 w-32 bg-gray-200 rounded" />
+              ) : (
+                <button className="flex items-center gap-2 text-sm text-[#6366F1] hover:text-[#4f46e5] font-medium transition-colors group mt-auto">
+                  <span>Templates Available {count}</span>
+                  <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  )}
+</div>
       {/* Feature Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl shadow-sm border border-[#e5e7eb] overflow-hidden hover:shadow-md transition-shadow cursor-pointer">
