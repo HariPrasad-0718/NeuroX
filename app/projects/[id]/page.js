@@ -199,7 +199,20 @@ export default function ProjectDetailPage() {
                               {template.type === "link" && (
                                 <div className="mb-3"><input type="text" value={link} onChange={(e) => setPrototypeLinks({ ...prototypeLinks, [`${stage.id}-${template.id}`]: e.target.value })} className="w-full px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded text-sm text-gray-700" placeholder="Enter prototype link" /></div>
                               )}
-                              <button className="w-full px-3 py-2 bg-[#702dff] hover:bg-[#5a24cc] text-white rounded text-sm transition-colors mb-3">Use Template</button>
+                              <button
+  onClick={(e) => {
+    e.stopPropagation();
+
+    const url = `/projects/${projectId}/workspace?template=${encodeURIComponent(template.name)}&projectName=${encodeURIComponent(project.projectName)}&description=${encodeURIComponent(project.projectDescription)}`;
+
+    console.log("Navigating to:", url); // 👈 DEBUG
+
+    router.push(url);
+  }}
+  className="w-full px-3 py-2 bg-[#702dff] text-white rounded text-sm"
+>
+  Use Template
+</button>
                               {apiDocs.length > 0 && (
                                 <div className="space-y-2 pt-3 border-t border-gray-200">
                                   {apiDocs.map((doc) => (
