@@ -133,3 +133,11 @@ const data = JSON.parse(text);
     </div>
   );
 }
+
+export default function TemplateWorkspacePage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-gray-500">Loading...</div>}>
+      <TemplateWorkspaceInner />
+    </Suspense>
+  );
+}

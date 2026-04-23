@@ -110,15 +110,12 @@ export default function AppShell({ children }) {
       }
     } else {
       try {
-        const projectUUID = crypto.randomUUID();
         const apiData = {
-          projectId: projectUUID,
           projectName: projectData.title,
           projectDescription: projectData.description,
-          status: "In Progress",
-          client: projectData.company,
+          clientName: projectData.company,
           startDate: projectData.startDate,
-          targetCompletionDate: projectData.targetDate,
+          endDate: projectData.targetDate,
         };
 
         const response = await api.createProject(apiData, userId);
