@@ -25,7 +25,7 @@ const COLORS = [
 
 export default function HomePage() {
   const router = useRouter();
-  const [userPersona, setUserPersona] = useState("Designer");
+  const [userPersona, setUserPersona] = useState("designer");
   const [userId, setUserId] = useState("");
   const [designStages, setDesignStages] = useState([]);
   const [isLoadingStages, setIsLoadingStages] = useState(false);
@@ -35,11 +35,20 @@ export default function HomePage() {
   const { summary: templatesSummary, isLoading: isSummaryLoading } = useTemplatesSummary();
 
   useEffect(() => {
-    const role = localStorage.getItem("userRole");
-    const id = localStorage.getItem("userId");
-    if (role) setUserPersona(role);
-    if (id) setUserId(id);
-    fetchStages();
+    const hydrate = async () => {
+      try {
+        const response = await api.getSessionUser();
+        if (response?.success && response?.data?.userId) {
+          setUserPersona(String(response.data.role || "designer").toLowerCase());
+          setUserId(String(response.data.userId));
+        }
+      } catch {
+        router.push("/login");
+      }
+      fetchStages();
+    };
+
+    hydrate();
   }, []);
 
   const fetchStages = async () => {
@@ -72,7 +81,7 @@ export default function HomePage() {
 
   const recentProjects = mappedProjects.slice(0, 6);
 
-  if (userPersona === "Manager") {
+  if (userPersona === "manager") {
     return <ManagerHome projects={mappedProjects} onProjectClick={(p) => router.push(`/projects/${p.projectId}`)} onExpertsClick={() => router.push("/sessions")} />;
   }
 

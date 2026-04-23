@@ -1,10 +1,11 @@
 "use client";
 
+import { Suspense } from "react";
 import { generateProjectDocument } from "@/utils/generateDoc";
 import { useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
 
-export default function TemplateWorkspace() {
+function TemplateWorkspaceInner() {
   const searchParams = useSearchParams();
 
   const templateName = searchParams.get("template");
