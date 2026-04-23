@@ -11,7 +11,7 @@ async function fetchApi(endpoint, options = {}) {
   };
 
   try {
-    const response = await fetch(url, { ...options, headers });
+    const response = await fetch(url, { ...options, headers, credentials: "include" });
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -26,15 +26,43 @@ async function fetchApi(endpoint, options = {}) {
 }
 
 export const api = {
-  // --- Users ---
-  getCurrentUser: (userId) =>
-    fetchApi(`users?userId=${userId}`, { method: "GET" }),
-
-  updateUser: (userId, userData, requestingUserId) =>
-    fetchApi(`users?userId=${requestingUserId}`, {
-      method: "PUT",
-      body: JSON.stringify({ userId, ...userData }),
+  // --- Auth ---
+  signup: (payload) =>
+    fetchApi("auth/signup", {
+      method: "POST",
+      body: JSON.stringify(payload),
     }),
+
+  login: (payload) =>
+    fetchApi("auth/login", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  logout: () =>
+    fetchApi("auth/logout", {
+      method: "POST",
+    }),
+
+  getSessionUser: () =>
+    fetchApi("auth/me", {
+      method: "GET",
+    }),
+
+  updateCurrentUser: (userData) =>
+    fetchApi("auth/me", {
+      method: "PUT",
+      body: JSON.stringify(userData),
+    }),
+
+  // --- Users ---
+  getCurrentUser: () =>
+    fetchApi("auth/me", { method: "GET" }),
+
+  updateUser: (userData) => fetchApi("auth/me", {
+    method: "PUT",
+    body: JSON.stringify(userData),
+  }),
 
   // --- Stages ---
   getStages: () => fetchApi("stages", { method: "GET" }),

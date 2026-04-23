@@ -1,9 +1,10 @@
 "use client";
 
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
 
-export default function TemplateWorkspace() {
+function TemplateWorkspaceInner() {
   const searchParams = useSearchParams();
 
   const templateName = searchParams.get("template");
@@ -111,5 +112,13 @@ export default function TemplateWorkspace() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function TemplateWorkspace() {
+  return (
+    <Suspense fallback={<div className="p-8 text-gray-500">Loading...</div>}>
+      <TemplateWorkspaceInner />
+    </Suspense>
   );
 }

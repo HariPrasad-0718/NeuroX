@@ -16,7 +16,7 @@ export default function AppShell({ children }) {
   const pathname = usePathname();
 
   const [userId, setUserId] = useState("");
-  const [userPersona, setUserPersona] = useState("Designer");
+  const [userPersona, setUserPersona] = useState("designer");
   const [userName, setUserName] = useState("User");
   const [userEmail, setUserEmail] = useState("");
   const [userCreatedAt, setUserCreatedAt] = useState("");
@@ -30,41 +30,60 @@ export default function AppShell({ children }) {
     userData: realUserData,
     isUpdating: isUpdatingUser,
     updateUser,
-  } = useCurrentUser(userId);
+  } = useCurrentUser();
 
   const {
     updateProject,
     refetch: refetchProjects,
   } = useProjects(userId);
 
-  // Restore session on mount
+  // Restore session from secure auth cookie
   useEffect(() => {
-    const storedRole = localStorage.getItem("userRole");
-    const storedUserId = localStorage.getItem("userId");
+    const isAuthPage = pathname === "/login" || pathname === "/signup";
 
-    if (storedRole && storedUserId) {
-      setUserPersona(storedRole);
-      setUserId(storedUserId);
-      setUserName(storedRole === "Designer" ? "Designer User" : "Manager User");
-      setUserEmail(`${storedRole.toLowerCase()}@neurox.com`);
-    } else if (pathname !== "/login") {
-      router.push("/login");
-    }
-  }, []);
+    const bootstrapSession = async () => {
+      try {
+        const response = await api.getSessionUser();
+        if (!response?.success || !response?.data?.userId) {
+          if (!isAuthPage) {
+            router.push("/login");
+          }
+          return;
+        }
+
+        const user = response.data;
+        setUserId(String(user.userId));
+        setUserPersona(String(user.role || "designer").toLowerCase());
+        setUserName(user.name || "User");
+        setUserEmail(user.email || "");
+        setUserCreatedAt(user.createdAt || "");
+      } catch {
+        if (!isAuthPage) {
+          router.push("/login");
+        }
+      }
+    };
+
+    bootstrapSession();
+  }, [pathname, router]);
 
   // Update state from real user data
   useEffect(() => {
     if (realUserData) {
+      setUserId(String(realUserData.userId || ""));
       setUserName(realUserData.name);
       setUserEmail(realUserData.email);
+      setUserPersona(String(realUserData.role || "designer").toLowerCase());
       setUserCreatedAt(realUserData.createdAt);
     }
   }, [realUserData]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("userRole");
-    localStorage.removeItem("userId");
-    router.push("/login");
+  const handleLogout = async () => {
+    try {
+      await api.logout();
+    } finally {
+      router.push("/login");
+    }
   };
 
   const handleProfileUpdate = async (updatedData) => {
@@ -72,7 +91,7 @@ export default function AppShell({ children }) {
     if (result.success) {
       setUserName(result.data.name);
       setUserEmail(result.data.email);
-      setUserPersona(result.data.role);
+      setUserPersona(String(result.data.role || "designer").toLowerCase());
       setShowEditProfileModal(false);
       setShowProfileModal(false);
       alert("Profile updated successfully!");
@@ -116,8 +135,8 @@ export default function AppShell({ children }) {
     setEditingProject(null);
   };
 
-  // Don't render shell on login page
-  if (pathname === "/login") {
+  // Don't render shell on auth pages
+  if (pathname === "/login" || pathname === "/signup") {
     return children;
   }
 
@@ -128,7 +147,7 @@ export default function AppShell({ children }) {
       <div className="flex-1 ml-[240px]">
         <Header
           userName={userName}
-          userPersona={userPersona}
+          userPersona={userPersona === "manager" ? "Manager" : "Designer"}
           onCreateProject={() => setShowCreateModal(true)}
           onOpenProfile={() => setShowProfileModal(true)}
         />
@@ -149,7 +168,7 @@ export default function AppShell({ children }) {
       <ProfileModal
         isOpen={showProfileModal}
         onClose={() => setShowProfileModal(false)}
-        userData={{ name: userName, email: userEmail, role: userPersona, createdAt: userCreatedAt }}
+        userData={{ name: userName, email: userEmail, role: userPersona === "manager" ? "Manager" : "Designer", createdAt: userCreatedAt }}
         onEdit={() => {
           setShowProfileModal(false);
           setShowEditProfileModal(true);

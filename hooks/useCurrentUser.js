@@ -3,19 +3,18 @@
 import { useState, useEffect } from "react";
 import { api } from "@/services/api";
 
-export function useCurrentUser(userId) {
+export function useCurrentUser() {
   const [userData, setUserData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
 
   const fetchCurrentUser = async () => {
-    if (!userId) return;
     setIsLoading(true);
     setError(null);
 
     try {
-      const response = await api.getCurrentUser(userId);
+      const response = await api.getCurrentUser();
       if (response.success && response.data) {
         setUserData(response.data);
       }
@@ -27,13 +26,13 @@ export function useCurrentUser(userId) {
   };
 
   const updateUser = async (updatedData) => {
-    if (!userId || !userData?.userId) {
+    if (!userData?.userId) {
       return { success: false, error: "No user ID available" };
     }
 
     setIsUpdating(true);
     try {
-      const response = await api.updateUser(userData.userId, updatedData, userId);
+      const response = await api.updateUser(updatedData);
       if (response.success && response.data) {
         setUserData(response.data);
         return { success: true, data: response.data };
@@ -48,7 +47,7 @@ export function useCurrentUser(userId) {
 
   useEffect(() => {
     fetchCurrentUser();
-  }, [userId]);
+  }, []);
 
   return {
     userData,
