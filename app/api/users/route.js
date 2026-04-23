@@ -13,8 +13,8 @@ export async function GET(request) {
     if (userId) {
       const result = await pool
         .request()
-        .input("userId", sql.NVarChar, userId)
-        .query("SELECT * FROM users WHERE user_id = @userId");
+        .input("userId", sql.Int, Number(userId))
+        .query("SELECT user_id, name, email, role, created_at FROM userss WHERE user_id = @userId");
 
       if (result.recordset.length === 0) {
         return NextResponse.json(
@@ -37,7 +37,9 @@ export async function GET(request) {
     }
 
     // Return all users
-    const result = await pool.request().query("SELECT * FROM users");
+    const result = await pool
+      .request()
+      .query("SELECT user_id, name, email, role, created_at FROM userss ORDER BY created_at DESC");
 
     const users = result.recordset.map((user) => ({
       userId: user.user_id,
@@ -61,7 +63,7 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { userId, name, email, role } = body;
+    const { name, email, role } = body;
 
     if (!name || !email) {
       return NextResponse.json(
@@ -72,20 +74,22 @@ export async function POST(request) {
 
     const pool = await getPool();
 
-    await pool
+    const created = await pool
       .request()
-      .input("userId", sql.NVarChar, userId)
       .input("name", sql.NVarChar, name)
       .input("email", sql.NVarChar, email)
-      .input("role", sql.NVarChar, role || "Designer")
+      .input("role", sql.NVarChar, (role || "designer").toLowerCase())
       .query(
-        `INSERT INTO users (user_id, name, email, role, created_at)
-         VALUES (@userId, @name, @email, @role, GETDATE())`
+        `INSERT INTO userss (name, email, password, role)
+         OUTPUT INSERTED.user_id
+         VALUES (@name, @email, '', @role)`
       );
+
+    const createdUserId = created.recordset[0]?.user_id;
 
     return NextResponse.json({
       success: true,
-      data: { userId, name, email, role: role || "Designer" },
+      data: { userId: createdUserId, name, email, role: (role || "designer").toLowerCase() },
     });
   } catch (error) {
     console.error("POST /api/users error:", error);
@@ -99,8 +103,6 @@ export async function POST(request) {
 // PUT /api/users — Update a user
 export async function PUT(request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const requestingUserId = searchParams.get("userId");
     const body = await request.json();
     const { userId, name, email, role } = body;
 
@@ -115,12 +117,12 @@ export async function PUT(request) {
 
     await pool
       .request()
-      .input("userId", sql.NVarChar, userId)
+      .input("userId", sql.Int, Number(userId))
       .input("name", sql.NVarChar, name)
       .input("email", sql.NVarChar, email)
       .input("role", sql.NVarChar, role)
       .query(
-        `UPDATE users SET name = @name, email = @email, role = @role
+        `UPDATE userss SET name = @name, email = @email, role = @role
          WHERE user_id = @userId`
       );
 

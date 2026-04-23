@@ -106,7 +106,8 @@ export const api = {
     }),
 
   // --- Projects ---
-  getProjects: () => fetchApi("projects", { method: "GET" }),
+  getProjects: (userId) =>
+    fetchApi(userId ? `projects?userId=${userId}` : "projects", { method: "GET" }),
 
   getProjectById: (projectId) =>
     fetchApi(`projects?projectId=${projectId}`, { method: "GET" }),
