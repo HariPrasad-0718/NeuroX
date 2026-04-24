@@ -82,6 +82,7 @@ export async function GET(request) {
 
 // POST /api/projects — Create a new project
 export async function POST(request) {
+
   try {
     const sessionUser = await getUserFromRequest(request);
     if (!sessionUser?.userId) {
@@ -93,15 +94,20 @@ export async function POST(request) {
 
     const body = await request.json();
 
-    const {
-      projectName,
-      projectDescription,
-      client,
-      clientName,
-      startDate,
-      endDate,
-      targetCompletionDate,
-    } = body;
+
+    const { 
+  projectName,
+  projectDescription,
+  client,
+  clientName,
+  startDate,
+  endDate,
+  targetCompletionDate,
+  personas   // ✅ NEW
+} = body;
+
+      console.log("PERSONAS RECEIVED:", personas);
+
 
     if (!projectName) {
       return NextResponse.json(
@@ -135,6 +141,21 @@ export async function POST(request) {
       );
 
     const createdId = created.recordset[0]?.project_id;
+
+    if (personas && personas.length > 0) {
+  for (let p of personas) {
+    if (!p.name) continue;
+
+    await pool.request()
+      .input("projectId", sql.Int, createdId)
+      .input("name", sql.NVarChar, p.name)
+      .input("description", sql.NVarChar, p.description || "")
+      .query(`
+        INSERT INTO personass (project_id, persona_name, persona_description)
+        VALUES (@projectId, @name, @description)
+      `);
+  }
+}
 
     return NextResponse.json({
       success: true,

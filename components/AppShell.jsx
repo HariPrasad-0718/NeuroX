@@ -101,36 +101,40 @@ export default function AppShell({ children }) {
   };
 
   const handleCreateProject = async (projectData) => {
-    if (editingProject?.projectId) {
-      const result = await updateProject(editingProject.projectId, projectData);
-      if (result.success) {
-        refetchProjects();
-      } else {
-        alert(`Failed to update: ${result.error}`);
-      }
+  if (editingProject?.projectId) {
+    const result = await updateProject(editingProject.projectId, projectData);
+    if (result.success) {
+      refetchProjects();
     } else {
-      try {
-        const apiData = {
-          projectName: projectData.title,
-          projectDescription: projectData.description,
-          clientName: projectData.company,
-          startDate: projectData.startDate,
-          endDate: projectData.targetDate,
-        };
-
-        const response = await api.createProject(apiData, userId);
-        if (response.success) {
-          refetchProjects();
-          alert("Project created successfully!");
-        }
-      } catch (error) {
-        alert(`Error creating project: ${error.message}`);
-      }
+      alert(`Failed to update: ${result.error}`);
     }
+  } else {
+    try {
+      const apiData = {
+        projectName: projectData.title,
+        projectDescription: projectData.description,
+        clientName: projectData.company,
+        startDate: projectData.startDate,
+        endDate: projectData.targetDate,
+        personas: projectData.personas   // ✅ THIS FIXES EVERYTHING
+      };
 
-    setShowCreateModal(false);
-    setEditingProject(null);
-  };
+      console.log("FINAL DATA SENT TO API:", apiData); // ✅ debug
+
+      const response = await api.createProject(apiData, userId);
+
+      if (response.success) {
+        refetchProjects();
+        alert("Project created successfully!");
+      }
+    } catch (error) {
+      alert(`Error creating project: ${error.message}`);
+    }
+  }
+
+  setShowCreateModal(false);
+  setEditingProject(null);
+};
 
   // Don't render shell on auth pages
   if (pathname === "/login" || pathname === "/signup") {
@@ -149,7 +153,7 @@ export default function AppShell({ children }) {
           onOpenProfile={() => setShowProfileModal(true)}
         />
 
-        <div className="p-8">{children}</div>
+        <div>{children}</div>
       </div>
 
       <CreateProjectModal

@@ -3,7 +3,13 @@
 import { X } from "lucide-react";
 import { useState, useEffect } from "react";
 
-export function CreateProjectModal({ isOpen, onClose, onCreateProject, editingProject, isUpdating = false }) {
+export function CreateProjectModal({
+  isOpen,
+  onClose,
+  onCreateProject,
+  editingProject,
+  isUpdating = false,
+}) {
   const [projectName, setProjectName] = useState("");
   const [clientName, setClientName] = useState("");
   const [description, setDescription] = useState("");
@@ -13,21 +19,47 @@ export function CreateProjectModal({ isOpen, onClose, onCreateProject, editingPr
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [status, setStatus] = useState("In Progress");
 
+  const [personas, setPersonas] = useState([
+    { name: "", description: "" },
+  ]);
+
   useEffect(() => {
     if (editingProject) {
-      setProjectName(editingProject.title || editingProject.projectName || "");
-      setClientName(editingProject.company || editingProject.client || "");
-      setDescription(editingProject.description || editingProject.projectDescription || "");
+      setProjectName(
+        editingProject.title || editingProject.projectName || ""
+      );
+      setClientName(
+        editingProject.company || editingProject.client || ""
+      );
+      setDescription(
+        editingProject.description ||
+          editingProject.projectDescription ||
+          ""
+      );
+
       if (editingProject.startDate) {
         const date = new Date(editingProject.startDate);
         setStartDate(date.toISOString().split("T")[0]);
       }
-      if (editingProject.targetDate || editingProject.targetCompletionDate) {
-        const date = new Date(editingProject.targetDate || editingProject.targetCompletionDate);
+
+      if (
+        editingProject.targetDate ||
+        editingProject.targetCompletionDate
+      ) {
+        const date = new Date(
+          editingProject.targetDate ||
+            editingProject.targetCompletionDate
+        );
         setTargetDate(date.toISOString().split("T")[0]);
       }
+
       setSharedWith(editingProject.sharedWith || "");
       setStatus(editingProject.status || "In Progress");
+
+      // ✅ IMPORTANT: load personas if editing
+      if (editingProject.personas) {
+        setPersonas(editingProject.personas);
+      }
     } else {
       resetForm();
     }
@@ -41,6 +73,9 @@ export function CreateProjectModal({ isOpen, onClose, onCreateProject, editingPr
     setTargetDate("");
     setSharedWith("");
     setStatus("In Progress");
+
+    // ✅ reset personas also
+    setPersonas([{ name: "", description: "" }]);
   };
 
   const emailSuggestions = [
@@ -49,11 +84,37 @@ export function CreateProjectModal({ isOpen, onClose, onCreateProject, editingPr
     "mike.johnson@dell.com",
   ];
 
+  const addPersona = () => {
+    setPersonas([...personas, { name: "", description: "" }]);
+  };
+
+  const updatePersona = (index, field, value) => {
+    const updated = [...personas];
+    updated[index][field] = value;
+    setPersonas(updated);
+  };
+
+  const removePersona = (index) => {
+    const updated = personas.filter((_, i) => i !== index);
+    setPersonas(updated);
+  };
+
   const handleSubmit = () => {
     if (!projectName || !clientName || !startDate || !targetDate) {
       alert("Please fill in all required fields");
       return;
     }
+
+    // ✅ Remove empty personas
+    const filteredPersonas = personas.filter(
+      (p) => p.name.trim() !== ""
+    );
+
+    if (filteredPersonas.length === 0) {
+      alert("Please add at least one persona");
+      return;
+    }
+
     const projectData = {
       title: projectName,
       company: clientName,
@@ -62,10 +123,16 @@ export function CreateProjectModal({ isOpen, onClose, onCreateProject, editingPr
       targetDate,
       sharedWith,
       status,
+      personas: filteredPersonas, // ✅ cleaned data
     };
+
     if (editingProject) {
-      projectData.projectId = editingProject.projectId || editingProject.id;
+      projectData.projectId =
+        editingProject.projectId || editingProject.id;
     }
+
+    console.log("SENDING PERSONAS:", filteredPersonas); // ✅ debug
+
     onCreateProject(projectData);
     resetForm();
     onClose();
@@ -75,64 +142,124 @@ export function CreateProjectModal({ isOpen, onClose, onCreateProject, editingPr
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/50 z-40 transition-opacity" onClick={onClose} />
+      <div
+        className="fixed inset-0 bg-black/50 z-40"
+        onClick={onClose}
+      />
+
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-lg shadow-xl w-full max-w-[580px] max-h-[90vh] overflow-y-auto relative scrollbar-hide">
-          <button onClick={onClose} className="absolute right-5 top-4 w-6 h-6 flex items-center justify-center text-[#21272A] hover:bg-gray-100 rounded transition-colors z-10">
+        <div className="bg-white rounded-lg shadow-xl w-full max-w-[580px] max-h-[90vh] overflow-y-auto relative">
+
+          <button
+            onClick={onClose}
+            className="absolute right-5 top-4"
+          >
             <X className="w-5 h-5" />
           </button>
+
           <div className="p-6 pt-10">
-            <h2 className="text-2xl font-semibold text-[#222426] mb-6">
+            <h2 className="text-2xl font-semibold mb-6">
               {editingProject ? "Edit Project" : "New Project"}
             </h2>
-            {editingProject && (
-              <div className="mb-4">
-                <label className="block text-lg text-[#222426] mb-1.5">Status</label>
-                <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full h-[38px] px-3 bg-[#fbfbfb] border border-[#ababab] text-[12px] text-[#949494] focus:outline-none focus:border-[#6366F1] transition-colors">
-                  <option value="In Progress">In Progress</option>
-                  <option value="Completed">Completed</option>
-                  <option value="On Hold">On Hold</option>
-                </select>
-              </div>
-            )}
+
+            {/* Project Name */}
+            <input
+              type="text"
+              placeholder="Project Name *"
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              className="w-full mb-3 px-3 py-2 border"
+            />
+
+            {/* Client Name */}
+            <input
+              type="text"
+              placeholder="Client Name *"
+              value={clientName}
+              onChange={(e) => setClientName(e.target.value)}
+              className="w-full mb-3 px-3 py-2 border"
+            />
+
+            {/* Description */}
+            <textarea
+              placeholder="Description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full mb-3 px-3 py-2 border"
+            />
+
+            {/* Personas */}
             <div className="mb-4">
-              <label className="block text-lg text-[#222426] mb-1.5">Project Name *</label>
-              <input type="text" placeholder="Enter project name" value={projectName} onChange={(e) => setProjectName(e.target.value)} className="w-full h-[38px] px-3 bg-[#fbfbfb] border border-[#ababab] text-[12px] text-[#949494] placeholder:text-[#949494] focus:outline-none focus:border-[#6366F1] transition-colors" />
-            </div>
-            <div className="mb-4">
-              <label className="block text-lg text-[#222426] mb-1.5">Client Name *</label>
-              <input type="text" placeholder="Enter client name" value={clientName} onChange={(e) => setClientName(e.target.value)} className="w-full h-[38px] px-3 bg-[#fbfbfb] border border-[#ababab] text-[12px] text-[#949494] placeholder:text-[#949494] focus:outline-none focus:border-[#6366F1] transition-colors" />
-            </div>
-            <div className="mb-4">
-              <label className="block text-lg text-[#222426] mb-1.5">Description</label>
-              <textarea placeholder="Description ..." value={description} onChange={(e) => setDescription(e.target.value)} className="w-full h-[70px] px-3 py-2 bg-[#fbfbfb] border border-[#ababab] text-[12px] text-[#949494] placeholder:text-[#949494] resize-none focus:outline-none focus:border-[#6366F1] transition-colors" />
-            </div>
-            <div className="mb-4 flex gap-8">
-              <div className="flex-1">
-                <label className="block text-lg text-[#222426] mb-1.5">Start Date *</label>
-                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full h-[38px] px-3 bg-[#fbfbfb] border border-[#ababab] text-[12px] text-[#949494] focus:outline-none focus:border-[#6366F1] transition-colors" />
-              </div>
-              <div className="flex-1">
-                <label className="block text-lg text-[#222426] mb-1.5">Target Completion Date *</label>
-                <input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="w-full h-[38px] px-3 bg-[#fbfbfb] border border-[#ababab] text-[12px] text-[#949494] focus:outline-none focus:border-[#6366F1] transition-colors" />
-              </div>
-            </div>
-            <div className="mb-6 relative">
-              <label className="block text-lg text-[#222426] mb-1.5">Share with</label>
-              <input type="text" placeholder="Emails or user name, comma separated" value={sharedWith} onChange={(e) => setSharedWith(e.target.value)} onFocus={() => setShowSuggestions(true)} onBlur={() => setTimeout(() => setShowSuggestions(false), 200)} className="w-full h-[38px] px-3 bg-[#fbfbfb] border border-[#ababab] text-[12px] text-[#949494] placeholder:text-[#949494] focus:outline-none focus:border-[#6366F1] transition-colors" />
-              {showSuggestions && (
-                <div className="absolute z-20 w-full bg-white border border-gray-300 shadow-md">
-                  {emailSuggestions.map((email) => (
-                    <div key={email} className="px-3 py-2 cursor-pointer hover:bg-gray-100" onClick={() => setSharedWith(email)}>{email}</div>
-                  ))}
+              <label className="font-semibold">User Personas *</label>
+
+              {personas.map((p, index) => (
+                <div key={index} className="border p-3 mb-2 rounded">
+                  <input
+                    type="text"
+                    placeholder="Persona Name"
+                    value={p.name}
+                    onChange={(e) =>
+                      updatePersona(index, "name", e.target.value)
+                    }
+                    className="w-full mb-2 px-2 py-1 border"
+                  />
+
+                  <textarea
+                    placeholder="Persona Description"
+                    value={p.description}
+                    onChange={(e) =>
+                      updatePersona(
+                        index,
+                        "description",
+                        e.target.value
+                      )
+                    }
+                    className="w-full px-2 py-1 border"
+                  />
+
+                  {personas.length > 1 && (
+                    <button
+                      onClick={() => removePersona(index)}
+                      className="text-red-500 text-sm mt-1"
+                    >
+                      Remove
+                    </button>
+                  )}
                 </div>
-              )}
+              ))}
+
+              <button
+                onClick={addPersona}
+                className="text-indigo-600 text-sm"
+              >
+                + Add Persona
+              </button>
             </div>
-            <div className="flex items-center justify-end gap-4">
-              <button onClick={onClose} className="h-8 px-6 bg-white border border-indigo-500 text-indigo-500 rounded text-sm hover:bg-gray-50 transition-colors" disabled={isUpdating}>Cancel</button>
-              <button onClick={handleSubmit} disabled={isUpdating} className="h-8 px-6 bg-indigo-500 border border-indigo-500 text-white rounded text-sm hover:bg-indigo-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-                {isUpdating && <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />}
-                <span>{editingProject ? "Save Changes" : "Next"}</span>
+
+            {/* Dates */}
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full mb-2 px-3 py-2 border"
+            />
+
+            <input
+              type="date"
+              value={targetDate}
+              onChange={(e) => setTargetDate(e.target.value)}
+              className="w-full mb-3 px-3 py-2 border"
+            />
+
+            {/* Submit */}
+            <div className="flex justify-end gap-2">
+              <button onClick={onClose}>Cancel</button>
+
+              <button
+                onClick={handleSubmit}
+                className="bg-indigo-500 text-white px-4 py-2 rounded"
+              >
+                {editingProject ? "Update" : "Create"}
               </button>
             </div>
           </div>
