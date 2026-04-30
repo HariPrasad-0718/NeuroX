@@ -50,24 +50,31 @@ export default function TemplatesPage() {
     setError(null);
     try {
       if (activeFilter === "All") {
-        const stagesRes = await api.getStages();
-        if (stagesRes.success && stagesRes.data) {
-          const all = [];
-          for (const stage of stagesRes.data) {
-            try {
-              const res = await api.getTemplatesByStage(stage.stageId);
-              if (res.success && res.data) {
-                all.push(...res.data.map((t) => ({ id: t.templateId, name: t.templateName, stage: stage.stageName, description: DESCRIPTIONS[t.templateName] || `Template for ${t.templateName}`, image: STAGE_IMAGES[stage.stageId] || STAGE_IMAGES.empathize, version: t.version })));
-              }
-            } catch {}
-          }
-          setTemplates(all);
+        const res = await api.getTemplates();
+        if (res.success && res.data) {
+          setTemplates(res.data.map((t) => ({
+            id: t.templateId,
+            name: t.templateName,
+            stage: t.stageName,
+            stageId: t.stageId,
+            fileUrl: t.fileUrl,
+            description: DESCRIPTIONS[t.templateName] || `Template for ${t.templateName}`,
+            image: STAGE_IMAGES[t.stageId] || STAGE_IMAGES.empathize,
+          })));
         }
       } else {
         const stageId = activeFilter.toLowerCase();
         const res = await api.getTemplatesByStage(stageId);
         if (res.success && res.data) {
-          setTemplates(res.data.map((t) => ({ id: t.templateId, name: t.templateName, stage: activeFilter, description: DESCRIPTIONS[t.templateName] || `Template for ${t.templateName}`, image: STAGE_IMAGES[stageId] || STAGE_IMAGES.empathize, version: t.version })));
+          setTemplates(res.data.map((t) => ({
+            id: t.templateId,
+            name: t.templateName,
+            stage: t.stageName,
+            stageId: t.stageId,
+            fileUrl: t.fileUrl,
+            description: DESCRIPTIONS[t.templateName] || `Template for ${t.templateName}`,
+            image: STAGE_IMAGES[t.stageId] || STAGE_IMAGES.empathize,
+          })));
         }
       }
     } catch (err) {
@@ -113,12 +120,24 @@ export default function TemplatesPage() {
                 <div className="p-4">
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex-1 min-w-0"><h3 className="font-semibold text-gray-900 truncate">{template.name}</h3><p className="text-xs text-gray-500 mt-1">{template.stage}</p></div>
-                    {template.version && <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded ml-2">v{template.version}</span>}
                   </div>
                   <p className="text-sm text-gray-600 mb-4 line-clamp-2">{template.description}</p>
                   <div className="flex items-center justify-between">
-                    <button className="flex items-center gap-1 text-[#702dff] hover:text-[#5a24cc] transition-colors group"><span className="text-sm">Use Template</span><ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" /></button>
-                    <button className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"><Download className="w-4 h-4" /></button>
+                    <button
+                      onClick={() => template.fileUrl && window.open(template.fileUrl, "_blank", "noopener,noreferrer")}
+                      disabled={!template.fileUrl}
+                      className="flex items-center gap-1 text-[#702dff] hover:text-[#5a24cc] transition-colors group disabled:opacity-50"
+                    >
+                      <span className="text-sm">Use Template</span>
+                      <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    </button>
+                    <button
+                      onClick={() => window.location.assign(`/api/templates/download/${template.id}`)}
+                      disabled={!template.id}
+                      className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors disabled:opacity-50"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               </div>

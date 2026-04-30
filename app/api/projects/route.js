@@ -1,6 +1,7 @@
 import { getPool, sql } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { getUserFromRequest } from "@/lib/auth";
+import { enhancePersonaDescription } from "@/lib/agent5i";
 
 // GET /api/projects — Fetch all projects, or a single project by ?projectId=
 export async function GET(request) {
@@ -143,19 +144,33 @@ export async function POST(request) {
     const createdId = created.recordset[0]?.project_id;
 
     if (personas && personas.length > 0) {
-  for (let p of personas) {
-    if (!p.name) continue;
+      for (const p of personas) {
+        if (!p.name) continue;
 
-    await pool.request()
-      .input("projectId", sql.Int, createdId)
-      .input("name", sql.NVarChar, p.name)
-      .input("description", sql.NVarChar, p.description || "")
-      .query(`
-        INSERT INTO personass (project_id, persona_name, persona_description)
-        VALUES (@projectId, @name, @description)
-      `);
-  }
-}
+        const originalDescription = p.description || "";
+        let enhancedDescription = originalDescription;
+
+        try {
+          enhancedDescription = await enhancePersonaDescription({
+            projectDescription: projectDescription || "",
+            personaTitle: p.name,
+            personaDescription: originalDescription,
+          });
+        } catch (enhanceError) {
+          console.error("Persona enhancement failed, using original description:", enhanceError?.message || enhanceError);
+        }
+
+        await pool
+          .request()
+          .input("projectId", sql.Int, createdId)
+          .input("name", sql.NVarChar, p.name)
+          .input("description", sql.NVarChar, enhancedDescription)
+          .query(`
+            INSERT INTO personass (project_id, persona_name, persona_description)
+            VALUES (@projectId, @name, @description)
+          `);
+      }
+    }
 
     return NextResponse.json({
       success: true,
@@ -293,18 +308,90 @@ export async function DELETE(request) {
     }
 
     const pool = await getPool();
+    const transaction = new sql.Transaction(pool);
 
-    const deleteResult = await pool
-      .request()
-      .input("projectId", sql.Int, Number(projectId))
-      .input("userId", sql.Int, Number(sessionUser.userId))
-      .query("DELETE FROM projectss WHERE project_id = @projectId AND created_by = @userId");
+    await transaction.begin();
 
-    if (!deleteResult.rowsAffected?.[0]) {
-      return NextResponse.json(
-        { success: false, error: { message: "Project not found" } },
-        { status: 404 }
-      );
+    try {
+      const ownershipCheck = await new sql.Request(transaction)
+        .input("projectId", sql.Int, Number(projectId))
+        .input("userId", sql.Int, Number(sessionUser.userId))
+        .query("SELECT project_id FROM projectss WHERE project_id = @projectId AND created_by = @userId");
+
+      if (!ownershipCheck.recordset?.length) {
+        await transaction.rollback();
+        return NextResponse.json(
+          { success: false, error: { message: "Project not found" } },
+          { status: 404 }
+        );
+      }
+
+      await new sql.Request(transaction)
+        .input("projectId", sql.Int, Number(projectId))
+        .query(
+          `DELETE q
+           FROM questionss q
+           INNER JOIN interviewss i ON q.interview_id = i.interview_id
+           INNER JOIN intervieweess ie ON i.interviewee_id = ie.interviewee_id
+           INNER JOIN personass p ON ie.persona_id = p.persona_id
+           WHERE p.project_id = @projectId`
+        );
+
+      await new sql.Request(transaction)
+        .input("projectId", sql.Int, Number(projectId))
+        .query(
+          `DELETE pi
+           FROM persona_insightss pi
+           INNER JOIN interviewss i ON pi.interview_id = i.interview_id
+           INNER JOIN intervieweess ie ON i.interviewee_id = ie.interviewee_id
+           INNER JOIN personass p ON ie.persona_id = p.persona_id
+           WHERE p.project_id = @projectId`
+        );
+
+      await new sql.Request(transaction)
+        .input("projectId", sql.Int, Number(projectId))
+        .query(
+          `DELETE i
+           FROM interviewss i
+           INNER JOIN intervieweess ie ON i.interviewee_id = ie.interviewee_id
+           INNER JOIN personass p ON ie.persona_id = p.persona_id
+           WHERE p.project_id = @projectId`
+        );
+
+      await new sql.Request(transaction)
+        .input("projectId", sql.Int, Number(projectId))
+        .query(
+          `DELETE ie
+           FROM intervieweess ie
+           INNER JOIN personass p ON ie.persona_id = p.persona_id
+           WHERE p.project_id = @projectId`
+        );
+
+      await new sql.Request(transaction)
+        .input("projectId", sql.Int, Number(projectId))
+        .query("DELETE FROM personass WHERE project_id = @projectId");
+
+      const deleteProjectResult = await new sql.Request(transaction)
+        .input("projectId", sql.Int, Number(projectId))
+        .input("userId", sql.Int, Number(sessionUser.userId))
+        .query("DELETE FROM projectss WHERE project_id = @projectId AND created_by = @userId");
+
+      if (!deleteProjectResult.rowsAffected?.[0]) {
+        await transaction.rollback();
+        return NextResponse.json(
+          { success: false, error: { message: "Project not found" } },
+          { status: 404 }
+        );
+      }
+
+      await transaction.commit();
+    } catch (transactionError) {
+      try {
+        await transaction.rollback();
+      } catch {
+        // no-op
+      }
+      throw transactionError;
     }
 
     return NextResponse.json({ success: true, data: { projectId: Number(projectId) } });

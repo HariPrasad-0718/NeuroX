@@ -21,12 +21,12 @@ export async function middleware(request) {
 	const sessionUser = await getUserFromRequest(request);
 	const isAuthenticated = Boolean(sessionUser?.userId);
 
-	if (!isAuthenticated && !isPublicPath(pathname)) {
+	if (pathname === "/") {
 		return NextResponse.redirect(new URL("/login", request.url));
 	}
 
-	if (isAuthenticated && isPublicPath(pathname)) {
-		return NextResponse.redirect(new URL("/dashboard", request.url));
+	if (!isAuthenticated && !isPublicPath(pathname)) {
+		return NextResponse.redirect(new URL("/login", request.url));
 	}
 
 	const dashboardUserRoute = pathname.match(/^\/dashboard\/(\d+)$/);

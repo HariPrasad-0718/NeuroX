@@ -79,8 +79,23 @@ export default function ProjectsPage() {
         )}
 
         {isLoading ? (
-          <div className="flex justify-center items-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#702dff]" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {Array.from({ length: 6 }).map((_, idx) => (
+              <div key={`projects-page-skeleton-${idx}`} className="rounded-2xl p-6 bg-white border border-gray-200 shadow-sm">
+                <div className="flex items-start justify-between mb-5 gap-3">
+                  <div className="flex-1 space-y-2">
+                    <div className="h-5 w-3/4 rounded skeleton-shimmer" />
+                    <div className="h-4 w-1/2 rounded skeleton-shimmer" />
+                  </div>
+                  <div className="h-8 w-8 rounded-lg skeleton-shimmer" />
+                </div>
+                <div className="space-y-2 mb-6">
+                  <div className="h-3 w-full rounded skeleton-shimmer" />
+                  <div className="h-3 w-4/5 rounded skeleton-shimmer" />
+                </div>
+                <div className="h-3 w-2/5 rounded skeleton-shimmer" />
+              </div>
+            ))}
           </div>
         ) : mappedProjects.length === 0 ? (
           <div className="bg-white border border-[#e5e7eb] rounded-xl p-8 text-center">

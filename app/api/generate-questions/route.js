@@ -1,105 +1,319 @@
 import { NextResponse } from "next/server";
+import { getPool, sql } from "@/lib/db";
+import { getUserFromRequest } from "@/lib/auth";
+import { generatePersonaQuestions } from "@/lib/agent5i";
 
-const WEBHOOK_URL = "https://agent5i.c5ailabs.com/api/recipes/webhook/agent/";
+function groupQuestionHistory(rows) {
+  const map = new Map();
 
-export async function POST(req) {
+  for (const row of rows) {
+    if (!map.has(row.interview_id)) {
+      map.set(row.interview_id, {
+        interviewId: row.interview_id,
+        createdAt: row.created_at,
+        transcript: row.transcript || "",
+        personaOutput: row.persona_output || "",
+        questions: [],
+      });
+    }
+
+    if (row.question_text) {
+      map.get(row.interview_id).questions.push(row.question_text);
+    }
+  }
+
+  return Array.from(map.values()).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+}
+
+// GET /api/generate-questions?intervieweeId=123
+export async function GET(request) {
   try {
-    const body = await req.json();
-    const project = body.project || {};
-
-    const user_input = `
-Project: ${project.name || ""}
-Client: ${project.client || ""}
-Description: ${project.desc || ""}
-Persona: ${project.persona || "users"}
-
-Generate 5 empathy interview questions.
-
-Return JSON array only like:
-[{"question":"...","step":"Empathize"}]
-`;
-
-    const payload = {
-      username: process.env.AGENT_USERNAME,
-      password: process.env.AGENT_PASSWORD,
-      name: process.env.AGENT_NAME,
-      user_input,
-    };
-
-    const res = await fetch(WEBHOOK_URL, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "Accept": "application/json",
-  },
-  body: JSON.stringify(payload),
-});
-
-
-const text = await res.text();
-
-if (!res.ok) {
-  return NextResponse.json({
-    success: false,
-    error: "Agent API failed",
-    status: res.status,
-    raw: text,
-  });
-}
-
-let data;
-try {
-  data = JSON.parse(text);
-} catch (err) {
-  return NextResponse.json({
-    success: false,
-    error: "Agent returned non-JSON response",
-    raw: text,
-  });
-}
-
-    // const data = await res.json();
-
-    // 🛑 SAFETY CHECK
-    if (!data.message) {
-      return NextResponse.json({
-        success: false,
-        error: "No message from agent",
-      });
+    const sessionUser = await getUserFromRequest(request);
+    if (!sessionUser?.userId) {
+      return NextResponse.json(
+        { success: false, error: { message: "Unauthorized" } },
+        { status: 401 }
+      );
     }
 
-    let questions = [];
+    const { searchParams } = new URL(request.url);
+    const intervieweeId = Number(searchParams.get("intervieweeId"));
 
-    try {
-      const parsedMessage = JSON.parse(data.message);
-
-      if (parsedMessage.empathize_questions) {
-        questions = JSON.parse(parsedMessage.empathize_questions);
-      } else {
-        throw new Error("Missing empathize_questions");
-      }
-    } catch (parseError) {
-      console.error("PARSE ERROR:", parseError);
-
-      return NextResponse.json({
-        success: false,
-        error: "Invalid AI response format",
-      });
+    if (!intervieweeId) {
+      return NextResponse.json(
+        { success: false, error: { message: "intervieweeId is required" } },
+        { status: 400 }
+      );
     }
 
-    const formatted = questions.map((q) => q.question);
+    const pool = await getPool();
+
+    const result = await pool
+      .request()
+      .input("intervieweeId", sql.Int, intervieweeId)
+      .input("userId", sql.Int, Number(sessionUser.userId))
+      .query(`
+        SELECT
+          i.interview_id,
+          i.created_at,
+          i.transcript,
+          i.persona_output,
+          q.question_text
+        FROM interviewss i
+        INNER JOIN intervieweess ie ON i.interviewee_id = ie.interviewee_id
+        INNER JOIN personass p ON ie.persona_id = p.persona_id
+        INNER JOIN projectss pr ON p.project_id = pr.project_id
+        LEFT JOIN questionss q ON i.interview_id = q.interview_id
+        WHERE ie.interviewee_id = @intervieweeId
+          AND pr.created_by = @userId
+        ORDER BY i.created_at DESC, q.question_id ASC
+      `);
+
+    const history = groupQuestionHistory(result.recordset);
 
     return NextResponse.json({
       success: true,
-      questions: formatted,
+      data: {
+        latest: history[0] || null,
+        history,
+      },
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: { message: error.message } },
+      { status: 500 }
+    );
+  }
+}
+
+// PATCH /api/generate-questions
+// Body: { interviewId, transcript }
+export async function PATCH(request) {
+  try {
+    const sessionUser = await getUserFromRequest(request);
+    if (!sessionUser?.userId) {
+      return NextResponse.json(
+        { success: false, error: { message: "Unauthorized" } },
+        { status: 401 }
+      );
+    }
+
+    const body = await request.json();
+    const interviewId = Number(body.interviewId);
+    const transcript = body.transcript ?? "";
+
+    if (!interviewId) {
+      return NextResponse.json(
+        { success: false, error: { message: "interviewId is required" } },
+        { status: 400 }
+      );
+    }
+
+    const pool = await getPool();
+
+    // Ownership check — only the project creator can update
+    const ownerCheck = await pool
+      .request()
+      .input("interviewId", sql.Int, interviewId)
+      .input("userId", sql.Int, Number(sessionUser.userId))
+      .query(`
+        SELECT i.interview_id
+        FROM interviewss i
+        INNER JOIN intervieweess ie ON i.interviewee_id = ie.interviewee_id
+        INNER JOIN personass p ON ie.persona_id = p.persona_id
+        INNER JOIN projectss pr ON p.project_id = pr.project_id
+        WHERE i.interview_id = @interviewId
+          AND pr.created_by = @userId
+      `);
+
+    if (!ownerCheck.recordset.length) {
+      return NextResponse.json(
+        { success: false, error: { message: "Interview not found" } },
+        { status: 404 }
+      );
+    }
+
+    await pool
+      .request()
+      .input("interviewId", sql.Int, interviewId)
+      .input("transcript", sql.NVarChar(sql.MAX), transcript)
+      .query(`
+        UPDATE interviewss
+        SET transcript = @transcript
+        WHERE interview_id = @interviewId
+      `);
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: { message: error.message } },
+      { status: 500 }
+    );
+  }
+}
+
+// POST /api/generate-questions
+// Body: { personaId, description|project_description, user_group|persona_title, persona_description }
+export async function POST(request) {
+  try {
+    const sessionUser = await getUserFromRequest(request);
+    if (!sessionUser?.userId) {
+      return NextResponse.json(
+        { success: false, error: { message: "Unauthorized" } },
+        { status: 401 }
+      );
+    }
+
+    const body = await request.json();
+    const personaId = Number(body.personaId);
+    const description = (body.description || body.project_description || "").trim();
+    const userGroup = (body.user_group || body.group_title || body.persona_title || "").trim();
+    const personaDescription = (body.persona_description || body.group_description || "").trim();
+
+    if (!personaId) {
+      return NextResponse.json(
+        { success: false, error: { message: "personaId is required" } },
+        { status: 400 }
+      );
+    }
+
+    if (!description) {
+      return NextResponse.json(
+        { success: false, error: { message: "description is required" } },
+        { status: 400 }
+      );
+    }
+
+    if (!userGroup) {
+      return NextResponse.json(
+        { success: false, error: { message: "user_group is required" } },
+        { status: 400 }
+      );
+    }
+
+    const pool = await getPool();
+
+    const ownershipResult = await pool
+      .request()
+      .input("personaId", sql.Int, personaId)
+      .input("userId", sql.Int, Number(sessionUser.userId))
+      .query(`
+        SELECT p.persona_id
+        FROM personass p
+        INNER JOIN projectss pr ON p.project_id = pr.project_id
+        WHERE p.persona_id = @personaId
+          AND pr.created_by = @userId
+      `);
+
+    if (!ownershipResult.recordset.length) {
+      return NextResponse.json(
+        { success: false, error: { message: "Persona not found" } },
+        { status: 404 }
+      );
+    }
+
+    const intervieweesResult = await pool
+      .request()
+      .input("personaId", sql.Int, personaId)
+      .query(`
+        SELECT interviewee_id
+        FROM intervieweess
+        WHERE persona_id = @personaId
+      `);
+
+    const interviewees = intervieweesResult.recordset;
+    if (!interviewees.length) {
+      return NextResponse.json(
+        { success: false, error: { message: "Add at least one interviewee before generating questions" } },
+        { status: 400 }
+      );
+    }
+
+    const questions = await generatePersonaQuestions({
+      description,
+      userGroup,
+      personaDescription,
     });
 
-  } catch (err) {
-    console.error("AGENT ERROR:", err);
+    const transaction = new sql.Transaction(pool);
+    await transaction.begin();
+
+    try {
+      for (const interviewee of interviewees) {
+        const latestInterviewResult = await new sql.Request(transaction)
+          .input("intervieweeId", sql.Int, interviewee.interviewee_id)
+          .query(`
+            SELECT TOP 1 interview_id
+            FROM interviewss
+            WHERE interviewee_id = @intervieweeId
+            ORDER BY created_at DESC, interview_id DESC
+          `);
+
+        let interviewId = latestInterviewResult.recordset[0]?.interview_id;
+
+        if (!interviewId) {
+          const insertedInterview = await new sql.Request(transaction)
+            .input("intervieweeId", sql.Int, interviewee.interviewee_id)
+            .query(`
+              INSERT INTO interviewss (interviewee_id, transcript, persona_output)
+              OUTPUT INSERTED.interview_id
+              VALUES (@intervieweeId, NULL, NULL)
+            `);
+
+          interviewId = insertedInterview.recordset[0].interview_id;
+        } else {
+          // Regeneration should keep the same interview_id but reset stale transcript/persona output.
+          await new sql.Request(transaction)
+            .input("interviewId", sql.Int, interviewId)
+            .query(`
+              UPDATE interviewss
+              SET transcript = NULL,
+                  persona_output = NULL
+              WHERE interview_id = @interviewId
+            `);
+
+          await new sql.Request(transaction)
+            .input("interviewId", sql.Int, interviewId)
+            .query(`
+              DELETE FROM questionss
+              WHERE interview_id = @interviewId
+            `);
+        }
+
+        for (const questionText of questions) {
+          await new sql.Request(transaction)
+            .input("interviewId", sql.Int, interviewId)
+            .input("questionText", sql.NVarChar, questionText)
+            .query(`
+              INSERT INTO questionss (interview_id, question_text)
+              VALUES (@interviewId, @questionText)
+            `);
+        }
+      }
+
+      await transaction.commit();
+    } catch (transactionError) {
+      try {
+        await transaction.rollback();
+      } catch {
+        // no-op
+      }
+      throw transactionError;
+    }
 
     return NextResponse.json({
-      success: false,
-      error: err.message,
+      success: true,
+      data: {
+        questions,
+        appliedToInterviewees: interviewees.length,
+      },
     });
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: { message: error.message } },
+      { status: 500 }
+    );
   }
 }

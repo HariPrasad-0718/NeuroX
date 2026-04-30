@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, MoreVertical, Edit2, Trash2 } from "lucide-react";
+import { ChevronRight, MoreVertical, Trash2 } from "lucide-react";
 import { useProjects } from "@/hooks/useProjects";
 import { useTemplatesSummary } from "@/hooks/useTemplatesSummary";
 import { api } from "@/services/api";
@@ -31,7 +31,13 @@ export default function HomePage() {
   const [isLoadingStages, setIsLoadingStages] = useState(false);
   const [openMenuIndex, setOpenMenuIndex] = useState(null);
 
-  const { projects, isLoading: isLoadingProjects, error: projectsError } = useProjects(userId);
+  const {
+    projects,
+    isLoading: isLoadingProjects,
+    error: projectsError,
+    deleteProject,
+    deleteLoading,
+  } = useProjects(userId);
   const { summary: templatesSummary, isLoading: isSummaryLoading } = useTemplatesSummary();
 
   useEffect(() => {
@@ -82,6 +88,18 @@ export default function HomePage() {
 
   const recentProjects = mappedProjects.slice(0, 6);
 
+  const handleDeleteProject = async (projectId) => {
+    const ok = window.confirm("Delete this project?");
+    if (!ok) return;
+
+    const result = await deleteProject(projectId);
+    if (!result.success) {
+      alert(`Failed to delete project: ${result.error}`);
+    }
+
+    setOpenMenuIndex(null);
+  };
+
   if (userPersona === "manager") {
     return <ManagerHome projects={mappedProjects} onProjectClick={(p) => router.push(`/projects/${p.projectId}`)} onExpertsClick={() => router.push("/sessions")} />;
   }
@@ -117,8 +135,30 @@ export default function HomePage() {
                       <h3 className="font-semibold text-white mb-2 truncate text-lg">{project.title}</h3>
                       <p className="text-sm text-white/90 truncate">{project.company}</p>
                     </div>
-                    <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${project.status === "Completed" ? "bg-emerald-500 text-white" : "bg-amber-500 text-white"}`}>{project.status}</span>
+
+                    <div className="relative" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        className="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 text-white flex items-center justify-center"
+                        onClick={() => setOpenMenuIndex((prev) => (prev === project.projectId ? null : project.projectId))}
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+
+                      {openMenuIndex === project.projectId && (
+                        <div className="absolute top-10 right-0 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20 min-w-[140px]">
+                          <button
+                            className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:opacity-60"
+                            onClick={() => handleDeleteProject(project.projectId)}
+                            disabled={deleteLoading}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
+                  <span className={`inline-flex text-xs px-3 py-1.5 rounded-full font-medium mb-4 ${project.status === "Completed" ? "bg-emerald-500 text-white" : "bg-amber-500 text-white"}`}>{project.status}</span>
                   <p className="text-sm text-white/95 mb-6">{project.description}</p>
                 </div>
               </div>

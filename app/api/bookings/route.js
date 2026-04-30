@@ -13,7 +13,6 @@ export async function GET(request) {
   }
 }
 
-// POST /api/bookings — Create a new booking
 export async function POST(request) {
   try {
     return NextResponse.json(

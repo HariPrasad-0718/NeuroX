@@ -68,6 +68,9 @@ export const api = {
   getStages: () => fetchApi("stages", { method: "GET" }),
 
   // --- Templates ---
+  getTemplates: () =>
+    fetchApi("templates", { method: "GET" }),
+
   getTemplatesByStage: (stageId) =>
     fetchApi(`templates?stageId=${stageId}`, { method: "GET" }),
 
