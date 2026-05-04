@@ -48,6 +48,7 @@ export default function ViewPersonaPage() {
   const [personaDescription, setPersonaDescription] = useState("");
   const [summary, setSummary] = useState("");
 const [loadingSummary, setLoadingSummary] = useState(false);
+const [insights, setInsights] = useState([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -118,17 +119,46 @@ const [loadingSummary, setLoadingSummary] = useState(false);
         body: JSON.stringify({
           project_description: projectName,
           persona_title: activeInterviewee.intervieweeName,
-          persona_description:  [
-  ...activeInterviewee.parsed.says,
-  ...activeInterviewee.parsed.thinks,
-  ...activeInterviewee.parsed.does,
-  ...activeInterviewee.parsed.feels
-].join("\n")
+          user_answers: [
+    ...activeInterviewee.parsed.says,
+    ...activeInterviewee.parsed.thinks,
+    ...activeInterviewee.parsed.does,
+    ...activeInterviewee.parsed.feels,
+  ].join("\n"),
         }),
       });
 
       const data = await res.json();
-      setSummary(data.description || "No summary available");
+      let cleanText = data.summary || "";
+
+// remove JSON wrapper if present
+if (cleanText.includes("summary_output")) {
+  try {
+    const parsed = JSON.parse(cleanText);
+    cleanText = parsed.summary_output || cleanText;
+  } catch {}
+}
+
+// convert \n → real line breaks
+cleanText = cleanText.replace(/\\n/g, "\n");
+
+// 🔥 SPLIT SUMMARY & INSIGHTS
+let summaryPart = "";
+let insightsPart = [];
+
+const parts = cleanText.split(/Key Insights:/i);
+
+summaryPart = parts[0]?.replace(/User Summary:/i, "").trim();
+
+if (parts[1]) {
+  insightsPart = parts[1]
+    .split("\n")
+    .map((l) => l.replace(/^[-•*\d.\s]+/, "").trim())
+    .filter(Boolean);
+}
+
+setSummary(summaryPart);
+setInsights(insightsPart);
     } catch (err) {
       setSummary("Failed to load summary");
     }
@@ -182,14 +212,15 @@ const [loadingSummary, setLoadingSummary] = useState(false);
   ))}
 </div>
 
-{/* ✅ SUMMARY (CORRECT POSITION) */}
-    <div className="summary-box">
-      {loadingSummary ? (
-        <p>Loading summary...</p>
-      ) : (
-        <p>{summary}</p>
-      )}
-    </div>
+
+        <div className="summary-box">
+  {loadingSummary ? (
+    <p>Loading summary...</p>
+  ) : (
+    <p>{summary}</p>
+  )}
+</div>
+  
 
           {/* EMPATHY MAP */}
           {activeInterviewee && (
@@ -247,7 +278,15 @@ const [loadingSummary, setLoadingSummary] = useState(false);
           )}
         </div>
       )}
+      {insights.length > 0 && (
+  <div className="summary-box">
+    <h3>Key Insights</h3>
 
+    {insights.map((item, i) => (
+      <p key={i}>• {item}</p>
+    ))}
+  </div>
+)}
       <style jsx>{`
 
       .page-title {
@@ -457,3 +496,4 @@ const [loadingSummary, setLoadingSummary] = useState(false);
     </div>
   );
 }
+
