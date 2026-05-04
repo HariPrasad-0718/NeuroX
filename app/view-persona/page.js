@@ -26,12 +26,14 @@ function parsePersonaOutput(rawOutput, fallbackName) {
   };
 
   return {
-    name: fallbackName || "Persona",
-    says: getBullets(getHeadingBlock(normalized, "Says")),
-    thinks: getBullets(getHeadingBlock(normalized, "Thinks")),
-    does: getBullets(getHeadingBlock(normalized, "Does")),
-    feels: getBullets(getHeadingBlock(normalized, "Feels")),
-  };
+  name: fallbackName || "Persona",
+  says: getBullets(getHeadingBlock(normalized, "Says")),
+  thinks: getBullets(getHeadingBlock(normalized, "Thinks")),
+  does: getBullets(getHeadingBlock(normalized, "Does")),
+  feels: getBullets(getHeadingBlock(normalized, "Feels")),
+  painPoints: getBullets(getHeadingBlock(normalized, "Pain Points")),
+  needs: getBullets(getHeadingBlock(normalized, "Needs")),
+};
 }
 
 export default function ViewPersonaPage() {
@@ -277,7 +279,35 @@ setInsights(insightsPart);
             </div>
           )}
         </div>
-      )}
+      )}{/* PAIN POINTS */}
+{activeInterviewee && (
+  <div className="summary-box">
+    <h3>Pain Points</h3>
+
+    {activeInterviewee.parsed.painPoints?.length > 0 ? (
+      activeInterviewee.parsed.painPoints.map((item, i) => (
+        <p key={i}>• {item}</p>
+      ))
+    ) : (
+      <p>No pain points available</p>
+    )}
+  </div>
+)}
+
+{/* NEEDS */}
+{activeInterviewee && (
+  <div className="summary-box">
+    <h3>Needs</h3>
+
+    {activeInterviewee.parsed.needs?.length > 0 ? (
+      activeInterviewee.parsed.needs.map((item, i) => (
+        <p key={i}>• {item}</p>
+      ))
+    ) : (
+      <p>No needs available</p>
+    )}
+  </div>
+)}
       {insights.length > 0 && (
   <div className="summary-box">
     <h3>Key Insights</h3>
