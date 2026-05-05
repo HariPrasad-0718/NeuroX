@@ -1,6 +1,11 @@
+import { getPool, sql } from "@/lib/db";
+
 export async function POST(req) {
   try {
     const body = await req.json();
+    const userAnswers = body.user_answers || body.persona_description || "";
+    const personaTitle = body.persona_title || body.persona_name || "";
+    const interviewId = Number(body.interview_id || 0) || null;
 
     const payload = {
   username: process.env.AGENT_USERNAME,
@@ -8,16 +13,16 @@ export async function POST(req) {
   name: "Research Summary Agent",
 
   project_description: body.project_description,
-  user_answers: body.user_answers,
-  transcript: body.user_answers,   // 🔥 ADD THIS LINE
-  persona_name: body.persona_title,
+  user_answers: userAnswers,
+  transcript: userAnswers,
+  persona_name: personaTitle,
 
   rules: [],
   user_input: JSON.stringify({
     project_description: body.project_description,
-    user_answers: body.user_answers,
-    transcript: body.user_answers,  // 🔥 ALSO HERE
-    persona_name: body.persona_title,
+    user_answers: userAnswers,
+    transcript: userAnswers,
+    persona_name: personaTitle,
   }),
 };
 
@@ -79,6 +84,19 @@ export async function POST(req) {
 
     } catch {
       summary = rawText;
+    }
+
+    if (interviewId && summary && summary !== "No summary available") {
+      const pool = await getPool();
+      await pool
+        .request()
+        .input("interviewId", sql.Int, interviewId)
+        .input("summary", sql.NVarChar(sql.MAX), summary)
+        .query(`
+          UPDATE interviewss
+          SET summary = @summary
+          WHERE interview_id = @interviewId
+        `);
     }
 
     return Response.json({ summary });

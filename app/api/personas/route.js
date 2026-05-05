@@ -26,10 +26,24 @@ export async function GET(request) {
           SELECT
             p.persona_id,
             p.persona_name,
+            pr.project_name,
+            pr.description AS project_description,
+            ie.interviewee_id,
+            ie.name AS interviewee_name,
+            ie.gender,
+            ie.age,
+            ie.location,
+            ie.relationship_status,
+            ie.title,
+            ie.education,
             i.interview_id,
+            i.transcript,
             i.persona_output AS generated_output,
+            i.interview_outcome,
+            i.summary,
             i.created_at AS generated_at
           FROM personass p
+          INNER JOIN projectss pr ON pr.project_id = p.project_id
           LEFT JOIN intervieweess ie ON ie.persona_id = p.persona_id
           LEFT JOIN interviewss i ON i.interviewee_id = ie.interviewee_id
           WHERE p.project_id = @projectId
@@ -43,27 +57,48 @@ export async function GET(request) {
           personaMap.set(row.persona_id, {
             personaId: row.persona_id,
             personaName: row.persona_name,
+            projectName: row.project_name || "",
+            projectDescription: row.project_description || "",
             outputs: [],
           });
         }
 
         const outputText = String(row.generated_output || "").trim();
-        if (outputText) {
-          personaMap.get(row.persona_id).outputs.push({
-            interviewId: row.interview_id,
-            generatedAt: row.generated_at,
-            text: outputText,
-          });
-        }
+        const transcriptText = String(row.transcript || "").trim();
+        const summaryText = String(row.summary || "").trim();
+        const outcomeText = String(row.interview_outcome || "").trim();
+        const hasAnyInterviewDetail = Boolean(outputText || transcriptText || summaryText || outcomeText);
+
+        if (!hasAnyInterviewDetail) continue;
+
+        personaMap.get(row.persona_id).outputs.push({
+          interviewId: row.interview_id,
+          intervieweeId: row.interviewee_id,
+          intervieweeName: row.interviewee_name,
+          generatedAt: row.generated_at,
+          demographics: {
+            gender: row.gender,
+            age: row.age,
+            location: row.location,
+            relationshipStatus: row.relationship_status,
+            title: row.title,
+            education: row.education,
+          },
+          summary: summaryText,
+          transcript: transcriptText,
+          interviewOutcome: outcomeText,
+          personaOutput: outputText,
+        });
       }
 
       const personas = Array.from(personaMap.values());
       const combinedOutput = personas
         .map((persona) => {
           const header = `Persona ID: ${persona.personaId}\nPersona Name: ${persona.personaName}`;
+          const projectInfo = `Project Name: ${persona.projectName || "N/A"}\nProject Description: ${String(persona.projectDescription || "No project description available.").trim()}`;
 
           if (!persona.outputs.length) {
-            return `${header}\nPersona Outputs:\nNo persona output available.`;
+            return `${header}\n${projectInfo}\nPersona Outputs:\nNo interview details available.`;
           }
 
           const body = persona.outputs
@@ -74,16 +109,40 @@ export async function GET(request) {
               const metadata = [
                 `Output ${index + 1}`,
                 output.interviewId ? `Interview ID: ${output.interviewId}` : null,
+                output.intervieweeId ? `Interviewee ID: ${output.intervieweeId}` : null,
+                output.intervieweeName ? `Interviewee Name: ${output.intervieweeName}` : null,
                 createdAt ? `Generated At: ${createdAt}` : null,
               ]
                 .filter(Boolean)
                 .join(" | ");
 
-              return `${metadata}\n${output.text}`;
+              const demographicText = [
+                output.demographics.gender ? `Gender: ${output.demographics.gender}` : null,
+                output.demographics.age !== null && output.demographics.age !== undefined ? `Age: ${output.demographics.age}` : null,
+                output.demographics.location ? `Location: ${output.demographics.location}` : null,
+                output.demographics.relationshipStatus
+                  ? `Relationship Status: ${output.demographics.relationshipStatus}`
+                  : null,
+                output.demographics.title ? `Title: ${output.demographics.title}` : null,
+                output.demographics.education ? `Education: ${output.demographics.education}` : null,
+              ]
+                .filter(Boolean)
+                .join("\n");
+
+              return `${metadata}
+${demographicText ? `${demographicText}\n` : ""}
+Summary:
+${output.summary || "No summary available."}
+
+Interview Outcome:
+${output.interviewOutcome || "No interview outcome available."}
+
+Persona Output:
+${output.personaOutput || "No persona output available."}`;
             })
             .join("\n\n");
 
-          return `${header}\nPersona Outputs:\n${body}`;
+          return `${header}\n${projectInfo}\nPersona Outputs:\n${body}`;
         })
         .join("\n\n----------------------------------------\n\n");
 
@@ -115,6 +174,7 @@ export async function GET(request) {
               ie.education,
               latest.interview_id,
               latest.generated_output,
+              latest.summary,
               latest.generated_at
             FROM personass p
             LEFT JOIN intervieweess ie ON ie.persona_id = p.persona_id
@@ -122,6 +182,7 @@ export async function GET(request) {
               SELECT TOP 1
                 i.interview_id,
                 i.persona_output AS generated_output,
+                i.summary,
                 i.created_at AS generated_at
               FROM interviewss i
               WHERE i.interviewee_id = ie.interviewee_id
@@ -141,6 +202,7 @@ export async function GET(request) {
               p.persona_description,
               latest.interview_id,
               latest.generated_output,
+              latest.summary,
               latest.generated_at,
               latest.interviewee_id,
               latest.interviewee_name,
@@ -155,6 +217,7 @@ export async function GET(request) {
               SELECT TOP 1
                 i.interview_id,
                 i.persona_output AS generated_output,
+                i.summary,
                 i.created_at AS generated_at,
                 ie.interviewee_id,
                 ie.name AS interviewee_name,

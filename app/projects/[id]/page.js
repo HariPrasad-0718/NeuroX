@@ -82,6 +82,7 @@ export default function ProjectDetailPage() {
   const [combinedPersonaOutput, setCombinedPersonaOutput] = useState("");
   const [isCombiningPersonaOutput, setIsCombiningPersonaOutput] = useState(false);
   const [combinedPersonaOutputError, setCombinedPersonaOutputError] = useState("");
+  const [showCombinedOutputModal, setShowCombinedOutputModal] = useState(false);
   const [showFullDesc, setShowFullDesc] = useState(false);
 
   useEffect(() => {
@@ -283,7 +284,9 @@ export default function ProjectDetailPage() {
   };
 
   const handleCombinePersonaOutputs = async () => {
+    setShowCombinedOutputModal(true);
     setIsCombiningPersonaOutput(true);
+    setCombinedPersonaOutput("");
     setCombinedPersonaOutputError("");
 
     try {
@@ -472,6 +475,19 @@ export default function ProjectDetailPage() {
                           <div className="flex items-center gap-3 mb-1">
                             <h3 className="text-lg font-semibold text-gray-900">{stage.name}</h3>
                             <span className={`text-xs px-2 py-1 rounded ${getStageStatus(stage.id) === "Completed" ? "bg-green-100 text-green-700" : getStageStatus(stage.id) === "In Progress" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-600"}`}>{getStageStatus(stage.id)}</span>
+                            {stage.id === "empathize" && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setShowPersonaSection(true);
+                                  handleCombinePersonaOutputs();
+                                }}
+                                disabled={isCombiningPersonaOutput}
+                                className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-300"
+                              >
+                                {isCombiningPersonaOutput ? "Combining..." : "Combine Persona Outputs"}
+                              </button>
+                            )}
                           </div>
                           <p className="text-sm text-gray-600">{stage.description}</p>
                         </div>
@@ -603,25 +619,6 @@ export default function ProjectDetailPage() {
               </div>
             </div>
 
-            {(combinedPersonaOutput || combinedPersonaOutputError) && (
-              <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Combined Output</p>
-                    <h3 className="mt-1 text-base font-semibold text-gray-900">All persona outputs grouped by persona</h3>
-                  </div>
-                </div>
-
-                {combinedPersonaOutputError ? (
-                  <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{combinedPersonaOutputError}</p>
-                ) : (
-                  <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap rounded-lg border border-gray-200 bg-gray-50 px-4 py-4 text-sm leading-6 text-gray-800">
-                    {combinedPersonaOutput}
-                  </pre>
-                )}
-              </div>
-            )}
-
             {isPersonaCardsLoading ? (
               <p className="rounded-lg border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500">Loading persona output...</p>
             ) : personaCardsError ? (
@@ -750,6 +747,41 @@ export default function ProjectDetailPage() {
                 )}
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {showCombinedOutputModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowCombinedOutputModal(false)}>
+          <div
+            className="w-full max-w-4xl rounded-xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Combined Output</p>
+                <h3 className="mt-1 text-base font-semibold text-gray-900">All persona outputs with project + interview details</h3>
+              </div>
+              <button
+                onClick={() => setShowCombinedOutputModal(false)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-600 transition hover:bg-gray-50"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                Close
+              </button>
+            </div>
+
+            <div className="px-5 py-4">
+              {isCombiningPersonaOutput ? (
+                <p className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-10 text-center text-sm text-gray-500">Combining persona outputs...</p>
+              ) : combinedPersonaOutputError ? (
+                <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{combinedPersonaOutputError}</p>
+              ) : (
+                <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-lg border border-gray-200 bg-gray-50 px-4 py-4 text-sm leading-6 text-gray-800">
+                  {combinedPersonaOutput || "No combined output available."}
+                </pre>
+              )}
+            </div>
           </div>
         </div>
       )}

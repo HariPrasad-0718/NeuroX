@@ -30,6 +30,7 @@ export default function HomePage() {
   const [designStages, setDesignStages] = useState([]);
   const [isLoadingStages, setIsLoadingStages] = useState(false);
   const [openMenuIndex, setOpenMenuIndex] = useState(null);
+  const [descriptionModal, setDescriptionModal] = useState(null);
 
   const {
     projects,
@@ -88,6 +89,12 @@ export default function HomePage() {
 
   const recentProjects = mappedProjects.slice(0, 6);
 
+  const truncateDescription = (text, maxLength = 140) => {
+    const normalized = String(text || "").trim();
+    if (normalized.length <= maxLength) return normalized;
+    return `${normalized.slice(0, maxLength).trimEnd()}...`;
+  };
+
   const handleDeleteProject = async (projectId) => {
     const ok = window.confirm("Delete this project?");
     if (!ok) return;
@@ -127,9 +134,9 @@ export default function HomePage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {recentProjects.map((project, index) => (
-              <div key={project.projectId || index} onClick={() => router.push(`/projects/${project.projectId}`)} className={`bg-gradient-to-br ${project.color} rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 relative overflow-hidden group cursor-pointer`}>
+              <div key={project.projectId || index} onClick={() => router.push(`/projects/${project.projectId}`)} className={`h-[320px] bg-gradient-to-br ${project.color} rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 relative overflow-hidden group cursor-pointer`}>
                 <div className="absolute inset-0 bg-black/5 group-hover:bg-black/0 transition-all duration-300" />
-                <div className="p-6 relative">
+                <div className="p-6 relative h-full flex flex-col">
                   <div className="flex items-start justify-between mb-5 gap-3">
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-white mb-2 truncate text-lg">{project.title}</h3>
@@ -159,13 +166,57 @@ export default function HomePage() {
                     </div>
                   </div>
                   <span className={`inline-flex text-xs px-3 py-1.5 rounded-full font-medium mb-4 ${project.status === "Completed" ? "bg-emerald-500 text-white" : "bg-amber-500 text-white"}`}>{project.status}</span>
-                  <p className="text-sm text-white/95 mb-6">{project.description}</p>
+                  <p className="text-sm text-white/95">{truncateDescription(project.description)}</p>
+                  {String(project.description || "").trim().length > 140 && (
+                    <button
+                      className="mt-3 self-start text-xs font-medium text-white underline underline-offset-4 decoration-white/60 hover:decoration-white"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDescriptionModal({
+                          title: project.title,
+                          company: project.company,
+                          description: String(project.description || "No description"),
+                        });
+                      }}
+                    >
+                      Read more
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {descriptionModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setDescriptionModal(null)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">{descriptionModal.title}</h3>
+                <p className="mt-1 text-sm text-gray-500">{descriptionModal.company}</p>
+              </div>
+              <button
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+                onClick={() => setDescriptionModal(null)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 max-h-[60vh] overflow-auto rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <p className="whitespace-pre-wrap text-sm leading-6 text-gray-700">{descriptionModal.description}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Design Thinking Stages */}
       <div className="mb-12">
