@@ -27,7 +27,7 @@ export default function SessionsPage() {
   const formatDate = (d) => new Date(d).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
   return (
-    <div className="-mr-8 -mb-8 p-8">
+    <div className="-mb-8 p-8">
       <div className="flex items-center justify-between mb-8">
         <div>
           <button onClick={() => router.push("/")} className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-2 transition-colors"><ArrowLeft className="w-4 h-4" /><span className="text-sm font-medium">Back to Dashboard</span></button>

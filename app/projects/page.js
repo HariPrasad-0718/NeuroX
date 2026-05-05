@@ -145,6 +145,10 @@ export default function ProjectsPage() {
                     </div>
                   </div>
 
+                  <span className={`inline-flex w-fit self-start text-xs px-3 py-1.5 rounded-full font-medium mb-4 ${project.status === "Completed" ? "bg-emerald-500 text-white" : "bg-amber-500 text-white"}`}>
+                    {project.status}
+                  </span>
+
                   <p className="text-sm text-white/95 mb-6 line-clamp-2 leading-relaxed cursor-pointer" onClick={() => router.push(`/projects/${project.projectId}`)}>
                     {project.description}
                   </p>

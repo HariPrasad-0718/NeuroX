@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, ChevronDown, Upload, Download, Share2, Trash2, FileText, Link as LinkIcon, Loader2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, Upload, Download, Share2, Trash2, FileText, Link as LinkIcon, Loader2, AlertTriangle, HandHeart, Lightbulb } from "lucide-react";
 import { api } from "@/services/api";
 
 const STAGES = [
@@ -194,6 +194,8 @@ export default function ProjectDetailPage() {
         goals: [],
         motivations: [],
         frustrations: [],
+        needs: [],
+        keyInsights: [],
         previousExperience: [],
         expectations: [],
       };
@@ -236,6 +238,8 @@ export default function ProjectDetailPage() {
   goals: getBullets(getHeadingBlock(normalized, "Goals")),
   motivations: getBullets(getHeadingBlock(normalized, "Motivations?")),
   frustrations: getBullets(getHeadingBlock(normalized, "Frustrations?")),
+  needs: getBullets(getHeadingBlock(normalized, "Needs?")),
+  keyInsights: getBullets(getHeadingBlock(normalized, "Key\s+Insights?")),
 };
   };
 
@@ -352,9 +356,9 @@ export default function ProjectDetailPage() {
               onClick={(e) => {
                 e.stopPropagation();
                 if (template.id === "user-persona") {
-                    togglePersonaSection();   // ✅ SHOW INSIDE SAME PAGE
+                    // togglePersonaSection();   // ✅ SHOW INSIDE SAME PAGE
 
-                  // router.push(`/view-persona?projectId=${encodeURIComponent(projectId)}&projectName=${encodeURIComponent(project?.projectName || "")}`);
+                  router.push(`/view-persona?projectId=${encodeURIComponent(projectId)}&projectName=${encodeURIComponent(project?.projectName || "")}`);
                   return;
                 }
                 router.push(workspaceUrl);
@@ -389,7 +393,7 @@ export default function ProjectDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#fafafa]">
+      <div className="bg-[#fafafa]">
         <div className="bg-white border-b border-gray-200 px-8 py-6 flex items-center gap-6">
           <button onClick={() => router.push("/projects")} className="w-10 h-10 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-50"><ArrowLeft className="w-5 h-5 text-gray-700" /></button>
           <div><div className="h-8 w-64 bg-gray-200 animate-pulse rounded mb-2" /><div className="h-4 w-96 bg-gray-200 animate-pulse rounded" /></div>
@@ -401,7 +405,7 @@ export default function ProjectDetailPage() {
 
   if (error || !project) {
     return (
-      <div className="min-h-screen bg-[#fafafa]">
+      <div className="bg-[#fafafa]">
         <div className="bg-white border-b border-gray-200 px-8 py-6 flex items-center gap-6">
           <button onClick={() => router.push("/projects")} className="w-10 h-10 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-50"><ArrowLeft className="w-5 h-5 text-gray-700" /></button>
           <div><h1 className="text-2xl font-semibold text-gray-900 mb-2">Error Loading Project</h1><p className="text-sm text-gray-600">{error}</p></div>
@@ -416,7 +420,7 @@ export default function ProjectDetailPage() {
     personaCards.find((card) => card.personaId === activePersonaCardId) || null;
 
   return (
-    <div className="min-h-screen bg-[#fafafa] -mt-8 -mr-8 -mb-8">
+    <div className="bg-[#fafafa]">
       <div className="bg-white border-b border-gray-200 px-8 py-6 mt-8">
         <div className="flex items-start gap-6">
           <button onClick={() => router.push("/projects")} className="w-10 h-10 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-50 flex-shrink-0 mt-1"><ArrowLeft className="w-5 h-5 text-gray-700" /></button>
@@ -741,6 +745,57 @@ export default function ProjectDetailPage() {
     </ul>
   </div>
 </div>
+
+<div className="persona-insight-grid">
+  <div className="insight-tile pain-points">
+    <div className="insight-head">
+      <span className="insight-icon"><AlertTriangle className="w-4 h-4" /></span>
+      <h3>Pain Points</h3>
+    </div>
+    <div className="insight-body">
+      {(activePersonaCard.parsed.frustrations.length
+        ? activePersonaCard.parsed.frustrations
+        : ["No pain points extracted yet."]
+      ).map((item, idx) => (
+        <span key={`pain-${idx}`} className="insight-chip">{item}</span>
+      ))}
+    </div>
+  </div>
+
+  <div className="insight-tile needs">
+    <div className="insight-head">
+      <span className="insight-icon"><HandHeart className="w-4 h-4" /></span>
+      <h3>Needs</h3>
+    </div>
+    <div className="insight-body">
+      {(activePersonaCard.parsed.needs.length
+        ? activePersonaCard.parsed.needs
+        : activePersonaCard.parsed.goals.length
+          ? activePersonaCard.parsed.goals
+          : ["No needs extracted yet."]
+      ).map((item, idx) => (
+        <span key={`need-${idx}`} className="insight-chip">{item}</span>
+      ))}
+    </div>
+  </div>
+
+  <div className="insight-tile key-insights">
+    <div className="insight-head">
+      <span className="insight-icon"><Lightbulb className="w-4 h-4" /></span>
+      <h3>Key Insights</h3>
+    </div>
+    <div className="insight-body">
+      {(activePersonaCard.parsed.keyInsights.length
+        ? activePersonaCard.parsed.keyInsights
+        : activePersonaCard.parsed.motivations.length
+          ? activePersonaCard.parsed.motivations
+          : ["No key insights extracted yet."]
+      ).map((item, idx) => (
+        <span key={`insight-${idx}`} className="insight-chip">{item}</span>
+      ))}
+    </div>
+  </div>
+</div>
                       </div>
                     </div>
                   </div>
@@ -777,9 +832,9 @@ export default function ProjectDetailPage() {
               ) : combinedPersonaOutputError ? (
                 <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{combinedPersonaOutputError}</p>
               ) : (
-                <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-lg border border-gray-200 bg-gray-50 px-4 py-4 text-sm leading-6 text-gray-800">
+                <div className="whitespace-pre-wrap break-words rounded-lg border border-gray-200 bg-gray-50 px-4 py-4 text-sm leading-6 text-gray-800">
                   {combinedPersonaOutput || "No combined output available."}
-                </pre>
+                </div>
               )}
             </div>
           </div>
@@ -884,6 +939,7 @@ export default function ProjectDetailPage() {
 
         .persona-content {
           padding: 20px;
+          background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
         }
 
         .persona-block {
@@ -920,6 +976,110 @@ export default function ProjectDetailPage() {
           color: #444;
         }
 
+        .persona-insight-grid {
+          margin-top: 8px;
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 14px;
+        }
+
+        .insight-tile {
+          border-radius: 12px;
+          border: 1px solid #e5e7eb;
+          padding: 14px;
+          box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .insight-tile:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+        }
+
+        .insight-head {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 10px;
+        }
+
+        .insight-head h3 {
+          margin: 0;
+          font-size: 14px;
+          font-weight: 700;
+          letter-spacing: 0.02em;
+        }
+
+        .insight-icon {
+          width: 26px;
+          height: 26px;
+          border-radius: 8px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .insight-body {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .insight-chip {
+          display: inline-block;
+          padding: 6px 10px;
+          border-radius: 999px;
+          font-size: 12px;
+          line-height: 1.35;
+          border: 1px solid transparent;
+          background: rgba(255, 255, 255, 0.7);
+        }
+
+        .insight-tile.pain-points {
+          background: linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%);
+          border-color: #fecdd3;
+        }
+
+        .insight-tile.pain-points .insight-icon {
+          color: #be123c;
+          background: rgba(190, 18, 60, 0.12);
+        }
+
+        .insight-tile.pain-points .insight-chip {
+          color: #9f1239;
+          border-color: #fda4af;
+        }
+
+        .insight-tile.needs {
+          background: linear-gradient(135deg, #ecfeff 0%, #cffafe 100%);
+          border-color: #a5f3fc;
+        }
+
+        .insight-tile.needs .insight-icon {
+          color: #0f766e;
+          background: rgba(15, 118, 110, 0.12);
+        }
+
+        .insight-tile.needs .insight-chip {
+          color: #115e59;
+          border-color: #67e8f9;
+        }
+
+        .insight-tile.key-insights {
+          background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+          border-color: #bfdbfe;
+        }
+
+        .insight-tile.key-insights .insight-icon {
+          color: #1d4ed8;
+          background: rgba(29, 78, 216, 0.12);
+        }
+
+        .insight-tile.key-insights .insight-chip {
+          color: #1e40af;
+          border-color: #93c5fd;
+        }
+
         @media (max-width: 900px) {
           .persona-container {
             flex-direction: column;
@@ -932,6 +1092,10 @@ export default function ProjectDetailPage() {
 
           .persona-grid-2 {
             flex-direction: column;
+          }
+
+          .persona-insight-grid {
+            grid-template-columns: 1fr;
           }
 
           .persona-grid-2 .persona-block {

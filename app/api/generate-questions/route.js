@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
-import { generatePersonaQuestions } from "@/lib/agent5i";
+import { generatePersonaQuestions, generateSummaryFromTranscript } from "@/lib/agent5i";
 
 function groupQuestionHistory(rows) {
   const map = new Map();
@@ -119,7 +119,10 @@ export async function PATCH(request) {
       .input("interviewId", sql.Int, interviewId)
       .input("userId", sql.Int, Number(sessionUser.userId))
       .query(`
-        SELECT i.interview_id
+        SELECT
+          i.interview_id,
+          pr.description AS project_description,
+          ie.name AS interviewee_name
         FROM interviewss i
         INNER JOIN intervieweess ie ON i.interviewee_id = ie.interviewee_id
         INNER JOIN personass p ON ie.persona_id = p.persona_id
@@ -135,17 +138,40 @@ export async function PATCH(request) {
       );
     }
 
+    const interviewContext = ownerCheck.recordset[0];
+    const normalizedTranscript = String(transcript || "").trim();
+    let computedSummary = null;
+
+    if (normalizedTranscript) {
+      try {
+        computedSummary = await generateSummaryFromTranscript({
+          projectDescription: interviewContext.project_description || "Project context not provided",
+          userAnswers: normalizedTranscript,
+          personaName: interviewContext.interviewee_name || "",
+        });
+      } catch (summaryError) {
+        console.error("SUMMARY GENERATION ERROR:", summaryError);
+      }
+    }
+
     await pool
       .request()
       .input("interviewId", sql.Int, interviewId)
       .input("transcript", sql.NVarChar(sql.MAX), transcript)
+      .input("summary", sql.NVarChar(sql.MAX), computedSummary)
       .query(`
         UPDATE interviewss
-        SET transcript = @transcript
+        SET transcript = @transcript,
+            summary = @summary
         WHERE interview_id = @interviewId
       `);
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      data: {
+        summaryGenerated: Boolean(computedSummary),
+      },
+    });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: { message: error.message } },
@@ -270,7 +296,8 @@ export async function POST(request) {
             .query(`
               UPDATE interviewss
               SET transcript = NULL,
-                  persona_output = NULL
+                  persona_output = NULL,
+                  summary = NULL
               WHERE interview_id = @interviewId
             `);
 

@@ -89,11 +89,7 @@ export default function HomePage() {
 
   const recentProjects = mappedProjects.slice(0, 6);
 
-  const truncateDescription = (text, maxLength = 140) => {
-    const normalized = String(text || "").trim();
-    if (normalized.length <= maxLength) return normalized;
-    return `${normalized.slice(0, maxLength).trimEnd()}...`;
-  };
+  const normalizeDescription = (text) => String(text || "").replace(/\s+/g, " ").trim();
 
   const handleDeleteProject = async (projectId) => {
     const ok = window.confirm("Delete this project?");
@@ -134,9 +130,9 @@ export default function HomePage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {recentProjects.map((project, index) => (
-              <div key={project.projectId || index} onClick={() => router.push(`/projects/${project.projectId}`)} className={`h-[320px] bg-gradient-to-br ${project.color} rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 relative overflow-hidden group cursor-pointer`}>
-                <div className="absolute inset-0 bg-black/5 group-hover:bg-black/0 transition-all duration-300" />
-                <div className="p-6 relative h-full flex flex-col">
+              <div key={project.projectId || index} onClick={() => router.push(`/projects/${project.projectId}`)} className={`h-[248px] bg-gradient-to-br ${project.color} rounded-2xl shadow-md ring-1 ring-white/20 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 relative overflow-hidden group cursor-pointer`}>
+                <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-black/10" />
+                <div className="p-5 relative h-full flex flex-col">
                   <div className="flex items-start justify-between mb-5 gap-3">
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-white mb-2 truncate text-lg">{project.title}</h3>
@@ -145,7 +141,7 @@ export default function HomePage() {
 
                     <div className="relative" onClick={(e) => e.stopPropagation()}>
                       <button
-                        className="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 text-white flex items-center justify-center"
+                        className="w-8 h-8 rounded-lg bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white flex items-center justify-center"
                         onClick={() => setOpenMenuIndex((prev) => (prev === project.projectId ? null : project.projectId))}
                       >
                         <MoreVertical className="w-4 h-4" />
@@ -165,17 +161,17 @@ export default function HomePage() {
                       )}
                     </div>
                   </div>
-                  <span className={`inline-flex text-xs px-3 py-1.5 rounded-full font-medium mb-4 ${project.status === "Completed" ? "bg-emerald-500 text-white" : "bg-amber-500 text-white"}`}>{project.status}</span>
-                  <p className="text-sm text-white/95">{truncateDescription(project.description)}</p>
-                  {String(project.description || "").trim().length > 140 && (
+                  <span className={`inline-flex w-fit self-start text-xs px-3 py-1.5 rounded-full font-medium mb-4 ${project.status === "Completed" ? "bg-emerald-500 text-white" : "bg-amber-500 text-white"}`}>{project.status}</span>
+                  <p className="text-sm text-white/95 line-clamp-1">{normalizeDescription(project.description)}</p>
+                  {normalizeDescription(project.description).length > 0 && (
                     <button
-                      className="mt-3 self-start text-xs font-medium text-white underline underline-offset-4 decoration-white/60 hover:decoration-white"
+                      className="mt-2 self-start text-xs font-semibold text-white/95 underline underline-offset-4 decoration-white/60 hover:decoration-white"
                       onClick={(e) => {
                         e.stopPropagation();
                         setDescriptionModal({
                           title: project.title,
                           company: project.company,
-                          description: String(project.description || "No description"),
+                          description: String(project.description || "No description").trim(),
                         });
                       }}
                     >
@@ -211,7 +207,7 @@ export default function HomePage() {
               </button>
             </div>
 
-            <div className="mt-4 max-h-[60vh] overflow-auto rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
               <p className="whitespace-pre-wrap text-sm leading-6 text-gray-700">{descriptionModal.description}</p>
             </div>
           </div>

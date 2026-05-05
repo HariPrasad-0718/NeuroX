@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
-import { generatePersonaFromTranscript } from "@/lib/agent5i";
+import { generatePersonaFromTranscript, generateSummaryFromTranscript } from "@/lib/agent5i";
 
 async function getOwnedInterviewContext(pool, interviewId, userId) {
   const result = await pool
@@ -141,13 +141,29 @@ export async function POST(request) {
     }
 
     if (transcriptFromBody !== null) {
+      let computedSummary = null;
+
+      if (transcript) {
+        try {
+          computedSummary = await generateSummaryFromTranscript({
+            projectDescription: context.project_description || "Project context not provided",
+            userAnswers: transcript,
+            personaName: context.interviewee_name || "",
+          });
+        } catch (summaryError) {
+          console.error("SUMMARY GENERATION ERROR:", summaryError);
+        }
+      }
+
       await pool
         .request()
         .input("interviewId", sql.Int, interviewId)
         .input("transcript", sql.NVarChar(sql.MAX), transcript)
+        .input("summary", sql.NVarChar(sql.MAX), computedSummary)
         .query(`
           UPDATE interviewss
-          SET transcript = @transcript
+          SET transcript = @transcript,
+              summary = @summary
           WHERE interview_id = @interviewId
         `);
     }

@@ -142,10 +142,10 @@ export default function AppShell({ children }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#fafafa] flex">
+    <div className="min-h-screen bg-[#fafafa] flex overflow-x-hidden">
       <Sidebar onLogout={handleLogout} />
 
-      <div className="flex-1 ml-[240px]">
+      <div className="flex-1 ml-[240px] min-w-0 overflow-x-hidden">
         <Header
           userName={userName}
           userPersona={userPersona === "manager" ? "Manager" : "Designer"}
@@ -153,7 +153,7 @@ export default function AppShell({ children }) {
           onOpenProfile={() => setShowProfileModal(true)}
         />
 
-        <div>{children}</div>
+        <div className="min-w-0 max-w-full overflow-x-hidden">{children}</div>
       </div>
 
       <CreateProjectModal
