@@ -60,6 +60,15 @@ const EMPATHIZE_CARD_MEDIA = {
   },
 };
 
+const DEFINE_CARD_MEDIA = {
+  "problem-statement": {
+    image: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=1200&h=800&fit=crop",
+    eyebrow: "Problem framing",
+    title: "Problem Definition",
+    description: "Clearly define the problem based on user insights.",
+  },
+};
+
 export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -84,6 +93,8 @@ export default function ProjectDetailPage() {
   const [combinedPersonaOutputError, setCombinedPersonaOutputError] = useState("");
   const [showCombinedOutputModal, setShowCombinedOutputModal] = useState(false);
   const [showFullDesc, setShowFullDesc] = useState(false);
+  const [finalPersonaCard, setFinalPersonaCard] = useState(null);
+  const [completedStages, setCompletedStages] = useState([]);
 
   useEffect(() => {
     fetchProject();
@@ -145,29 +156,40 @@ export default function ProjectDetailPage() {
   const getDocsForStage = (stageId) => documents.filter((d) => d.stageId === stageId && d.projectId === projectId);
   const getDocsForTemplate = (stageId, templateId) => documents.filter((d) => d.stageId === stageId && d.templateId === templateId && d.projectId === projectId);
 
-  const getStageStatus = (stageId) => {
-    if (projectCompleted) return "Completed";
-    const templates = STAGE_TEMPLATES[stageId] || [];
-    if (templates.length === 0) return "Not Started";
-    const stageDocs = getDocsForStage(stageId);
-    if (stageDocs.length === 0) return "Not Started";
-    if (stageDocs.length < templates.length) return "In Progress";
-      return Math.round((completedStages / totalStages) * 100);
-
-  };
-  const getProgress = () => {
-  const totalStages = STAGES.length;
-
-  let completedStages = 0;
-
-  STAGES.forEach((stage) => {
-    if (getStageStatus(stage.id) === "Completed") {
-      completedStages++;
-    }
-  });
-
-  return Math.round((completedStages / totalStages) * 100);
+ const getStageStatus = (stageId) => {
+  if (completedStages.includes(stageId)) return "Completed";
+  return "Not Started";
 };
+ const getProgress = () => {
+  const totalStages = STAGES.length;
+  const completed = completedStages.length;
+
+  return Math.round((completed / totalStages) * 100);
+};
+
+ const Section = ({ title, items }) => {
+    const safeItems = Array.isArray(items)
+      ? items
+      : typeof items === "string"
+      ? items.split("\n")
+      : [];
+
+    return (
+      <div>
+        <h4 className="font-semibold mb-2">{title}</h4>
+
+        {safeItems.length > 0 ? (
+          <ul className="list-disc ml-5 text-sm space-y-1">
+            {safeItems.map((item, i) => (
+              <li key={i}>{item}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-gray-400">No data available</p>
+        )}
+      </div>
+    );
+  };
 
   const getFileName = (path) => {
     if (!path) return "Document";
@@ -288,28 +310,53 @@ export default function ProjectDetailPage() {
   };
 
   const handleCombinePersonaOutputs = async () => {
-    setShowCombinedOutputModal(true);
-    setIsCombiningPersonaOutput(true);
-    setCombinedPersonaOutput("");
-    setCombinedPersonaOutputError("");
+  setIsCombiningPersonaOutput(true);
+  setCombinedPersonaOutput("");
+  setCombinedPersonaOutputError("");
 
-    try {
-      const res = await fetch(`/api/personas?projectId=${projectId}&aggregateGenerated=true`);
-      const data = await res.json();
+  try {
+    // STEP 1: Get combined persona output
+    const res = await fetch(`/api/personas?projectId=${projectId}&aggregateGenerated=true`);
+    const data = await res.json();
 
-      if (!data?.success) {
-        throw new Error(data?.error?.message || "Failed to combine persona outputs");
-      }
-
-      setCombinedPersonaOutput(data?.data?.combinedOutput || "");
-    } catch (err) {
-      setCombinedPersonaOutputError(err.message || "Failed to combine persona outputs");
-      setCombinedPersonaOutput("");
-    } finally {
-      setIsCombiningPersonaOutput(false);
+    if (!data?.success) {
+      throw new Error(data?.error?.message || "Failed to combine persona outputs");
     }
-  };
 
+    const combinedOutput = data?.data?.combinedOutput || "";
+    setCombinedPersonaOutput(combinedOutput);
+
+    // 🔥 STEP 2: SEND TO AGENT
+    const agentRes = await fetch("/api/generate-persona-card", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        empathy_data_and_context: combinedOutput,
+      }),
+    });
+
+    const agentData = await agentRes.json();
+
+    if (!agentData?.success) {
+      throw new Error(agentData?.error || "Agent failed");
+    }
+    setFinalPersonaCard(agentData.persona_card);
+
+
+    console.log("✅ FINAL PERSONA CARD:", agentData.persona_card);
+
+    // OPTIONAL: store or show in UI
+    // setFinalPersonaCard(agentData.persona_card);
+
+  } catch (err) {
+    setCombinedPersonaOutputError(err.message || "Failed to combine persona outputs");
+    setCombinedPersonaOutput("");
+  } finally {
+    setIsCombiningPersonaOutput(false);
+  }
+};
   const togglePersonaSection = async () => {
     if (showPersonaSection) {
       setShowPersonaSection(false);
@@ -343,6 +390,7 @@ export default function ProjectDetailPage() {
     const primaryFooterLabel = template.id === "user-persona" ? "Use Basic Template" : "Use Standard Template";
     const uploadLabel = template.id === "empathy-map" ? "Upload Standard Template" : "Upload Templates";
 
+  
     return (
       <div key={template.id} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md">
         <div className="relative h-52 overflow-hidden">
@@ -390,6 +438,68 @@ export default function ProjectDetailPage() {
       </div>
     );
   };
+
+  const renderDefineTemplateCard = (template, downloadableTemplateId) => {
+  const media = DEFINE_CARD_MEDIA[template.id] || DEFINE_CARD_MEDIA["problem-statement"];
+  const workspaceUrl = getWorkspaceUrl(template.name);
+
+  return (
+    <div
+      key={template.id}
+      className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md"
+    >
+      {/* IMAGE SECTION */}
+      <div className="relative h-52 overflow-hidden">
+        <img
+          src={media.image}
+          alt={template.name}
+          className="h-full w-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-gray-950/70 via-gray-950/10 to-transparent" />
+
+        <div className="absolute inset-x-0 bottom-0 p-5 text-white">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/75">
+            {media.eyebrow}
+          </p>
+
+          <h4 className="mt-2 text-xl font-semibold">{media.title}</h4>
+
+          <p className="mt-1 max-w-sm text-sm leading-6 text-white/85">
+            {media.description}
+          </p>
+
+          <button
+  onClick={(e) => {
+  e.stopPropagation();
+  router.push(`/final-persona?projectId=${projectId}`);
+}}
+  className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-white underline decoration-white/40 underline-offset-4"
+>
+  Define →
+</button>
+        </div>
+      </div>
+
+      {/* BUTTONS */}
+      <div className="space-y-3 p-4">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!downloadableTemplateId) return;
+            window.location.assign(`/api/templates/download/${downloadableTemplateId}`);
+          }}
+          disabled={!downloadableTemplateId}
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-900 px-3 py-2.5 text-sm font-medium text-white transition hover:bg-gray-800 disabled:bg-gray-200 disabled:text-gray-500"
+        >
+          <Download className="h-4 w-4" />
+          Use Standard Template
+        </button>
+
+        {renderUploadButton("Upload Template")}
+      </div>
+    </div>
+  );
+};
 
   if (isLoading) {
     return (
@@ -467,37 +577,76 @@ export default function ProjectDetailPage() {
           <div className="flex flex-col items-center justify-center h-64"><Loader2 className="w-12 h-12 text-[#702dff] animate-spin mb-4" /><p className="text-gray-600">Loading documents...</p></div>
         ) : (
           <div className="space-y-4">
-            {STAGES.map((stage) => {
+            {STAGES.map((stage ,index ) => {
               const isExpanded = expandedStage === stage.id;
               return (
                 <div key={stage.id} className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-sm transition-shadow">
-                  <div className="p-6 cursor-pointer" onClick={() => setExpandedStage(isExpanded ? null : stage.id)}>
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex items-center gap-3 flex-1">
-                        <div className={`transform transition-transform ${isExpanded ? "rotate-180" : ""}`}><ChevronDown className="w-5 h-5 text-gray-600" /></div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-1">
-                            <h3 className="text-lg font-semibold text-gray-900">{stage.name}</h3>
-                            <span className={`text-xs px-2 py-1 rounded ${getStageStatus(stage.id) === "Completed" ? "bg-green-100 text-green-700" : getStageStatus(stage.id) === "In Progress" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-600"}`}>{getStageStatus(stage.id)}</span>
-                            {stage.id === "empathize" && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setShowPersonaSection(true);
-                                  handleCombinePersonaOutputs();
-                                }}
-                                disabled={isCombiningPersonaOutput}
-                                className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-300"
-                              >
-                                {isCombiningPersonaOutput ? "Combining..." : "Combine Persona Outputs"}
-                              </button>
-                            )}
-                          </div>
-                          <p className="text-sm text-gray-600">{stage.description}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <div
+  className="p-6 cursor-pointer"
+  onClick={() => setExpandedStage(isExpanded ? null : stage.id)}
+>
+  <div className="flex items-center justify-between gap-4">
+    
+    {/* LEFT CONTENT */}
+    <div className="flex items-center gap-3 flex-1">
+      <div className={`transform transition-transform ${isExpanded ? "rotate-180" : ""}`}>
+        <ChevronDown className="w-5 h-5 text-gray-600" />
+      </div>
+
+      <div className="flex-1">
+        <div className="flex items-center gap-3 mb-1">
+          <h3 className="text-lg font-semibold text-gray-900">
+            {stage.name}
+          </h3>
+
+          <span
+            className={`text-xs px-2 py-1 rounded ${
+              getStageStatus(stage.id) === "Completed"
+                ? "bg-green-100 text-green-700"
+                : <span
+  className={`text-xs px-2 py-1 rounded ${
+    completedStages.includes(stage.id)
+      ? "bg-green-100 text-green-700"
+      : "bg-gray-100 text-gray-600"
+  }`}
+>
+  {completedStages.includes(stage.id) ? "Completed" : "Not Started"}
+</span>
+                ? "bg-amber-100 text-amber-700"
+                : "bg-gray-100 text-gray-600"
+            }`}
+          >
+            {getStageStatus(stage.id)}
+          </span>
+        </div>
+
+        <p className="text-sm text-gray-600">
+          {stage.description}
+        </p>
+      </div>
+    </div>
+
+    {/* ✅ RIGHT SIDE MARKER */}
+    <div className="flex flex-col items-center">
+      <div
+  onClick={(e) => {
+    e.stopPropagation();
+
+    setCompletedStages((prev) =>
+      prev.includes(stage.id)
+        ? prev.filter((s) => s !== stage.id) // unmark
+        : [...prev, stage.id] // mark
+    );
+  }}
+  className={`w-4 h-4 rounded-sm border-2 cursor-pointer transition ${
+    completedStages.includes(stage.id)
+      ? "bg-[#702dff] border-[#702dff]"
+      : "border-gray-300"
+  }`}
+></div>
+    </div>
+  </div>
+</div>
                   {isExpanded && (
                     <div className="px-6 pb-6 border-t border-gray-200 pt-6">
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -531,6 +680,23 @@ export default function ProjectDetailPage() {
                               </div>
                             );
                           }
+                          if (stage.id === "define") {
+                        return (
+                          <div key={template.id} className="space-y-3">
+                            {renderDefineTemplateCard(template, downloadableTemplateId)}
+
+                            {apiDocs.length > 0 && (
+                              <div className="space-y-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
+                                {apiDocs.map((doc) => (
+                                  <div key={doc.documentId}>
+                                    {/* same doc UI */}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
 
                           return (
                             <div key={template.id} className="bg-white border-2 border-dashed border-gray-300 rounded-lg p-4">
@@ -622,6 +788,99 @@ export default function ProjectDetailPage() {
                 </button>
               </div>
             </div>
+            {finalPersonaCard && (
+  <div className="mt-10">
+    <div className="mb-6">
+      <h2 className="text-xl font-semibold text-gray-900">
+        Final AI Generated Persona
+      </h2>
+      <p className="text-sm text-gray-600">
+        Combined insights from all personas
+      </p>
+    </div>
+
+    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+
+      {/* HEADER */}
+      <div className="border-b pb-4 mb-6">
+        <h3 className="text-2xl font-bold text-[#702dff]">
+          {finalPersonaCard.name || "Persona"}
+        </h3>
+
+        <p className="italic text-gray-600 mt-1">
+          {finalPersonaCard.quote || "No quote available"}
+        </p>
+
+        <p className="text-sm text-gray-700 mt-3">
+          {finalPersonaCard.background || "No description"}
+        </p>
+      </div>
+
+      {/* GRID */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+        {/* GOALS */}
+        <Section title="Goals" items={finalPersonaCard.goals} />
+
+        {/* NEEDS */}
+        <Section title="Needs" items={finalPersonaCard.needs} />
+
+        {/* PAIN POINTS */}
+        <Section title="Pain Points" items={finalPersonaCard.frustrations} />
+
+        {/* MOTIVATIONS */}
+        <Section title="Motivations" items={finalPersonaCard.motivations} />
+
+        {/* PERSONALITY */}
+        <Section title="Personality" items={finalPersonaCard.personality} />
+
+        {/* BEHAVIOURS */}
+        <Section title="Behaviours & Habits" items={finalPersonaCard.behaviours} />
+
+        {/* POSITIVE THEMES */}
+        <Section title="Positive Themes" items={finalPersonaCard.positiveThemes} />
+
+        {/* NEGATIVE THEMES */}
+        <Section title="Negative Themes" items={finalPersonaCard.negativeThemes} />
+
+      </div>
+
+      {/* SCENARIO */}
+      <div className="mt-6">
+        <h4 className="font-semibold mb-2">Scenario</h4>
+        <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
+          {finalPersonaCard.scenario || "No scenario available"}
+        </p>
+      </div>
+
+      <div className="mt-6">
+  <h4 className="font-semibold mb-2">Demographics</h4>
+  <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
+
+    {typeof finalPersonaCard.demographics === "object" ? (
+      Object.entries(finalPersonaCard.demographics).map(([key, value]) => (
+        <p key={key}>
+          <b>{key}:</b> {value}
+        </p>
+      ))
+    ) : (
+      <p>{finalPersonaCard.demographics || "No demographics available"}</p>
+    )}
+
+  </div>
+</div>
+
+      {/* PROBLEM STATEMENT */}
+<div className="mt-4">
+  <h4 className="font-semibold mb-2">Problem Statement</h4>
+  <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
+    {finalPersonaCard.problemStatement || "No problem statement available"}
+  </p>
+</div>
+
+    </div>
+  </div>
+)}
 
             {isPersonaCardsLoading ? (
               <p className="rounded-lg border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500">Loading persona output...</p>
@@ -806,7 +1065,7 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      {showCombinedOutputModal && (
+      {/* {showCombinedOutputModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowCombinedOutputModal(false)}>
           <div
             className="w-full max-w-4xl rounded-xl bg-white shadow-2xl"
@@ -839,7 +1098,7 @@ export default function ProjectDetailPage() {
             </div>
           </div>
         </div>
-      )}
+      )} */}
 
       <style jsx>{`
         .persona-container {
