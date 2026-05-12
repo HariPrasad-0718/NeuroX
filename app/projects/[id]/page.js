@@ -20,7 +20,12 @@ const STAGE_TEMPLATES = {
     { id: "user-persona", name: "User Persona", icon: FileText, type: "file" },
     { id: "other-files", name: "Other Files", icon: FileText, type: "file" },
   ],
-  define: [{ id: "problem-statement", name: "Problem Statement", icon: FileText, type: "file" }],
+  define: [
+  { id: "problem-statement", name: "Problem Statement", icon: FileText, type: "file" },
+
+  // NEW CARD
+  { id: "process-flow", name: "Process Flow", icon: FileText, type: "agent" },
+],
   ideate: [
     { id: "brainstorm", name: "Brainstorm", icon: FileText, type: "file" },
     { id: "idea-prioritization", name: "Idea Prioritization", icon: FileText, type: "file" },
@@ -67,6 +72,13 @@ const DEFINE_CARD_MEDIA = {
     title: "Problem Definition",
     description: "Clearly define the problem based on user insights.",
   },
+  "process-flow": {
+  image:
+    "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=1200&h=800&fit=crop",
+  eyebrow: "Workflow Design",
+  title: "Process Flow",
+  description: "Generate AI-based process flow from combined persona insights.",
+},
 };
 
 export default function ProjectDetailPage() {
@@ -95,6 +107,9 @@ export default function ProjectDetailPage() {
   const [showFullDesc, setShowFullDesc] = useState(false);
   const [finalPersonaCard, setFinalPersonaCard] = useState(null);
   const [completedStages, setCompletedStages] = useState([]);
+  const [processFlowData, setProcessFlowData] = useState(null);
+const [isGeneratingProcessFlow, setIsGeneratingProcessFlow] = useState(false);
+const [processFlowError, setProcessFlowError] = useState("");
 
   useEffect(() => {
     fetchProject();
@@ -333,8 +348,20 @@ export default function ProjectDetailPage() {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        empathy_data_and_context: combinedOutput,
-      }),
+  project_description: project?.projectDescription,
+  persona_name: finalPersonaCard?.name,
+  background: finalPersonaCard?.background,
+  demographics: finalPersonaCard?.demographics,
+  scenario: finalPersonaCard?.scenario,
+  personality: finalPersonaCard?.personality,
+  goals: finalPersonaCard?.goals,
+  frustrations: finalPersonaCard?.frustrations,
+  motivations: finalPersonaCard?.motivations,
+  needs: finalPersonaCard?.needs,
+  positive_themes: finalPersonaCard?.positiveThemes,
+  negative_themes: finalPersonaCard?.negativeThemes,
+  empathy_map: combinedOutput,
+}),
     });
 
     const agentData = await agentRes.json();
@@ -357,6 +384,66 @@ export default function ProjectDetailPage() {
     setIsCombiningPersonaOutput(false);
   }
 };
+
+const handleGenerateProcessFlow = async () => {
+  setIsGeneratingProcessFlow(true);
+  setProcessFlowError("");
+
+  try {
+    const res = await fetch(
+      `/api/personas?projectId=${projectId}&aggregateGenerated=true`
+    );
+
+    const data = await res.json();
+
+    if (!data?.success) {
+      throw new Error(data?.error?.message || "Failed to fetch persona data");
+    }
+
+    const combinedOutput = data?.data?.combinedOutput || "";
+
+    const agentRes = await fetch("/api/generate-process-flow", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      body: JSON.stringify({
+        project_description: project?.projectDescription,
+        empathy_map: combinedOutput,
+        persona_name: finalPersonaCard?.name,
+        background: finalPersonaCard?.background,
+        demographics: finalPersonaCard?.demographics,
+        scenario: finalPersonaCard?.scenario,
+        personality: finalPersonaCard?.personality,
+        goals: finalPersonaCard?.goals,
+        frustrations: finalPersonaCard?.frustrations,
+        motivations: finalPersonaCard?.motivations,
+        needs: finalPersonaCard?.needs,
+      }),
+    });
+
+    const agentData = await agentRes.json();
+
+    if (!agentData?.success) {
+      throw new Error(agentData?.error || "Process Flow generation failed");
+    }
+
+    // ✅ Navigate to new page with data
+    sessionStorage.setItem(
+      "processFlowData",
+      JSON.stringify(agentData.process_flow)
+    );
+
+    router.push(`/process-flow?projectId=${projectId}`);
+
+  } catch (err) {
+    setProcessFlowError(err.message || "Failed to generate process flow");
+  } finally {
+    setIsGeneratingProcessFlow(false);
+  }
+};
+
   const togglePersonaSection = async () => {
     if (showPersonaSection) {
       setShowPersonaSection(false);
@@ -470,12 +557,24 @@ export default function ProjectDetailPage() {
 
           <button
   onClick={(e) => {
-  e.stopPropagation();
-  router.push(`/final-persona?projectId=${projectId}`);
-}}
+    e.stopPropagation();
+
+    // PROCESS FLOW CARD
+    if (template.id === "process-flow") {
+      handleGenerateProcessFlow();
+      return;
+    }
+
+    // EXISTING CARD
+    router.push(`/final-persona?projectId=${projectId}`);
+  }}
   className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-white underline decoration-white/40 underline-offset-4"
 >
-  Define →
+  {template.id === "process-flow"
+    ? isGeneratingProcessFlow
+      ? "Generating..."
+      : "Generate →"
+    : "Define →"}
 </button>
         </div>
       </div>
@@ -878,6 +977,26 @@ export default function ProjectDetailPage() {
   </p>
 </div>
 
+    </div>
+  </div>
+)}
+
+{processFlowData && (
+  <div className="mt-10">
+    <div className="mb-6">
+      <h2 className="text-xl font-semibold text-gray-900">
+        AI Generated Process Flow
+      </h2>
+
+      <p className="text-sm text-gray-600">
+        Generated from persona insights
+      </p>
+    </div>
+
+    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+      <pre className="whitespace-pre-wrap text-sm text-gray-700">
+        {JSON.stringify(processFlowData, null, 2)}
+      </pre>
     </div>
   </div>
 )}

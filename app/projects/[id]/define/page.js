@@ -494,6 +494,50 @@ export default function DefinePhasePage() {
       }
 
       setAgentCardsByPersona(nextCards);
+
+      // ==========================================
+// SAVE GENERATED DATA TO DATABASE
+// ==========================================
+
+await fetch("/api/save-generated-persona", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    projectId,
+
+    problemStatement: sharedProblemStatement,
+
+    personas: Object.values(nextCards).map((card) => ({
+      personaName: card.name,
+
+      demographics: card.demographics,
+
+      background: card.background,
+
+      scenario: card.scenario,
+
+      personality: card.personality,
+
+      goals: card.goals,
+
+      frustrations: card.frustrations,
+
+      motivations: card.motivations,
+
+      previousExperience: card.previousExperience,
+
+      positiveThemes: card.positiveThemes,
+
+      negativeThemes: card.negativeThemes,
+
+      needs: card.needs,
+
+      generatedOutput: card,
+    })),
+  }),
+});
       const current = nextCards[activePersonaId] || nextCards[personas[0]?.personaId] || {};
       const fallbackProblemStatement =
         current.problemStatement ||
