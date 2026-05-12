@@ -20,10 +20,7 @@ const STAGE_TEMPLATES = {
     { id: "user-persona", name: "User Persona", icon: FileText, type: "file" },
     { id: "other-files", name: "Other Files", icon: FileText, type: "file" },
   ],
-  define: [
-    { id: "problem-statement", name: "Problem Statement", icon: FileText, type: "file" },
-    { id: "process-flow", name: "Process Flow", icon: FileText, type: "file" },
-  ],
+  define: [{ id: "problem-statement", name: "Problem Statement", icon: FileText, type: "file" }],
   ideate: [
     { id: "brainstorm", name: "Brainstorm", icon: FileText, type: "file" },
     { id: "idea-prioritization", name: "Idea Prioritization", icon: FileText, type: "file" },
@@ -46,13 +43,13 @@ const EMPATHIZE_CARD_MEDIA = {
   "empathy-map": {
     image: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=1200&h=800&fit=crop",
     eyebrow: "Collaborative input",
-    title: "Empathy Map",
+    title: "Interview Assist",
     description: "Capture user thoughts, feelings, and context before stepping into the workspace.",
   },
   "user-persona": {
     image: "https://images.unsplash.com/photo-1552664730-d307ca884978?w=1200&h=800&fit=crop",
     eyebrow: "Profile framing",
-    title: "User Persona",
+    title: "Empathy Map",
     description: "Review the persona structure and prepare a standard or uploaded reference template.",
   },
   "other-files": {
@@ -69,12 +66,6 @@ const DEFINE_CARD_MEDIA = {
     eyebrow: "Problem framing",
     title: "Problem Definition",
     description: "Clearly define the problem based on user insights.",
-  },
-  "process-flow": {
-    image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=1200&h=800&fit=crop",
-    eyebrow: "Flow orchestration",
-    title: "Process Flow",
-    description: "Map the sequence of steps and dependencies through the define stage.",
   },
 };
 
@@ -450,10 +441,7 @@ export default function ProjectDetailPage() {
 
   const renderDefineTemplateCard = (template, downloadableTemplateId) => {
   const media = DEFINE_CARD_MEDIA[template.id] || DEFINE_CARD_MEDIA["problem-statement"];
-  const defineRoute =
-    template.id === "process-flow"
-      ? `/projects/${projectId}/process-flow`
-      : `/projects/${projectId}/define`;
+  const workspaceUrl = getWorkspaceUrl(template.name);
 
   return (
     <div
@@ -483,11 +471,11 @@ export default function ProjectDetailPage() {
           <button
   onClick={(e) => {
   e.stopPropagation();
-  router.push(defineRoute);
+  router.push(`/final-persona?projectId=${projectId}`);
 }}
-  className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-white underline decoration-white/40 underline-offset-4 transition hover:decoration-white"
+  className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-white underline decoration-white/40 underline-offset-4"
 >
-  Open →
+  Define →
 </button>
         </div>
       </div>
