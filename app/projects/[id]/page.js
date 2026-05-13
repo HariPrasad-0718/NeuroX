@@ -26,10 +26,16 @@ const STAGE_TEMPLATES = {
   // NEW CARD
   { id: "process-flow", name: "Process Flow", icon: FileText, type: "agent" },
 ],
-  ideate: [
-    { id: "brainstorm", name: "Brainstorm", icon: FileText, type: "file" },
-    { id: "idea-prioritization", name: "Idea Prioritization", icon: FileText, type: "file" },
-  ],
+ ideate: [
+
+  { 
+    id: "information-architecture", 
+    name: "Information Architecture", 
+    icon: FileText, 
+    type: "agent" 
+  },
+
+],
   prototype: [
     { id: "low-fidelity", name: "Low Fidelity Prototype", icon: LinkIcon, type: "link" },
     { id: "high-fidelity", name: "High Fidelity Prototype", icon: LinkIcon, type: "link" },
@@ -81,6 +87,17 @@ const DEFINE_CARD_MEDIA = {
 },
 };
 
+const IDEATE_CARD_MEDIA = {
+  "information-architecture": {
+    image:
+      "https://images.unsplash.com/photo-1558655146-d09347e92766?w=1200&h=800&fit=crop",
+    eyebrow: "Structure Planning",
+    title: "Information Architecture",
+    description:
+      "Generate AI-powered information architecture from persona insights and project requirements.",
+  },
+};
+
 export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -110,6 +127,9 @@ export default function ProjectDetailPage() {
   const [processFlowData, setProcessFlowData] = useState(null);
 const [isGeneratingProcessFlow, setIsGeneratingProcessFlow] = useState(false);
 const [processFlowError, setProcessFlowError] = useState("");
+const [informationArchitectureData, setInformationArchitectureData] = useState(null);
+const [isGeneratingIA, setIsGeneratingIA] = useState(false);
+const [informationArchitectureError, setInformationArchitectureError] = useState("");
 
   useEffect(() => {
     fetchProject();
@@ -444,6 +464,59 @@ const handleGenerateProcessFlow = async () => {
   }
 };
 
+const handleGenerateInformationArchitecture = async () => {
+  setIsGeneratingIA(true);
+  setInformationArchitectureError("");
+
+  try {
+    const res = await fetch(
+      `/api/personas?projectId=${projectId}&aggregateGenerated=true`
+    );
+
+    const data = await res.json();
+
+    if (!data?.success) {
+      throw new Error(data?.error?.message || "Failed to fetch persona data");
+    }
+
+    const combinedOutput = data?.data?.combinedOutput || "";
+
+    const agentRes = await fetch("/api/generate-information-architecture", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        combinedPersonaOutput: combinedOutput,   // ✅ FIXED
+        finalPersonaCard: finalPersonaCard || {}, // safety
+      }),
+    });
+
+    const agentData = await agentRes.json();
+
+    if (!agentData?.success) {
+      throw new Error(
+        agentData?.error || "Information Architecture generation failed"
+      );
+    }
+
+    // ✅ FIX: set state so UI can show it
+    setInformationArchitectureData(agentData.information_architecture);
+
+    sessionStorage.setItem(
+      "informationArchitectureData",
+      JSON.stringify(agentData.information_architecture)
+    );
+
+    router.push(`/information-architecture?projectId=${projectId}`);
+
+  } catch (err) {
+    setInformationArchitectureError(
+      err.message || "Failed to generate Information Architecture"
+    );
+  } finally {
+    setIsGeneratingIA(false);
+  }
+};
   const togglePersonaSection = async () => {
     if (showPersonaSection) {
       setShowPersonaSection(false);
@@ -600,6 +673,53 @@ const handleGenerateProcessFlow = async () => {
   );
 };
 
+const renderIdeateTemplateCard = (template) => {
+  const media =
+    IDEATE_CARD_MEDIA[template.id] ||
+    IDEATE_CARD_MEDIA["information-architecture"];
+
+  return (
+    <div
+      key={template.id}
+      className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md"
+    >
+      <div className="relative h-52 overflow-hidden">
+        <img
+          src={media.image}
+          alt={template.name}
+          className="h-full w-full object-cover"
+        />
+
+        <div className="absolute inset-0 bg-gradient-to-t from-gray-950/70 via-gray-950/10 to-transparent" />
+
+        <div className="absolute inset-x-0 bottom-0 p-5 text-white">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/75">
+            {media.eyebrow}
+          </p>
+
+          <h4 className="mt-2 text-xl font-semibold">
+            {media.title}
+          </h4>
+
+          <p className="mt-1 max-w-sm text-sm leading-6 text-white/85">
+            {media.description}
+          </p>
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleGenerateInformationArchitecture();
+            }}
+            className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-white underline decoration-white/40 underline-offset-4"
+          >
+            {isGeneratingIA ? "Generating..." : "Generate →"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
   if (isLoading) {
     return (
       <div className="bg-[#fafafa]">
@@ -693,31 +813,23 @@ const handleGenerateProcessFlow = async () => {
       </div>
 
       <div className="flex-1">
-        <div className="flex items-center gap-3 mb-1">
-          <h3 className="text-lg font-semibold text-gray-900">
-            {stage.name}
-          </h3>
+       <div className="flex items-center gap-3 mb-1">
+  <h3 className="text-lg font-semibold text-gray-900">
+    {stage.name}
+  </h3>
 
-          <span
-            className={`text-xs px-2 py-1 rounded ${
-              getStageStatus(stage.id) === "Completed"
-                ? "bg-green-100 text-green-700"
-                : <span
-  className={`text-xs px-2 py-1 rounded ${
-    completedStages.includes(stage.id)
-      ? "bg-green-100 text-green-700"
-      : "bg-gray-100 text-gray-600"
-  }`}
->
-  {completedStages.includes(stage.id) ? "Completed" : "Not Started"}
-</span>
-                ? "bg-amber-100 text-amber-700"
-                : "bg-gray-100 text-gray-600"
-            }`}
-          >
-            {getStageStatus(stage.id)}
-          </span>
-        </div>
+  <span
+    className={`text-xs px-2 py-1 rounded ${
+      completedStages.includes(stage.id)
+        ? "bg-green-100 text-green-700"
+        : "bg-gray-100 text-gray-600"
+    }`}
+  >
+    {completedStages.includes(stage.id)
+      ? "Completed"
+      : "Not Started"}
+  </span>
+</div>
 
         <p className="text-sm text-gray-600">
           {stage.description}
@@ -793,6 +905,14 @@ const handleGenerateProcessFlow = async () => {
                                 ))}
                               </div>
                             )}
+                          </div>
+                        );
+                      }
+
+                      if (stage.id === "ideate" && template.id === "information-architecture") {
+                        return (
+                          <div key={template.id} className="space-y-3">
+                            {renderIdeateTemplateCard(template)}
                           </div>
                         );
                       }
