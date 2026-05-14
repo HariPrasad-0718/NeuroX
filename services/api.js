@@ -109,8 +109,16 @@ export const api = {
     }),
 
   // --- Projects ---
-  getProjects: (userId) =>
-    fetchApi(userId ? `projects?userId=${userId}` : "projects", { method: "GET" }),
+  getProjects: (userId, options = {}) => {
+    const params = new URLSearchParams();
+
+    if (userId) params.set("userId", userId);
+    if (options.recentOnly) params.set("recent", "true");
+    if (options.limit) params.set("limit", String(options.limit));
+
+    const query = params.toString();
+    return fetchApi(query ? `projects?${query}` : "projects", { method: "GET" });
+  },
 
   getProjectById: (projectId) =>
     fetchApi(`projects?projectId=${projectId}`, { method: "GET" }),

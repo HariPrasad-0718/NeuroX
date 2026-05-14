@@ -3,7 +3,13 @@
 import { useState, useEffect } from "react";
 import { api } from "@/services/api";
 
-export function useProjects(userId) {
+export function useProjects(userId, options = {}) {
+  const {
+    requireUserId = true,
+    recentOnly = false,
+    limit,
+  } = options;
+
   const [projects, setProjects] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -14,7 +20,7 @@ export function useProjects(userId) {
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const fetchProjects = async () => {
-    if (!userId) {
+    if (requireUserId && !userId) {
       setProjects([]);
       return;
     }
@@ -22,7 +28,10 @@ export function useProjects(userId) {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await api.getProjects(userId);
+      const response = await api.getProjects(userId, {
+        recentOnly,
+        limit,
+      });
       if (response.success && response.data) {
         setProjects(response.data);
       }

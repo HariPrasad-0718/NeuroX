@@ -111,7 +111,8 @@ export default function ProjectDetailPage() {
   const [isLoadingDocs, setIsLoadingDocs] = useState(false);
   const [projectCompleted, setProjectCompleted] = useState(false);
   const [prototypeLinks, setPrototypeLinks] = useState({});
-  const [templateDownloadMap, setTemplateDownloadMap] = useState({});
+  const [templateDownloadMapByStage, setTemplateDownloadMapByStage] = useState({});
+  const [loadingStageTemplates, setLoadingStageTemplates] = useState({});
   const [showPersonaSection, setShowPersonaSection] = useState(false);
   const [personaCards, setPersonaCards] = useState([]);
   const [activePersonaCardId, setActivePersonaCardId] = useState(null);
@@ -133,8 +134,6 @@ const [informationArchitectureError, setInformationArchitectureError] = useState
 
   useEffect(() => {
     fetchProject();
-    fetchDocuments();
-    fetchTemplateDownloadMap();
   }, [projectId]);
 
   const fetchProject = async () => {
@@ -154,13 +153,15 @@ const [informationArchitectureError, setInformationArchitectureError] = useState
   };
 
   const fetchDocuments = async () => {
+    if (!projectId) return;
+
     setIsLoadingDocs(true);
     try {
-      const userId = "u";
-      const response = await api.getDocuments(userId);
-      if (response.success && response.data) {
-        setDocuments(response.data);
-      }
+    const userId = "u";
+    const response = await api.getDocuments(userId);
+    if (response.success && response.data) {
+      setDocuments(response.data);
+    }
     } catch (err) {
       console.error("Error fetching documents:", err);
     } finally {
@@ -170,21 +171,52 @@ const [informationArchitectureError, setInformationArchitectureError] = useState
 
   const fetchTemplateDownloadMap = async () => {
     try {
-      const response = await api.getTemplates();
+    const response = await api.getTemplates();
+    if (!response.success || !Array.isArray(response.data)) return;
+
+    const map = {};
+    response.data.forEach((template) => {
+      const stageId = String(template.stageId || "").toLowerCase().trim();
+      const templateName = String(template.templateName || "").toLowerCase().trim();
+      if (!stageId || !templateName) return;
+
+      map[`${stageId}::${templateName}`] = template.templateId;
+    });
+
+    setTemplateDownloadMapByStage(map);
+    } catch (err) {
+      console.error("Failed to fetch templates for download mapping:", err);
+    }
+  };
+
+  const ensureStageTemplatesLoaded = async (stageId) => {
+    const normalizedStageId = String(stageId || "").toLowerCase().trim();
+    if (!normalizedStageId || templateDownloadMapByStage[normalizedStageId] || loadingStageTemplates[normalizedStageId]) {
+      return;
+    }
+
+    setLoadingStageTemplates((prev) => ({ ...prev, [normalizedStageId]: true }));
+
+    try {
+      const response = await api.getTemplatesByStage(normalizedStageId);
       if (!response.success || !Array.isArray(response.data)) return;
 
       const map = {};
       response.data.forEach((template) => {
-        const stageId = String(template.stageId || "").toLowerCase().trim();
+        const stageKey = String(template.stageId || normalizedStageId).toLowerCase().trim();
         const templateName = String(template.templateName || "").toLowerCase().trim();
-        if (!stageId || !templateName) return;
-
-        map[`${stageId}::${templateName}`] = template.templateId;
+        if (!stageKey || !templateName) return;
+        map[`${stageKey}::${templateName}`] = template.templateId;
       });
 
-      setTemplateDownloadMap(map);
+      setTemplateDownloadMapByStage((prev) => ({
+        ...prev,
+        [normalizedStageId]: map,
+      }));
     } catch (err) {
-      console.error("Failed to fetch templates for download mapping:", err);
+      console.error("Failed to fetch templates for stage:", normalizedStageId, err);
+    } finally {
+      setLoadingStageTemplates((prev) => ({ ...prev, [normalizedStageId]: false }));
     }
   };
 
@@ -638,8 +670,8 @@ const handleGenerateInformationArchitecture = async () => {
       return;
     }
 
-    // EXISTING CARD
-    router.push(`/final-persona?projectId=${projectId}`);
+    // PROBLEM STATEMENT CARD
+    router.push(`/projects/${projectId}/define#problem-definition-card`);
   }}
   className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-white underline decoration-white/40 underline-offset-4"
 >
@@ -864,9 +896,9 @@ const renderIdeateTemplateCard = (template) => {
                         {(STAGE_TEMPLATES[stage.id] || []).map((template) => {
                           const TemplateIcon = template.icon;
                           const link = prototypeLinks[`${stage.id}-${template.id}`] || "";
-                          const apiDocs = getDocsForTemplate(stage.id, template.id);
+                          const templateMap = templateDownloadMapByStage[stage.id] || {};
                           const templateKey = `${stage.id}::${String(template.name || "").toLowerCase().trim()}`;
-                          const downloadableTemplateId = templateDownloadMap[templateKey];
+                          const downloadableTemplateId = templateMap[templateKey];
 
                           if (stage.id === "empathize") {
                             return (
@@ -896,15 +928,7 @@ const renderIdeateTemplateCard = (template) => {
                           <div key={template.id} className="space-y-3">
                             {renderDefineTemplateCard(template, downloadableTemplateId)}
 
-                            {apiDocs.length > 0 && (
-                              <div className="space-y-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
-                                {apiDocs.map((doc) => (
-                                  <div key={doc.documentId}>
-                                    {/* same doc UI */}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
+                            {/* Documents are loaded lazily when the documents feature is available. */}
                           </div>
                         );
                       }

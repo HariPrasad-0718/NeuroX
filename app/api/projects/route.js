@@ -8,6 +8,11 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get("projectId");
+    const recentOnly = String(searchParams.get("recent") || "").toLowerCase() === "true";
+    const requestedLimit = Number(searchParams.get("limit") || 6);
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(Math.max(requestedLimit, 1), 20)
+      : 6;
     const sessionUser = await getUserFromRequest(request);
 
     if (!sessionUser?.userId) {
@@ -25,7 +30,19 @@ export async function GET(request) {
         .request()
         .input("projectId", sql.Int, Number(projectId))
         .input("userId", sql.Int, Number(sessionUser.userId))
-        .query("SELECT * FROM projectss WHERE project_id = @projectId AND created_by = @userId");
+        .query(`
+          SELECT
+            project_id,
+            project_name,
+            description,
+            client_name,
+            start_date,
+            end_date,
+            created_at,
+            created_by
+          FROM projectss
+          WHERE project_id = @projectId AND created_by = @userId
+        `);
 
       if (result.recordset.length === 0) {
         return NextResponse.json(
@@ -53,10 +70,42 @@ export async function GET(request) {
     }
 
     // Fetch all projects
-    const result = await pool
-      .request()
-      .input("userId", sql.Int, Number(sessionUser.userId))
-      .query("SELECT * FROM projectss WHERE created_by = @userId ORDER BY created_at DESC");
+    const result = recentOnly
+      ? await pool
+          .request()
+          .input("userId", sql.Int, Number(sessionUser.userId))
+          .input("limit", sql.Int, limit)
+          .query(`
+            SELECT TOP (@limit)
+              project_id,
+              project_name,
+              description,
+              client_name,
+              start_date,
+              end_date,
+              created_at,
+              created_by
+            FROM projectss
+            WHERE created_by = @userId
+            ORDER BY created_at DESC
+          `)
+      : await pool
+          .request()
+          .input("userId", sql.Int, Number(sessionUser.userId))
+          .query(`
+            SELECT
+              project_id,
+              project_name,
+              description,
+              client_name,
+              start_date,
+              end_date,
+              created_at,
+              created_by
+            FROM projectss
+            WHERE created_by = @userId
+            ORDER BY created_at DESC
+          `);
 
     const projects = result.recordset.map((p) => ({
       projectId: p.project_id,

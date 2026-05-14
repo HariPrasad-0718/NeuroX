@@ -38,7 +38,11 @@ export default function HomePage() {
     error: projectsError,
     deleteProject,
     deleteLoading,
-  } = useProjects(userId);
+  } = useProjects(userId, {
+    requireUserId: false,
+    recentOnly: true,
+    limit: 6,
+  });
   const { summary: templatesSummary, isLoading: isSummaryLoading } = useTemplatesSummary();
 
   useEffect(() => {
@@ -87,7 +91,7 @@ export default function HomePage() {
     isRealData: true,
   }));
 
-  const recentProjects = mappedProjects.slice(0, 6);
+  const recentProjects = mappedProjects;
 
   const normalizeDescription = (text) => String(text || "").replace(/\s+/g, " ").trim();
 

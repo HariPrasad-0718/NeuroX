@@ -673,26 +673,48 @@ await fetch("/api/save-generated-persona", {
                     <h2 className="text-2xl font-bold text-gray-900 mt-1">Problem Statement</h2>
                   </div>
 
-                  <div
+                  <button
+                    type="button"
+                    aria-label="Go to Problem Statement Card"
+                    onClick={() => {
+                      if (typeof window !== "undefined") {
+                        window.location.hash = "problem-definition-card";
+                        // Optionally scroll into view for smooth UX
+                        const el = document.getElementById("problem-definition-card");
+                        if (el) el.scrollIntoView({ behavior: "smooth" });
+                      }
+                    }}
                     style={{
-                      borderRadius: 16,
-                      background: "linear-gradient(135deg, #1a1a2e, #2d1b69)",
-                      padding: "32px 36px",
-                      color: "white",
-                      boxShadow: "0 8px 32px rgba(74,0,224,0.25)",
+                      border: "none",
+                      background: "none",
+                      padding: 0,
+                      width: "100%",
+                      textAlign: "inherit",
+                      cursor: "pointer",
                     }}
                   >
-                    <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "1.5px", textTransform: "uppercase", color: "#c9b8ff", marginBottom: 16 }}>
-                      Problem Statement
-                    </p>
-                    {problemStatement ? (
-                      <p style={{ fontSize: 18, lineHeight: 1.75, fontWeight: 500 }}>{problemStatement}</p>
-                    ) : (
-                      <p style={{ fontSize: 15, color: "#aaa", fontStyle: "italic" }}>
-                        The agent did not return a problem statement for this persona.
+                    <div
+                      style={{
+                        borderRadius: 16,
+                        background: "linear-gradient(135deg, #1a1a2e, #2d1b69)",
+                        padding: "32px 36px",
+                        color: "white",
+                        boxShadow: "0 8px 32px rgba(74,0,224,0.25)",
+                        width: "100%",
+                      }}
+                    >
+                      <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "1.5px", textTransform: "uppercase", color: "#c9b8ff", marginBottom: 16 }}>
+                        Problem Statement
                       </p>
-                    )}
-                  </div>
+                      {problemStatement ? (
+                        <p style={{ fontSize: 18, lineHeight: 1.75, fontWeight: 500 }}>{problemStatement}</p>
+                      ) : (
+                        <p style={{ fontSize: 15, color: "#aaa", fontStyle: "italic" }}>
+                          The agent did not return a problem statement for this persona.
+                        </p>
+                      )}
+                    </div>
+                  </button>
                 </section>
 
                 <section>
