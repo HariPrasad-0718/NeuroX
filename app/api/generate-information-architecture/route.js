@@ -64,6 +64,91 @@ function formatPersonaInput(personas) {
   return result;
 }
 
+function tryParseJson(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function extractFirstJsonObject(text) {
+  const start = text.indexOf("{");
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i += 1) {
+    const char = text[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+
+    if (char === "}") {
+      depth -= 1;
+
+      if (depth === 0) {
+        return text.slice(start, i + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function normalizeIaData(parsed, fallbackSummary = "") {
+  const next = {
+    IA_JSON: null,
+    IA_SUMMARY: fallbackSummary || "",
+  };
+
+  if (!parsed || typeof parsed !== "object") {
+    return next;
+  }
+
+  if (parsed.IA_SUMMARY && typeof parsed.IA_SUMMARY === "string") {
+    next.IA_SUMMARY = parsed.IA_SUMMARY;
+  }
+
+  if (parsed.IA_JSON) {
+    next.IA_JSON = parsed.IA_JSON;
+    return next;
+  }
+
+  // Accept direct IA tree responses: { name, type, children }.
+  if (
+    parsed.name ||
+    parsed.title ||
+    Array.isArray(parsed.children) ||
+    parsed.type
+  ) {
+    next.IA_JSON = parsed;
+    return next;
+  }
+
+  return next;
+}
+
 
 // -------------------------------------
 // POST
@@ -296,12 +381,11 @@ let iaData = {
   IA_SUMMARY: "",
 };
 
-try {
+const directParsed = tryParseJson(cleaned);
 
-  // CASE 1 → Proper JSON
-  iaData = JSON.parse(cleaned);
-
-} catch (err) {
+if (directParsed) {
+  iaData = normalizeIaData(directParsed);
+} else {
 
   // CASE 2 → IA_JSON='{}' format
 
@@ -332,6 +416,20 @@ try {
 
     iaData.IA_SUMMARY =
       summaryMatch[1];
+  }
+
+  // CASE 3 → text before/after JSON object
+  if (!iaData.IA_JSON) {
+    const jsonCandidate = extractFirstJsonObject(cleaned);
+    const extractedParsed =
+      jsonCandidate && tryParseJson(jsonCandidate);
+
+    if (extractedParsed) {
+      iaData = normalizeIaData(
+        extractedParsed,
+        iaData.IA_SUMMARY
+      );
+    }
   }
 }
 
