@@ -10,10 +10,12 @@ import { EditProfileModal } from "@/components/modals/EditProfileModal";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useProjects } from "@/hooks/useProjects";
 import { api } from "@/services/api";
+import { useMemo } from "react";
 
 export default function AppShell({ children }) {
   const router = useRouter();
   const pathname = usePathname();
+  const projectId = pathname.split("/projects/")[1]?.split("/")[0];
 
   const [userId, setUserId] = useState("");
   const [userPersona, setUserPersona] = useState("designer");
@@ -25,6 +27,8 @@ export default function AppShell({ children }) {
   const [editingProject, setEditingProject] = useState(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+  const [projectProgressData, setProjectProgressData] = useState(null);
+  
 
   const {
     userData: realUserData,
@@ -77,6 +81,46 @@ export default function AppShell({ children }) {
       setUserCreatedAt(realUserData.createdAt);
     }
   }, [realUserData]);
+
+  useEffect(() => {
+  const fetchProjectProgress = async () => {
+    if (!projectId) return;
+
+    try {
+      const response = await fetch(
+  `/api/projects/${projectId}/progress`
+);
+
+if (!response.ok) {
+  console.error(
+    "Failed to fetch progress:",
+    response.status
+  );
+  return;
+}
+
+const text = await response.text();
+
+if (!text) {
+  console.error("Empty response from API");
+  return;
+}
+
+const data = JSON.parse(text);
+
+if (data?.success) {
+  setProjectProgressData(data.data);
+}
+    } catch (err) {
+      console.error(
+        "Failed to fetch project progress",
+        err
+      );
+    }
+  };
+
+  fetchProjectProgress();
+}, [projectId, pathname]);
 
   const handleLogout = async () => {
     try {
@@ -146,12 +190,21 @@ export default function AppShell({ children }) {
       <Sidebar onLogout={handleLogout} />
 
       <div className="flex-1 ml-[240px] min-w-0 overflow-x-hidden">
-        <Header
-          userName={userName}
-          userPersona={userPersona === "manager" ? "Manager" : "Designer"}
-          onCreateProject={() => setShowCreateModal(true)}
-          onOpenProfile={() => setShowProfileModal(true)}
-        />
+       <Header
+  userName={userName}
+  userPersona={
+    userPersona === "manager"
+      ? "Manager"
+      : "Designer"
+  }
+  onCreateProject={() =>
+    setShowCreateModal(true)
+  }
+  onOpenProfile={() =>
+    setShowProfileModal(true)
+  }
+  projectProgressData={projectProgressData}
+/>
 
         <div className="min-w-0 max-w-full overflow-x-hidden">{children}</div>
       </div>

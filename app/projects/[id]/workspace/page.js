@@ -190,8 +190,26 @@ export default function EmpathyMapPage() {
       }
 
       if (selectedInterviewee?.interviewee_id) {
-        await fetchQuestionSets(selectedInterviewee.interviewee_id);
-      }
+  await fetchQuestionSets(selectedInterviewee.interviewee_id);
+}
+
+/* ---------------- PROGRESS UPDATE ---------------- */
+if (questionSets.length === 0) {
+  try {
+    await fetch(`/api/projects/${projectId}/progress`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        progressIncrement: 5,
+        currentStage: "Empathize",
+      }),
+    });
+  } catch (err) {
+    console.error("Progress update failed", err);
+  }
+}
     } catch (err) {
       setQuestionError(err.message || "Failed to generate questions");
     } finally {

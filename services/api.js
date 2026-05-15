@@ -25,6 +25,7 @@ async function fetchApi(endpoint, options = {}) {
   }
 }
 
+
 export const api = {
   // --- Auth ---
   signup: (payload) =>
@@ -134,6 +135,18 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(projectData),
     }),
+
+     updateProjectProgress: (
+    projectId,
+    data
+  ) =>
+    fetchApi(
+      `projects/${projectId}/progress`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }
+    ),
 
   deleteProject: (projectId, userId) =>
     fetchApi(`projects?projectId=${projectId}&userId=${userId}`, {

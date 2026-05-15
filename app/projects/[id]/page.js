@@ -904,9 +904,9 @@ const renderIdeateTemplateCard = (template) => {
                             return (
                               <div key={template.id} className="space-y-3">
                                 {renderEmpathizeTemplateCard(template, downloadableTemplateId)}
-                                {apiDocs.length > 0 && (
+                                {documents.length > 0 && (
                                   <div className="space-y-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
-                                    {apiDocs.map((doc) => (
+                                    {documents.map((doc) => (
                                       <div key={doc.documentId} className="rounded-lg border border-gray-200 bg-white p-2.5">
                                         <div className="mb-1 flex items-center gap-2"><FileText className="h-4 w-4 text-blue-500" /><span className="truncate text-xs text-gray-900">{getFileName(doc.blobPath)}</span></div>
                                         <div className="flex items-center justify-between">
