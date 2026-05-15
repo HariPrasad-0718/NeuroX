@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Minus, Plus, RotateCcw } from "lucide-react";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
+import { Download } from "lucide-react";
 
 const TYPE_STYLES = {
   page: {
@@ -400,9 +403,91 @@ export default function InformationArchitecturePage() {
     );
   }
 
+  const handleDownloadIA = async () => {
+  const element = document.getElementById("ia-diagram");
+
+  if (!element) return;
+
+  try {
+    const clonedElement = element.cloneNode(true);
+
+    clonedElement.style.background = "#ffffff";
+    clonedElement.style.color = "#000000";
+
+    // Remove problematic styles
+    const all = clonedElement.querySelectorAll("*");
+
+    all.forEach((el) => {
+      el.style.backdropFilter = "none";
+      el.style.filter = "none";
+
+      const computed = window.getComputedStyle(el);
+
+      if (
+        computed.backgroundColor.includes("oklch") ||
+        computed.backgroundColor.includes("oklab")
+      ) {
+        el.style.backgroundColor = "#ffffff";
+      }
+
+      if (
+        computed.color.includes("oklch") ||
+        computed.color.includes("oklab")
+      ) {
+        el.style.color = "#000000";
+      }
+
+      if (
+        computed.borderColor.includes("oklch") ||
+        computed.borderColor.includes("oklab")
+      ) {
+        el.style.borderColor = "#cbd5e1";
+      }
+    });
+
+    // Add cloned element temporarily
+    clonedElement.style.position = "fixed";
+    clonedElement.style.left = "-99999px";
+    clonedElement.style.top = "0";
+
+    document.body.appendChild(clonedElement);
+
+    const canvas = await html2canvas(clonedElement, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+    });
+
+    document.body.removeChild(clonedElement);
+
+    const imgData = canvas.toDataURL("image/png");
+
+    const pdf = new jsPDF({
+      orientation:
+        canvas.width > canvas.height
+          ? "landscape"
+          : "portrait",
+      unit: "px",
+      format: [canvas.width, canvas.height],
+    });
+
+    pdf.addImage(
+      imgData,
+      "PNG",
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
+
+    pdf.save("information-architecture.pdf");
+  } catch (err) {
+    console.error("PDF download failed:", err);
+  }
+};
+
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_20%_20%,#eff6ff_0%,#f8fafc_40%,#f1f5f9_100%)] p-4 md:p-6">
-      <div className="mb-6 flex items-center gap-4">
+<div className="min-h-screen bg-slate-100 p-4 md:p-6">      <div className="mb-6 flex items-center gap-4">
         <button
           onClick={() => router.back()}
           className="h-10 w-10 rounded-full border border-slate-300 bg-white shadow-sm"
@@ -415,89 +500,85 @@ export default function InformationArchitecturePage() {
         </div>
       </div>
 
-      <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white/90 shadow-sm backdrop-blur">
+      <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="bg-slate-900 px-6 py-4 text-lg font-bold text-white">IA Summary</div>
         <div className="p-6 leading-8 text-slate-700">{iaData.IA_SUMMARY || "No summary available."}</div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white/90 shadow-sm backdrop-blur">
-        <div className="bg-gradient-to-r from-slate-900 to-slate-700 px-6 py-4 text-lg font-bold text-white">
-          Information Architecture Diagram
-        </div>
+<div
+  id="ia-download"
+  className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm backdrop-blur"
+>        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between bg-gradient-to-r from-slate-900 to-slate-700 px-6 py-4">
+  
+  <div>
+    <h2 className="text-lg font-bold text-white">
+      Information Architecture Diagram
+    </h2>
 
-        <div className="space-y-4 border-b bg-slate-50/60 px-6 py-4">
-          <div className="grid gap-3 md:grid-cols-5">
-            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Total Nodes</div>
-              <div className="mt-2 text-2xl font-bold text-slate-900">{stats?.total || 0}</div>
-            </div>
-            <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3">
-              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">Pages</div>
-              <div className="mt-2 text-2xl font-bold text-blue-950">{stats?.pages || 0}</div>
-            </div>
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Sections</div>
-              <div className="mt-2 text-2xl font-bold text-emerald-950">{stats?.sections || 0}</div>
-            </div>
-            <div className="rounded-2xl border border-teal-200 bg-teal-50 px-4 py-3">
-              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-teal-700">Actions</div>
-              <div className="mt-2 text-2xl font-bold text-teal-950">{stats?.actions || 0}</div>
-            </div>
-            <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3">
-              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-700">Components</div>
-              <div className="mt-2 text-2xl font-bold text-orange-950">{stats?.components || 0}</div>
-            </div>
-          </div>
+    
+  </div>
 
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <p className="text-sm text-slate-600">
-              SVG tree layout based on your reference, improved with cleaner styling, stronger hierarchy, and zoom controls.
-            </p>
+  <div className="flex flex-wrap items-center gap-2">
+    
+    <button
+      type="button"
+      onClick={handleDownloadIA}
+      className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold text-white shadow-sm transition hover:opacity-90"
+      style={{
+        background: "linear-gradient(135deg, #4a00e0, #702dff)",
+        boxShadow: "0 4px 14px rgba(74,0,224,0.25)",
+      }}
+    >
+      <Download className="h-4 w-4" />
+      Download PDF
+    </button>
 
-            <div className="flex items-center gap-2 self-start md:self-auto">
-              <button
-                type="button"
-                onClick={zoomOut}
-                disabled={zoomLevel <= MIN_ZOOM_LEVEL}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-100"
-                aria-label="Zoom out"
-              >
-                <Minus className="h-4 w-4" />
-              </button>
-              <div className="min-w-16 rounded-xl border border-slate-200 bg-white px-3 py-2 text-center text-sm font-semibold text-slate-700 shadow-sm">
-                {Math.round(effectiveZoom * 100)}%
-              </div>
-              <button
-                type="button"
-                onClick={zoomIn}
-                disabled={zoomLevel >= MAX_ZOOM_LEVEL}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-100"
-                aria-label="Zoom in"
-              >
-                <Plus className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={resetZoom}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-100"
-              >
-                <RotateCcw className="h-4 w-4" />
-                Reset
-              </button>
-            </div>
-          </div>
-        </div>
+    <button
+      type="button"
+      onClick={zoomOut}
+      disabled={zoomLevel <= MIN_ZOOM_LEVEL}
+      className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-500 bg-white/10 text-white shadow-sm transition hover:bg-white/20"
+    >
+      <Minus className="h-4 w-4" />
+    </button>
 
-        <div className="bg-[linear-gradient(180deg,#fafbff_0%,#f8fafc_100%)] p-4 md:p-6">
+    <div className="min-w-16 rounded-xl border border-slate-500 bg-white/10 px-3 py-2 text-center text-sm font-semibold text-white shadow-sm">
+      {Math.round(effectiveZoom * 100)}%
+    </div>
+
+    <button
+      type="button"
+      onClick={zoomIn}
+      disabled={zoomLevel >= MAX_ZOOM_LEVEL}
+      className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-500 bg-white/10 text-white shadow-sm transition hover:bg-white/20"
+    >
+      <Plus className="h-4 w-4" />
+    </button>
+
+    <button
+      type="button"
+      onClick={resetZoom}
+      className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-500 bg-white/10 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-white/20"
+    >
+      <RotateCcw className="h-4 w-4" />
+      Reset
+    </button>
+
+  </div>
+</div>
+
+        
+
+        <div className="bg-slate-50 p-4 md:p-6">
           <div
+            id="ia-diagram"
             ref={viewportRef}
-            className="overflow-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-inner shadow-slate-100/80"
-          >
+className="overflow-visible rounded-2xl border border-slate-200 bg-white p-4 shadow-inner"          >
             <ArchitectureDiagram diagram={diagram} zoom={effectiveZoom} />
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-6 border-t bg-slate-50/70 px-6 py-4 text-sm">
+        <div className="flex flex-wrap gap-6 border-t bg-slate-50 px-6 py-4 text-sm">
           <div className="flex items-center gap-2">
             <div className="h-4 w-6 rounded border-2 border-blue-700 bg-blue-100" />
             Page

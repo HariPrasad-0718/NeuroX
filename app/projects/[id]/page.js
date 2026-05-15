@@ -977,9 +977,9 @@ const renderIdeateTemplateCard = (template) => {
                               >
                                 Download Template
                               </button>
-                              {apiDocs.length > 0 && (
+                              {documents.length > 0 && (
                                 <div className="space-y-2 pt-3 border-t border-gray-200">
-                                  {apiDocs.map((doc) => (
+                                  {documents.length.map((doc) => (
                                     <div key={doc.documentId} className="bg-blue-50 rounded p-2 border border-blue-100">
                                       <div className="flex items-center gap-2 mb-1"><FileText className="w-4 h-4 text-blue-500" /><span className="text-xs text-gray-900 truncate">{getFileName(doc.blobPath)}</span></div>
                                       <div className="flex items-center justify-between">

@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, AlertTriangle, Loader2, Sparkles } from "lucide-react";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 function toList(value) {
   if (!value) return [];
@@ -552,6 +554,28 @@ await fetch("/api/save-generated-persona", {
     }
   };
 
+  const handleDownloadPDF = async () => {
+  const input = document.getElementById("persona-card-download");
+
+  if (!input) return;
+
+  const canvas = await html2canvas(input, {
+    scale: 2,
+    useCORS: true,
+  });
+
+  const imgData = canvas.toDataURL("image/png");
+
+  const pdf = new jsPDF("p", "mm", "a4");
+
+  const pdfWidth = pdf.internal.pageSize.getWidth();
+  const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+  pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+
+  pdf.save("persona-card.pdf");
+};
+
   const activePersonaGroup = useMemo(
     () => personas.find((p) => p.personaId === activePersonaId) || null,
     [personas, activePersonaId]
@@ -763,9 +787,29 @@ await fetch("/api/save-generated-persona", {
                     </div>
                   ) : null}
 
-                  {activeAgentCard ? (
-                    <AgentPersonaCard card={activeAgentCard} personaName={activePersonaGroup?.personaName || "Persona"} />
-                  ) : (
+                 {activeAgentCard ? (
+  <div>
+    <div id="persona-card-download">
+      <AgentPersonaCard
+        card={activeAgentCard}
+        personaName={activePersonaGroup?.personaName || "Persona"}
+      />
+    </div>
+
+    <div className="mt-5 flex justify-end">
+      <button
+        onClick={handleDownloadPDF}
+        className="px-5 py-2.5 rounded-xl text-white font-semibold transition"
+        style={{
+          background: "linear-gradient(135deg, #4a00e0, #702dff)",
+          boxShadow: "0 4px 14px rgba(74,0,224,0.25)",
+        }}
+      >
+        Download PDF
+      </button>
+    </div>
+  </div>
+) : (
                     <p className="rounded-lg border border-gray-200 bg-white px-4 py-6 text-center text-sm text-gray-500">
                       No agent persona card available for this persona.
                     </p>
