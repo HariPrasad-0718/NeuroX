@@ -449,17 +449,15 @@ const handleGenerateProcessFlow = async () => {
   setProcessFlowError("");
 
   try {
-    const res = await fetch(
-      `/api/personas?projectId=${projectId}&aggregateGenerated=true`
-    );
+    let combinedOutput = "";
+    try {
+      const res = await fetch(
+        `/api/personas?projectId=${projectId}&aggregateGenerated=true`
+      );
+      const data = await res.json();
+      if (data?.success) combinedOutput = data?.data?.combinedOutput || "";
+    } catch (_) {}
 
-    const data = await res.json();
-
-    if (!data?.success) {
-      throw new Error(data?.error?.message || "Failed to fetch persona data");
-    }
-
-    const combinedOutput = data?.data?.combinedOutput || "";
 
     const agentRes = await fetch("/api/generate-process-flow", {
       method: "POST",
@@ -485,10 +483,12 @@ const handleGenerateProcessFlow = async () => {
     const agentData = await agentRes.json();
 
     if (!agentData?.success) {
+      console.error("PROCESS FLOW AGENT RAW RESPONSE:", JSON.stringify(agentData?.raw, null, 2));
       throw new Error(agentData?.error || "Process Flow generation failed");
     }
 
     // ✅ Navigate to new page with data
+    sessionStorage.removeItem("processFlowData");
     sessionStorage.setItem(
       "processFlowData",
       JSON.stringify(agentData.process_flow)
@@ -710,6 +710,11 @@ const handleGenerateInformationArchitecture = async () => {
       : "Generate →"
     : "Define →"}
 </button>
+{template.id === "process-flow" && processFlowError && (
+  <p className="mt-3 rounded-md bg-red-50/95 px-2.5 py-2 text-xs font-medium text-red-700">
+    {processFlowError}
+  </p>
+)}
         </div>
       </div>
 

@@ -129,6 +129,13 @@ export default function UXJourneyFlow({ flow }) {
     applyViewportTransform(viewportRef.current, viewState);
   }, [viewState]);
 
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    svg.addEventListener("wheel", handleWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", handleWheel);
+  });
+
   function handleWheel(event) {
     if (!event.ctrlKey) return;
 
@@ -230,7 +237,6 @@ export default function UXJourneyFlow({ flow }) {
         className="min-w-max cursor-grab active:cursor-grabbing"
         role="img"
         aria-label="Process workflow diagram"
-        onWheel={handleWheel}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

@@ -1,303 +1,174 @@
 import { NextResponse } from "next/server";
 
-const WEBHOOK_URL =
-  "https://agent5i.c5ailabs.com/api/recipes/webhook/agent/";
-
-const USERNAME = process.env.AGENT_USERNAME;
-const PASSWORD = process.env.AGENT_PASSWORD;
-
-const UX_JOURNEY_AGENT_NAME = "UX Journey Flow Generator";
-
-function extractUxJourney(data) {
-  if (!data) return {};
-
-  // String response
-  // String response
-if (typeof data === "string") {
-  let cleaned = data.trim();
-
-  // remove process_flow='...'
-  if (cleaned.startsWith("process_flow='")) {
-    cleaned = cleaned
-      .replace(/^process_flow='/, "")
-      .replace(/'$/, "");
-  }
-
-  // remove markdown wrappers
-  if (cleaned.startsWith("```json")) {
-    cleaned = cleaned.replace(/^```json/, "");
-  }
-
-  if (cleaned.startsWith("```")) {
-    cleaned = cleaned.replace(/^```/, "");
-  }
-
-  cleaned = cleaned.replace(/```$/, "").trim();
-
-  try {
-    const parsed = JSON.parse(cleaned);
-    return extractUxJourney(parsed);
-  } catch (err) {
-    console.error("STRING PARSE ERROR:", err, cleaned);
-    return {};
-  }
-}
-
-  // Array response
-  if (Array.isArray(data)) {
-    for (const item of data) {
-      const result = extractUxJourney(item);
-      if (result?.nodes && result?.edges) {
-        return result;
-      }
-    }
-  }
-
-  // Object response
-  if (typeof data === "object") {
-    if (data.nodes && data.edges) {
-      return data;
-    }
-
-    const wrapperKeys = [
-      "process_flow",
-      "flow",
-      "message",
-      "output",
-      "result",
-      "text",
-      "response",
-      "data",
-    ];
-
-    for (const key of wrapperKeys) {
-      if (!data[key]) continue;
-
-      const result = extractUxJourney(data[key]);
-
-      if (result?.nodes && result?.edges) {
-        return result;
-      }
-    }
-  }
-
-  return {};
-}
-function extractSection(text, sectionName) {
-  if (!text) return "";
-
-  const regex = new RegExp(
-  `${sectionName}:\\s*([\\s\\S]*?)(?=\\n[A-Z][A-Za-z\\s]+:|\\Z)`,
-  "i"
-);
-
-  const match = text.match(regex);
-
-  return match ? match[1].trim() : "";
-}
+const WEBHOOK_URL = "https://agent5i.c5ailabs.com/api/recipes/webhook/agent/";
+const USERNAME = process.env.AGENT_USERNAME || process.env.AGENT5I_USERNAME;
+const PASSWORD = process.env.AGENT_PASSWORD || process.env.AGENT5I_PASSWORD;
+const AGENT_NAME = "UX Journey Flow Generator";
 
 function buildPayload(body) {
-  const empathyMap = body.empathy_map || "";
-
-  const user_answers =
-    extractSection(empathyMap, "Says") || "No interview transcripts available";
-
-  const research_summary =
-    extractSection(empathyMap, "User Summary") ||
-    extractSection(empathyMap, "Summary") ||
-    "No research summary available";
-
-  const pain_points =
-    extractSection(empathyMap, "Pain Points") ||
-    "No pain points available";
-
-  const needs =
-    extractSection(empathyMap, "Needs") ||
-    "No needs available";
-
-  const background =
-    extractSection(empathyMap, "Education") ||
-    "No background available";
-
-  const demographics = `
-Gender: ${extractSection(empathyMap, "Gender") || "Unknown"}
-Age: ${extractSection(empathyMap, "Age") || "Unknown"}
-Location: ${extractSection(empathyMap, "Location") || "Unknown"}
-Relationship Status: ${
-    extractSection(empathyMap, "Relationship Status") || "Unknown"
-  }
-`.trim();
-
-  const scenario =
-    extractSection(empathyMap, "Scenario") ||
-    "User wants a structured and connected UX workflow";
-
-  const personality =
-    extractSection(empathyMap, "Feels") ||
-    "User is collaborative and process-driven";
-
-  const goals =
-    extractSection(empathyMap, "Goals") ||
-    "Improve workflow efficiency and collaboration";
-
-  const frustrations =
-    extractSection(empathyMap, "Frustrations") ||
-    pain_points;
-
-  const motivations =
-    extractSection(empathyMap, "Motivations") ||
-    "Reduce manual effort and improve traceability";
-
-  const previous_experience =
-    extractSection(empathyMap, "Previous Experience") ||
-    "Experience with fragmented UX workflows";
-
-  const behaviours_habits =
-    extractSection(empathyMap, "Does") ||
-    "Conducts interviews and synthesizes insights manually";
-
-  const positive_themes =
-    extractSection(empathyMap, "Key Insights") ||
-    "Automation and centralized systems improve workflow";
-
-  const negative_themes =
-    extractSection(empathyMap, "Pain Points") ||
-    "Scattered notes and inconsistent collaboration";
-
-  const needs_expectations =
-    extractSection(empathyMap, "Needs") ||
-    "Connected and flexible UX system";
-
-  const section = (label, value) => {
-    if (!value) return "";
-    return `[${label}]\n${value}\n`;
+  const fallback = body.empathy_map || body.project_description || "";
+  const userInput = {
+    project_description: body.project_description,
+    persona_name: body.persona_name,
+    empathy_map: body.empathy_map,
+    pain_points: body.pain_points || body.frustrations,
+    needs: body.needs,
+    scenario: body.scenario,
+    goals: body.goals,
+    frustrations: body.frustrations,
+    motivations: body.motivations,
+    background: body.background,
+    demographics: body.demographics,
+    previous_experience: body.previous_experience,
+    behaviours_habits: body.behaviours_habits,
   };
-
-  const userInput = [
-    section("PROJECT DESCRIPTION", body.project_description),
-    section("PERSONA NAME", body.persona_name),
-    section("INTERVIEW TRANSCRIPTS", user_answers),
-    section("RESEARCH SUMMARY", research_summary),
-    section("EMPATHY MAP", empathyMap),
-    section("PAIN POINTS", pain_points),
-    section("NEEDS", needs),
-    section("BACKGROUND", background),
-    section("DEMOGRAPHICS", demographics),
-    section("SCENARIO", scenario),
-    section("PERSONALITY", personality),
-    section("GOALS", goals),
-    section("FRUSTRATIONS", frustrations),
-    section("MOTIVATIONS", motivations),
-    section("PREVIOUS EXPERIENCE", previous_experience),
-    section("BEHAVIOURS AND HABITS", behaviours_habits),
-    section("POSITIVE THEMES", positive_themes),
-    section("NEGATIVE THEMES", negative_themes),
-    section("NEEDS AND EXPECTATIONS", needs_expectations),
-  ]
-    .filter(Boolean)
-    .join("\n");
 
   return {
     username: USERNAME,
     password: PASSWORD,
-    name: UX_JOURNEY_AGENT_NAME,
-
-    project_description: body.project_description,
-    persona_name: body.persona_name,
-    empathy_map: empathyMap,
-
-    user_answers,
-    research_summary,
-    pain_points,
-    needs,
-    background,
-    demographics,
-    scenario,
-    personality,
-    goals,
-    frustrations,
-    motivations,
-    previous_experience,
-    behaviours_habits,
-    positive_themes,
-    negative_themes,
-    needs_expectations,
-
+    name: AGENT_NAME,
+    project_description: body.project_description || "",
+    persona_name: body.persona_name || "User Persona",
+    empathy_map: body.empathy_map || "",
+    user_answers: body.user_answers || fallback,
+    pain_points: body.pain_points || body.frustrations || fallback,
+    needs: body.needs || fallback,
+    scenario: body.scenario || fallback,
+    goals: body.goals || fallback,
+    previous_experience: body.previous_experience || fallback,
+    behaviours_habits: body.behaviours_habits || fallback,
+    background: body.background || "",
+    demographics: body.demographics || "",
+    personality: body.personality || "",
+    frustrations: body.frustrations || "",
+    motivations: body.motivations || "",
     rules: [],
-    user_input: userInput,
+    user_input: JSON.stringify(userInput),
   };
 }
+
+function extractFlow(data) {
+  if (!data) return null;
+
+  if (typeof data === "string") {
+    const cleaned = data.replace(/```json|```/g, "").trim();
+    try { return extractFlow(JSON.parse(cleaned)); } catch { return null; }
+  }
+
+  if (Array.isArray(data)) {
+    for (const item of data) {
+      const r = extractFlow(item);
+      if (r) return r;
+    }
+    return null;
+  }
+
+  if (typeof data === "object") {
+    if (data.nodes && data.edges) return data;
+    const keys = ["process_flow", "flow", "output", "result", "message", "text", "response", "final_response", "data", "content"];
+    for (const key of keys) {
+      if (!data[key]) continue;
+      const r = extractFlow(data[key]);
+      if (r) return r;
+    }
+  }
+
+  return null;
+}
+
+function extractFlowFromMessages(messages) {
+  if (!Array.isArray(messages)) return null;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    const contentStr = typeof msg === "string" ? msg : JSON.stringify(msg);
+    const match = contentStr.match(/content='([\s\S]+?)'\s+additional_kwargs/);
+    if (match) {
+      const r = extractFlow(match[1]);
+      if (r) return r;
+    }
+    const r = extractFlow(msg);
+    if (r) return r;
+  }
+  return null;
+}
+
 export async function POST(req) {
   try {
     const body = await req.json();
 
     if (!body.project_description) {
-      return NextResponse.json(
-        { error: "project_description is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: "project_description is required" }, { status: 400 });
     }
 
     const payload = buildPayload(body);
 
-    console.log("UX JOURNEY PAYLOAD:", payload);
+    // ── INPUT LOG ──────────────────────────────────────────────
+    console.log("\n========== PROCESS FLOW: INPUT ==========");
+    console.log("project_description:", payload.project_description?.slice(0, 200));
+    console.log("persona_name       :", payload.persona_name);
+    console.log("empathy_map        :", payload.empathy_map?.slice(0, 300));
+    console.log("pain_points        :", payload.pain_points?.slice(0, 200));
+    console.log("needs              :", payload.needs?.slice(0, 200));
+    console.log("goals              :", payload.goals?.slice(0, 200));
+    console.log("scenario           :", payload.scenario?.slice(0, 200));
+    console.log("=========================================\n");
 
     const response = await fetch(WEBHOOK_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(90000),
     });
-    if (!response.ok) {
-  return NextResponse.json(
-    {
-      error: "Agent request failed",
-      status: response.status,
-    },
-    { status: response.status }
-  );
-}
 
     const text = await response.text();
 
-    let parsed;
+    // ── RAW OUTPUT LOG ────────────────────────────────────────
+    console.log("\n========== PROCESS FLOW: RAW AGENT RESPONSE ==========");
+    console.log(text.slice(0, 3000));
+    console.log("======================================================\n");
 
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      parsed = text;
+    if (!response.ok) {
+      return NextResponse.json({ success: false, error: "Agent API failed", details: text }, { status: 500 });
     }
 
-    console.log("UX JOURNEY RAW RESPONSE:", parsed);
+    let parsed;
+    try { parsed = JSON.parse(text); } catch { parsed = text; }
 
-    const flow = extractUxJourney(
-  parsed.final_response || parsed
-);
+    let flow = extractFlowFromMessages(parsed?.response?.messages);
+    if (!flow?.nodes) flow = extractFlow(parsed);
+
+    // ── EXTRACTED FLOW LOG ────────────────────────────────────
+    console.log("\n========== PROCESS FLOW: EXTRACTED FLOW ==========");
+    if (flow) {
+      console.log("title   :", flow.title);
+      console.log("persona :", flow.persona);
+      console.log("nodes   :", flow.nodes?.length, flow.nodes?.map(n => n.label).join(" → "));
+      console.log("edges   :", flow.edges?.length);
+    } else {
+      console.log("FAILED — no flow extracted");
+    }
+    console.log("===================================================\n");
 
     if (!flow?.nodes || !flow?.edges) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Unable to extract process flow",
-          raw: parsed,
-        },
-        { status: 500 }
-      );
+      return NextResponse.json({ success: false, error: "Unable to generate process flow", raw: parsed }, { status: 500 });
     }
 
-    return NextResponse.json({
-      success: true,
-      process_flow: flow,
-    });
-  } catch (error) {
-    console.error("UX JOURNEY ERROR:", error);
+    const typeMap = { entry: "start", exit_success: "end", exit_fail: "end", action: "process", loop: "process", stage_label: "process" };
+    const normalizedFlow = {
+      ...flow,
+      nodes: flow.nodes.map((n) => ({ ...n, type: typeMap[n.type] || n.type })),
+      edges: flow.edges.map((e) => ({
+        from: e.from || e.source,
+        to: e.to || e.target,
+        label: e.label || "",
+      })),
+    };
 
+    return NextResponse.json({ success: true, process_flow: normalizedFlow });
+  } catch (error) {
+    console.error("PROCESS FLOW ERROR:", error?.message);
     return NextResponse.json(
-      {
-        error: "Internal server error",
-        details: error.message,
-      },
+      { success: false, error: error?.name === "AbortError" ? "Request timeout" : error?.message || "Internal server error" },
       { status: 500 }
     );
   }
