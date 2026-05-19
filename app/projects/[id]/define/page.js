@@ -422,6 +422,8 @@ export default function DefinePhasePage() {
   const [activePersonaId, setActivePersonaId] = useState(null);
   const [activeIntervieweeId, setActiveIntervieweeId] = useState(null);
   const [agentCardsByPersona, setAgentCardsByPersona] = useState({});
+  const [isGeneratingIA, setIsGeneratingIA] = useState(false);
+  const [iaError, setIaError] = useState("");
 
   useEffect(() => {
     if (!projectId) return;
@@ -457,6 +459,7 @@ export default function DefinePhasePage() {
 
     setGenerating(true);
     setError("");
+    setIaError("");
 
     try {
       const nextCards = {};
@@ -585,6 +588,71 @@ await fetch("/api/save-generated-persona", {
 
   pdf.save("persona-card.pdf");
 };
+
+  const handleGenerateInformationArchitecture = async () => {
+    if (!projectId) {
+      setIaError("Project ID is missing");
+      return;
+    }
+
+    setIsGeneratingIA(true);
+    setIaError("");
+
+    try {
+      const personaPayload = Object.values(agentCardsByPersona || {}).map((card, index) => ({
+        persona_id: card?.name ? String(index + 1).padStart(2, "0") : "",
+        header: card?.header || card?.name || "",
+        background: card?.background || "",
+        demographics: card?.demographics || "",
+        personality: card?.personality || [],
+        "behaviours & habits": card?.behaviours || [],
+        goals: card?.goals || [],
+        frustrations: card?.frustrations || [],
+        motivations: card?.motivations || [],
+        "previous experience": card?.previousExperience || [],
+        scenario: card?.scenario || "",
+        "positive themes": card?.positiveThemes || [],
+        "negative themes": card?.negativeThemes || [],
+        "needs & expectations": card?.needs || [],
+      }));
+
+      const agentRes = await fetch("/api/generate-information-architecture", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          combinedPersonaOutput: personaPayload.length ? JSON.stringify(personaPayload) : "",
+        }),
+      });
+
+      const agentData = await agentRes.json();
+
+      if (!agentData?.success) {
+        throw new Error(agentData?.error || "Information Architecture generation failed");
+      }
+
+      sessionStorage.setItem(
+        "informationArchitectureData",
+        JSON.stringify(agentData.information_architecture)
+      );
+
+      sessionStorage.setItem(
+        "informationArchitecturePrompt",
+        agentData?.information_architecture?.PROMPT || ""
+      );
+
+      sessionStorage.setItem(
+        "informationArchitectureRawResponse",
+        agentData?.information_architecture?.RAW_RESPONSE || ""
+      );
+
+      router.push(`/information-architecture?projectId=${projectId}`);
+    } catch (err) {
+      setIaError(err.message || "Failed to generate Information Architecture");
+    } finally {
+      setIsGeneratingIA(false);
+    }
+  };
 
   const activePersonaGroup = useMemo(
     () => personas.find((p) => p.personaId === activePersonaId) || null,
@@ -808,6 +876,13 @@ await fetch("/api/save-generated-persona", {
 
     <div className="mt-5 flex justify-end gap-3">
       <button
+        onClick={handleGenerateInformationArchitecture}
+        disabled={isGeneratingIA || generating}
+        className="px-5 py-2.5 rounded-xl font-semibold transition border border-indigo-600 text-indigo-700 hover:bg-indigo-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {isGeneratingIA ? "Generating IA..." : "Generate Information Architecture"}
+      </button>
+      <button
         onClick={() => router.push(`/process-flow?projectId=${projectId}`)}
         className="px-5 py-2.5 rounded-xl font-semibold transition border border-[#702dff] text-[#702dff] hover:bg-[#702dff] hover:text-white"
       >
@@ -824,6 +899,9 @@ await fetch("/api/save-generated-persona", {
         Download PDF
       </button>
     </div>
+    {iaError ? (
+      <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{iaError}</p>
+    ) : null}
   </div>
 ) : (
                     <p className="rounded-lg border border-gray-200 bg-white px-4 py-6 text-center text-sm text-gray-500">

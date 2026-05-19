@@ -508,25 +508,37 @@ const handleGenerateInformationArchitecture = async () => {
   setInformationArchitectureError("");
 
   try {
-    const res = await fetch(
-      `/api/personas?projectId=${projectId}&aggregateGenerated=true`
-    );
-
-    const data = await res.json();
-
-    if (!data?.success) {
-      throw new Error(data?.error?.message || "Failed to fetch persona data");
+    if (!projectId) {
+      throw new Error("Project ID is missing");
     }
 
-    const combinedOutput = data?.data?.combinedOutput || "";
+    // Match the Python flow by sending combined define/persona output when available.
+    let combinedOutput = String(combinedPersonaOutput || "").trim();
+
+    if (!combinedOutput) {
+      try {
+        const res = await fetch(
+          `/api/personas?projectId=${projectId}&aggregateGenerated=true`
+        );
+        const data = await res.json();
+
+        if (data?.success) {
+          combinedOutput = String(data?.data?.combinedOutput || "").trim();
+          if (combinedOutput) {
+            setCombinedPersonaOutput(combinedOutput);
+          }
+        }
+      } catch (fetchErr) {
+        console.warn("Failed to prefetch combined persona output:", fetchErr);
+      }
+    }
 
     const agentRes = await fetch("/api/generate-information-architecture", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         projectId,
-        combinedPersonaOutput: combinedOutput,   // ✅ FIXED
-        finalPersonaCard: finalPersonaCard || {}, // safety
+        combinedPersonaOutput: combinedOutput,
       }),
     });
 
@@ -544,6 +556,16 @@ const handleGenerateInformationArchitecture = async () => {
     sessionStorage.setItem(
       "informationArchitectureData",
       JSON.stringify(agentData.information_architecture)
+    );
+
+    sessionStorage.setItem(
+      "informationArchitecturePrompt",
+      agentData?.information_architecture?.PROMPT || ""
+    );
+
+    sessionStorage.setItem(
+      "informationArchitectureRawResponse",
+      agentData?.information_architecture?.RAW_RESPONSE || ""
     );
 
     router.push(`/information-architecture?projectId=${projectId}`);
@@ -749,10 +771,17 @@ const renderIdeateTemplateCard = (template) => {
               e.stopPropagation();
               handleGenerateInformationArchitecture();
             }}
+            disabled={isGeneratingIA}
             className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-white underline decoration-white/40 underline-offset-4"
           >
             {isGeneratingIA ? "Generating..." : "Generate →"}
           </button>
+
+          {informationArchitectureError ? (
+            <p className="mt-3 rounded-md bg-red-50/95 px-2.5 py-2 text-xs font-medium text-red-700">
+              {informationArchitectureError}
+            </p>
+          ) : null}
         </div>
       </div>
     </div>

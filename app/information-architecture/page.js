@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Minus, Plus, RotateCcw } from "lucide-react";
+import { ArrowLeft, Minus, Plus, RotateCcw, X } from "lucide-react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { Download } from "lucide-react";
@@ -324,10 +324,19 @@ function ArchitectureDiagram({ diagram, zoom }) {
   );
 }
 
+function formatPromptText(prompt) {
+  return String(prompt || "")
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, "\t")
+    .replace(/\\'/g, "'")
+    .trim();
+}
+
 export default function InformationArchitecturePage() {
   const [iaData, setIaData] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(DEFAULT_ZOOM_LEVEL);
   const [viewportWidth, setViewportWidth] = useState(0);
+  const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
   const viewportRef = useRef(null);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -335,8 +344,24 @@ export default function InformationArchitecturePage() {
 
   useEffect(() => {
     const stored = sessionStorage.getItem("informationArchitectureData");
-    if (stored) {
-      setIaData(JSON.parse(stored));
+    const storedPrompt = sessionStorage.getItem("informationArchitecturePrompt");
+    const storedRawResponse = sessionStorage.getItem("informationArchitectureRawResponse");
+
+    if (stored && stored !== "undefined" && stored !== "null") {
+      let parsed;
+      try {
+        parsed = JSON.parse(stored);
+      } catch {
+        parsed = null;
+      }
+      if (!parsed) return;
+      if (!parsed?.PROMPT && storedPrompt) {
+        parsed.PROMPT = storedPrompt;
+      }
+      if (!parsed?.RAW_RESPONSE && storedRawResponse) {
+        parsed.RAW_RESPONSE = storedRawResponse;
+      }
+      setIaData(parsed);
       // Mark ideate stage complete
       if (projectId) {
         fetch(`/api/projects/${projectId}/progress`, {
@@ -395,6 +420,16 @@ export default function InformationArchitecturePage() {
   }, [diagram.width, viewportWidth]);
 
   const effectiveZoom = Number((baseZoom * zoomLevel).toFixed(3));
+  const promptText = formatPromptText(
+    iaData?.RAW_RESPONSE ||
+      (typeof window !== "undefined"
+        ? sessionStorage.getItem("informationArchitectureRawResponse")
+        : "") ||
+      iaData?.PROMPT ||
+      (typeof window !== "undefined"
+        ? sessionStorage.getItem("informationArchitecturePrompt")
+        : "")
+  );
 
   const zoomIn = () =>
     setZoomLevel((current) =>
@@ -405,6 +440,23 @@ export default function InformationArchitecturePage() {
       Math.max(MIN_ZOOM_LEVEL, Number((current - ZOOM_STEP).toFixed(2)))
     );
   const resetZoom = () => setZoomLevel(DEFAULT_ZOOM_LEVEL);
+
+  useEffect(() => {
+    if (!isPromptModalOpen) {
+      return undefined;
+    }
+
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setIsPromptModalOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isPromptModalOpen]);
 
   if (!iaData) {
     return (
@@ -480,9 +532,56 @@ export default function InformationArchitecturePage() {
       </div>
 
       <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="bg-slate-900 px-6 py-4 text-lg font-bold text-white">IA Summary</div>
+        <div className="flex items-center justify-between gap-3 bg-slate-900 px-6 py-4">
+          <div className="text-lg font-bold text-white">IA Summary</div>
+          <button
+            type="button"
+            onClick={() => setIsPromptModalOpen(true)}
+            className="inline-flex h-9 items-center justify-center rounded-lg border border-white/30 bg-white/10 px-3 text-sm font-semibold text-white transition hover:bg-white/20"
+          >
+            Prompt
+          </button>
+        </div>
         <div className="p-6 leading-8 text-slate-700">{iaData.IA_SUMMARY || "No summary available."}</div>
       </div>
+
+      {isPromptModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"
+          onClick={() => setIsPromptModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-900 px-5 py-4">
+              <h3 className="text-base font-semibold text-white">Agent Response</h3>
+              <button
+                type="button"
+                onClick={() => setIsPromptModalOpen(false)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/20 bg-white/10 text-white transition hover:bg-white/20"
+                aria-label="Close prompt modal"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="max-h-[70vh] overflow-auto bg-slate-50 p-5">
+              {promptText ? (
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <pre className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-700">
+                    {promptText}
+                  </pre>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+                  Prompt not available in IA response.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
 <div
   id="ia-download"

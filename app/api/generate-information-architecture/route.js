@@ -2,26 +2,157 @@ import { NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 
 const WEBHOOK_URL =
+  process.env.AGENT5I_WEBHOOK_URL ||
   "https://agent5idev.c5ailabs.com/api/recipes/webhook/agent/";
 
-const USERNAME = "yarramachu.sunaini@c5i.ai";
-const PASSWORD = "Subbareddy@9014";
+const USERNAME = process.env.AGENT5I_USERNAME || process.env.AGENT_USERNAME || "";
+const PASSWORD = process.env.AGENT5I_PASSWORD || process.env.AGENT_PASSWORD || "";
+const IA_AGENT_NAME = process.env.AGENT5I_IA_AGENT_NAME || "IA Agent";
 
-const SYSTEM_PROMPT = `
+const IA_PROMPT = `
 You are a Senior UX Information Architect.
 
 Return ONLY valid JSON.
 
 FORMAT:
 {
-  "IA_JSON": {
-    "name": "Homepage",
-    "type": "page",
-    "children": []
-  },
-  "IA_SUMMARY": "summary"
+  "IA_JSON": "{\\"name\\":\\"Homepage\\",\\"type\\":\\"page\\",\\"children\\":[]}",
+  "IA_SUMMARY": "summary text",
+  "PROMPT": "prompt text"
 }
 `;
+
+const SEED_IA_JSON = {
+  name: "Homepage",
+  type: "page",
+  children: [
+    {
+      name: "Patient Care",
+      type: "page",
+      children: [
+        {
+          name: "Patient Directory",
+          type: "page",
+          children: [
+            { name: "Search Patient", type: "action", children: [] },
+            {
+              name: "Patient Profile",
+              type: "page",
+              children: [
+                { name: "Visit History", type: "component", children: [] },
+                { name: "Active Treatment Plan", type: "component", children: [] },
+                { name: "Prescriptions", type: "component", children: [] },
+                { name: "Lab Results", type: "component", children: [] },
+                { name: "Add Clinical Notes", type: "action", children: [] },
+                { name: "Send Referral", type: "action", children: [] },
+              ],
+            },
+          ],
+        },
+        {
+          name: "Appointments",
+          type: "page",
+          children: [
+            { name: "Book Appointment", type: "action", children: [] },
+            {
+              name: "Upcoming Appointments",
+              type: "page",
+              children: [{ name: "Reschedule or Cancel", type: "action", children: [] }],
+            },
+            { name: "Appointment Status", type: "component", children: [] },
+          ],
+        },
+      ],
+    },
+    {
+      name: "Health Records",
+      type: "page",
+      children: [
+        {
+          name: "Reports and Results",
+          type: "page",
+          children: [
+            {
+              name: "View Lab Report",
+              type: "page",
+              children: [{ name: "Result Explanation", type: "component", children: [] }],
+            },
+            { name: "Download or Share Report", type: "action", children: [] },
+          ],
+        },
+        {
+          name: "Prescriptions Management",
+          type: "page",
+          children: [
+            { name: "Request Renewal", type: "action", children: [] },
+            { name: "Prescription History", type: "component", children: [] },
+          ],
+        },
+      ],
+    },
+    {
+      name: "Hospital Operations",
+      type: "page",
+      children: [
+        {
+          name: "Live Operations Overview",
+          type: "page",
+          children: [
+            { name: "Bed Occupancy Status", type: "component", children: [] },
+            { name: "Staff On Duty", type: "component", children: [] },
+            { name: "Critical Alerts", type: "component", children: [] },
+          ],
+        },
+        {
+          name: "Staff and Resource Management",
+          type: "page",
+          children: [
+            {
+              name: "Staff Scheduling",
+              type: "page",
+              children: [{ name: "Reassign Staff", type: "action", children: [] }],
+            },
+            { name: "Department Capacity", type: "component", children: [] },
+          ],
+        },
+      ],
+    },
+    {
+      name: "Requests and Approvals",
+      type: "page",
+      children: [
+        {
+          name: "Pending Requests",
+          type: "page",
+          children: [{ name: "Approve or Reject", type: "action", children: [] }],
+        },
+        { name: "Request History", type: "component", children: [] },
+      ],
+    },
+    {
+      name: "Communication and Reminders",
+      type: "page",
+      children: [
+        {
+          name: "Care Team Messaging",
+          type: "page",
+          children: [{ name: "Send Message", type: "action", children: [] }],
+        },
+        {
+          name: "Notifications and Reminders",
+          type: "page",
+          children: [
+            { name: "Follow-up Reminders", type: "component", children: [] },
+            { name: "Medication Reminders", type: "component", children: [] },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+const SEED_IA_SUMMARY =
+  "This Information Architecture describes a unified healthcare coordination product designed to reduce fragmented patient care and operational workflows by centralizing clinical, administrative, and patient-facing tasks. From the Homepage, users navigate into Patient Care to find patients, view a complete longitudinal profile, review visit history, lab results, prescriptions, and treatment plans, and perform core actions such as adding clinical notes or sending referrals without switching systems. Appointments supports a clear end-to-end flow for booking, tracking, and managing visits with real-time status visibility, addressing missed follow-ups and uncertainty. Health Records provides a single place to view, understand, share, and manage lab reports and prescriptions, including renewal requests, eliminating manual calls and physical paperwork. Hospital Operations gives operational teams live visibility into bed occupancy, staff availability, and critical capacity alerts, with direct access to staff scheduling and resource adjustments to resolve issues early. Requests and Approvals consolidates operational decisions into one workflow to remove email-based delays and improve accountability. Communication and Reminders connects care teams and patients through messaging and automated follow-up and medication reminders, supporting continuity of care and proactive engagement across the full healthcare journey.";
 
 
 // -------------------------------------
@@ -116,10 +247,55 @@ function extractFirstJsonObject(text) {
   return null;
 }
 
-function normalizeIaData(parsed, fallbackSummary = "") {
+function extractFirstJsonArray(text) {
+  const start = text.indexOf("[");
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i += 1) {
+    const char = text[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (char === "[") {
+      depth += 1;
+      continue;
+    }
+
+    if (char === "]") {
+      depth -= 1;
+
+      if (depth === 0) {
+        return text.slice(start, i + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function normalizeIaData(parsed, fallbackSummary = "", fallbackPrompt = "") {
   const next = {
     IA_JSON: null,
     IA_SUMMARY: fallbackSummary || "",
+    PROMPT: fallbackPrompt || "",
   };
 
   if (!parsed || typeof parsed !== "object") {
@@ -128,6 +304,10 @@ function normalizeIaData(parsed, fallbackSummary = "") {
 
   if (parsed.IA_SUMMARY && typeof parsed.IA_SUMMARY === "string") {
     next.IA_SUMMARY = parsed.IA_SUMMARY;
+  }
+
+  if (parsed.PROMPT && typeof parsed.PROMPT === "string") {
+    next.PROMPT = parsed.PROMPT;
   }
 
   if (parsed.IA_JSON) {
@@ -149,6 +329,161 @@ function normalizeIaData(parsed, fallbackSummary = "") {
   return next;
 }
 
+const DEFINE_FIELD_MAP = {
+  persona_id: "PERSONA_ID",
+  header: "HEADER",
+  background: "BACKGROUND",
+  demographics: "DEMOGRAPHICS",
+  personality: "PERSONALITY",
+  "behaviours & habits": "BEHAVIOURS & HABITS",
+  behaviors: "BEHAVIOURS & HABITS",
+  goals: "GOALS",
+  frustrations: "FRUSTRATIONS",
+  motivations: "MOTIVATIONS",
+  "previous experience": "PREVIOUS EXPERIENCE",
+  scenario: "SCENARIO",
+  "positive themes": "POSITIVE THEMES",
+  "negative themes": "NEGATIVE THEMES",
+  "needs & expectations": "NEEDS & EXPECTATIONS",
+};
+
+const DEFINE_REQUIRED_HINT_FIELDS = ["HEADER", "BACKGROUND", "NEEDS & EXPECTATIONS"];
+
+const DEFINE_ALLOWED_FIELDS = [
+  "PERSONA_ID",
+  "HEADER",
+  "BACKGROUND",
+  "DEMOGRAPHICS",
+  "PERSONALITY",
+  "BEHAVIOURS & HABITS",
+  "GOALS",
+  "FRUSTRATIONS",
+  "MOTIVATIONS",
+  "PREVIOUS EXPERIENCE",
+  "SCENARIO",
+  "POSITIVE THEMES",
+  "NEGATIVE THEMES",
+  "NEEDS & EXPECTATIONS",
+];
+
+function toAgentString(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value.trim();
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (item === null || item === undefined ? "" : String(item).trim()))
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  if (typeof value === "object") {
+    return JSON.stringify(value, null, 2);
+  }
+
+  return String(value).trim();
+}
+
+function normalizeDefinePersonaRecord(record) {
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    return null;
+  }
+
+  const normalized = {};
+
+  Object.entries(record).forEach(([key, value]) => {
+    const mappedKey = DEFINE_FIELD_MAP[String(key || "").trim().toLowerCase()] || key;
+    normalized[mappedKey] = toAgentString(value);
+  });
+
+  if (!DEFINE_REQUIRED_HINT_FIELDS.some((field) => normalized[field])) {
+    return null;
+  }
+
+  const ordered = {};
+  DEFINE_ALLOWED_FIELDS.forEach((field) => {
+    if (normalized[field]) {
+      ordered[field] = normalized[field];
+    }
+  });
+
+  return ordered;
+}
+
+function parseDefinePayload(value) {
+  if (!value) return [];
+
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeDefinePersonaRecord(item)).filter(Boolean);
+  }
+
+  if (typeof value === "object") {
+    if (Array.isArray(value.personas)) {
+      return parseDefinePayload(value.personas);
+    }
+
+    if (Array.isArray(value.define_outputs)) {
+      return parseDefinePayload(value.define_outputs);
+    }
+
+    const normalized = normalizeDefinePersonaRecord(value);
+    return normalized ? [normalized] : [];
+  }
+
+  if (typeof value === "string") {
+    const parsed = tryParseJson(value);
+    if (parsed) {
+      return parseDefinePayload(parsed);
+    }
+  }
+
+  return [];
+}
+
+function parseDefineRecordRawOutput(rawValue) {
+  if (!rawValue) return [];
+
+  if (typeof rawValue === "object") {
+    return parseDefinePayload(rawValue);
+  }
+
+  if (typeof rawValue !== "string") {
+    return [];
+  }
+
+  const directParsed = tryParseJson(rawValue);
+  if (directParsed) {
+    return parseDefinePayload(directParsed);
+  }
+
+  const arrayCandidate = extractFirstJsonArray(rawValue);
+  const arrayParsed = arrayCandidate && tryParseJson(arrayCandidate);
+  if (arrayParsed) {
+    return parseDefinePayload(arrayParsed);
+  }
+
+  const objectCandidate = extractFirstJsonObject(rawValue);
+  const objectParsed = objectCandidate && tryParseJson(objectCandidate);
+  if (objectParsed) {
+    return parseDefinePayload(objectParsed);
+  }
+
+  return [];
+}
+
+function dedupePersonas(personas) {
+  const seen = new Set();
+  const result = [];
+
+  for (const persona of personas) {
+    const key = (persona.PERSONA_ID || persona.HEADER || "").toLowerCase().trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(persona);
+  }
+
+  return result;
+}
+
 
 // -------------------------------------
 // POST
@@ -159,7 +494,7 @@ export async function POST(req) {
 
     const body = await req.json();
 
-    const { projectId } = body;
+    const { projectId, combinedPersonaOutput } = body;
 
     if (!projectId) {
 
@@ -190,7 +525,7 @@ const pool = await getPool();
         ?.problem_statement || "";
 
     // -------------------------------------
-    // GET GENERATED PERSONAS
+    // GET DEFINE PHASE OUTPUTS
     // -------------------------------------
     const personaResult = await pool
       .request()
@@ -202,40 +537,24 @@ WHERE project_id = @projectId
 ORDER BY created_at ASC
       `);
 
-    const personas = [];
+    const definePersonas = [];
+
+    const providedDefineOutputs = parseDefinePayload(combinedPersonaOutput);
+    if (providedDefineOutputs.length) {
+      definePersonas.push(...providedDefineOutputs);
+    }
 
     // -------------------------------------
-    // ADD PROBLEM STATEMENT FIRST
-    // -------------------------------------
-    personas.push({
-      PROBLEM_STATEMENT: problemStatement,
-    });
-
-    // -------------------------------------
-    // ADD ALL PERSONAS
+    // ADD ALL DEFINE RECORDS
     // -------------------------------------
     for (const row of personaResult.recordset) {
 
       if (!row.generated_output) continue;
 
       try {
-
-        let parsed =
-          typeof row.generated_output === "string"
-            ? JSON.parse(row.generated_output)
-            : row.generated_output;
-
-        // if array
-        if (Array.isArray(parsed)) {
-
-          parsed.forEach((p) => personas.push(p));
-
-        }
-
-        // if object
-        else if (typeof parsed === "object") {
-
-          personas.push(parsed);
+        const parsedPersonas = parseDefineRecordRawOutput(row.generated_output);
+        if (parsedPersonas.length) {
+          definePersonas.push(...parsedPersonas);
         }
 
       } catch (err) {
@@ -247,10 +566,17 @@ ORDER BY created_at ASC
       }
     }
 
-    if (personas.length <= 1) {
+    const defineOutputs = [
+      {
+        PROBLEM_STATEMENT: toAgentString(problemStatement),
+      },
+      ...dedupePersonas(definePersonas),
+    ];
+
+    if (defineOutputs.length <= 1) {
   return NextResponse.json({
     success: false,
-    error: "No personas found for this project",
+    error: "No define phase combined outputs found for this project",
   });
 }
     // -------------------------------------
@@ -261,29 +587,29 @@ ORDER BY created_at ASC
     );
 
     console.log(
-      JSON.stringify(personas, null, 2)
+      JSON.stringify(defineOutputs, null, 2)
     );
 
-    // -------------------------------------
-    // FORMAT INPUT
-    // -------------------------------------
-    const formattedInput =
-      formatPersonaInput(personas);
+    const formattedInput = formatPersonaInput(defineOutputs);
+    const fullPrompt = `${IA_PROMPT}\n\nINPUT:\n\n${formattedInput}`;
 
-    const fullPrompt = `
-${SYSTEM_PROMPT}
-
-INPUT:
-
-${formattedInput.slice(0, 12000)}
-`;
+    if (!USERNAME || !PASSWORD) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Agent credentials are missing. Set AGENT5I_USERNAME and AGENT5I_PASSWORD.",
+        },
+        { status: 500 }
+      );
+    }
 
     // -------------------------------------
     // PAYLOAD
     // -------------------------------------
     const payload = {
 
-      name: "IA Agent",
+      name: IA_AGENT_NAME,
 
       input_info: fullPrompt,
 
@@ -303,20 +629,51 @@ ${formattedInput.slice(0, 12000)}
     // -------------------------------------
     // API CALL
     // -------------------------------------
-    const response = await fetch(
-      WEBHOOK_URL,
-      {
-        method: "POST",
+    let response;
+    try {
+      response = await fetch(
+        WEBHOOK_URL,
+        {
+          method: "POST",
 
-        headers: {
-          "Content-Type": "application/json",
-        },
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
 
-        body: JSON.stringify(payload),
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(180000),
+        }
+      );
+    } catch (fetchErr) {
+      if (fetchErr?.name === "TimeoutError") {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Agent request timed out",
+          },
+          { status: 504 }
+        );
       }
-    );
 
-    const data = await response.json();
+      throw fetchErr;
+    }
+
+    const contentType = (response.headers.get("content-type") || "").toLowerCase();
+    const raw = await response.text();
+
+    if (!response.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Agent request failed (${response.status})`,
+          raw: raw.slice(0, 1000),
+        },
+        { status: response.status }
+      );
+    }
+
+    const data = tryParseJson(raw) || { raw, contentType };
 
     console.log(
       "\n=========== IA RESPONSE ==========="
@@ -332,12 +689,7 @@ ${formattedInput.slice(0, 12000)}
     // -------------------------------------
 // GET RAW RESPONSE
 // -------------------------------------
-const rawMessage =
-  data?.final_response ||
-  data?.message ||
-  data?.output ||
-  data?.result ||
-  data?.data;
+const rawMessage = data?.message;
     if (!rawMessage) {
 
       return NextResponse.json({
@@ -379,6 +731,7 @@ const rawMessage =
 let iaData = {
   IA_JSON: null,
   IA_SUMMARY: "",
+  PROMPT: "",
 };
 
 const directParsed = tryParseJson(cleaned);
@@ -394,6 +747,9 @@ if (directParsed) {
 
   const summaryMatch =
     cleaned.match(/IA_SUMMARY='([\s\S]*?)'/);
+
+  const promptMatch =
+    cleaned.match(/PROMPT='([\s\S]*?)'/);
 
   if (iaJsonMatch) {
 
@@ -418,6 +774,10 @@ if (directParsed) {
       summaryMatch[1];
   }
 
+  if (promptMatch) {
+    iaData.PROMPT = promptMatch[1];
+  }
+
   // CASE 3 → text before/after JSON object
   if (!iaData.IA_JSON) {
     const jsonCandidate = extractFirstJsonObject(cleaned);
@@ -427,7 +787,8 @@ if (directParsed) {
     if (extractedParsed) {
       iaData = normalizeIaData(
         extractedParsed,
-        iaData.IA_SUMMARY
+        iaData.IA_SUMMARY,
+        iaData.PROMPT
       );
     }
   }
@@ -436,22 +797,39 @@ if (directParsed) {
     // -------------------------------------
     // PARSE IA_JSON IF STRING
     // -------------------------------------
-    if (
-      typeof iaData?.IA_JSON === "string"
-    ) {
+    if (typeof iaData?.IA_JSON === "string") {
 
-      try {
-
-        iaData.IA_JSON = JSON.parse(
-          iaData.IA_JSON
-        );
-
-      } catch (err) {
-
-        console.error(
-          "Failed parsing IA_JSON"
-        );
+      if (!iaData.IA_JSON) {
+        return NextResponse.json({
+          success: false,
+          error: "Failed parsing IA_JSON: IA_JSON is empty",
+          raw: iaData,
+        });
       }
+
+      const parsedIaJson = tryParseJson(iaData.IA_JSON);
+
+      if (!parsedIaJson) {
+        return NextResponse.json({
+          success: false,
+          error: "Failed parsing IA_JSON: invalid JSON",
+          raw: iaData,
+        });
+      }
+
+      iaData.IA_JSON = parsedIaJson;
+    }
+
+    if (!iaData.IA_JSON) {
+      return NextResponse.json({
+        success: false,
+        error: "Agent returned invalid IA data.",
+        raw: iaData,
+      });
+    }
+
+    if (!iaData.PROMPT) {
+      iaData.PROMPT = fullPrompt;
     }
 
     // -------------------------------------
@@ -463,7 +841,7 @@ if (directParsed) {
 
       information_architecture: iaData,
 
-      sent_input: personas,
+      sent_input: defineOutputs,
     });
 
   } catch (err) {
