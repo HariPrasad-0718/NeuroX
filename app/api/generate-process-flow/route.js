@@ -158,10 +158,10 @@ export async function POST(req) {
       ...flow,
       nodes: flow.nodes.map((n) => ({ ...n, type: typeMap[n.type] || n.type })),
       edges: flow.edges.map((e) => ({
-        from: e.from || e.source,
-        to: e.to || e.target,
+        from: String(e.from || e.source || ""),
+        to: String(e.to || e.target || ""),
         label: e.label || "",
-      })),
+      })).filter((e) => e.from && e.to),
     };
 
     return NextResponse.json({ success: true, process_flow: normalizedFlow });
