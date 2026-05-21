@@ -3,7 +3,13 @@
 import { useState, useEffect } from "react";
 import { api } from "@/services/api";
 
-export function useProjects(userId) {
+export function useProjects(userId, options = {}) {
+  const {
+    requireUserId = true,
+    recentOnly = false,
+    limit,
+  } = options;
+
   const [projects, setProjects] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -14,10 +20,18 @@ export function useProjects(userId) {
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const fetchProjects = async () => {
+    if (requireUserId && !userId) {
+      setProjects([]);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     try {
-      const response = await api.getProjects();
+      const response = await api.getProjects(userId, {
+        recentOnly,
+        limit,
+      });
       if (response.success && response.data) {
         setProjects(response.data);
       }
@@ -51,7 +65,7 @@ export function useProjects(userId) {
   const updateProject = async (projectId, projectData) => {
     setUpdateLoading(true);
     try {
-      const response = await api.updateProject(projectId, projectData, userId || "u");
+      const response = await api.updateProject(projectId, projectData, userId || "");
       if (response.success) {
         setProjects((prev) =>
           prev.map((p) => (p.projectId === projectId ? response.data : p))
@@ -69,7 +83,7 @@ export function useProjects(userId) {
   const deleteProject = async (projectId) => {
     setDeleteLoading(true);
     try {
-      const response = await api.deleteProject(projectId, userId || "u");
+      const response = await api.deleteProject(projectId, userId || "");
       if (response.success) {
         setProjects((prev) => prev.filter((p) => p.projectId !== projectId));
         return { success: true };
@@ -84,7 +98,13 @@ export function useProjects(userId) {
 
   useEffect(() => {
     fetchProjects();
-  }, []);
+  }, [userId]);
+
+  useEffect(() => {
+    const handler = () => fetchProjects();
+    window.addEventListener("neurox:projects-updated", handler);
+    return () => window.removeEventListener("neurox:projects-updated", handler);
+  }, [userId]);
 
   return {
     projects,

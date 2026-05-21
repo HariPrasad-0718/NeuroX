@@ -1,20 +1,17 @@
-import { getPool } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 // GET /api/stages — Fetch all design thinking stages
 export async function GET() {
   try {
-    const pool = await getPool();
-
-    const result = await pool
-      .request()
-      .query("SELECT * FROM stages ORDER BY sequence_order ASC");
-
-    const stages = result.recordset.map((stage) => ({
-      stageId: stage.stage_id,
-      stageName: stage.stage_name,
-      sequenceOrder: stage.sequence_order,
-    }));
+    const stages = [
+      { stageId: "empathize", stageName: "Empathize", sequenceOrder: 1 },
+      { stageId: "define", stageName: "Define", sequenceOrder: 2 },
+      { stageId: "ideate", stageName: "Ideate", sequenceOrder: 3 },
+      { stageId: "prototype", stageName: "Prototype", sequenceOrder: 4 },
+      { stageId: "test", stageName: "Test", sequenceOrder: 5 },
+      { stageId: "implement", stageName: "Implement", sequenceOrder: 6 },
+      { stageId: "adopt", stageName: "Adopt", sequenceOrder: 7 },
+    ];
 
     return NextResponse.json({ success: true, data: stages });
   } catch (error) {
