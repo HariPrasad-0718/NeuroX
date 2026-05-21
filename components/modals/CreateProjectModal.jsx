@@ -17,6 +17,7 @@ export function CreateProjectModal({
   const [targetDate, setTargetDate] = useState("");
   const [sharedWith, setSharedWith] = useState("");
   const [status, setStatus] = useState("In Progress");
+  const [domain, setDomain] = useState("");
 
   const [personas, setPersonas] = useState([
     { name: "", description: "" },
@@ -39,6 +40,7 @@ export function CreateProjectModal({
       }
 
       setSharedWith(editingProject.sharedWith || "");
+      setDomain(editingProject.domain || "");
       setStatus(editingProject.status || "In Progress");
 
       if (editingProject.personas) {
@@ -57,6 +59,7 @@ export function CreateProjectModal({
     setTargetDate("");
     setSharedWith("");
     setStatus("In Progress");
+    setDomain("");
     setPersonas([{ name: "", description: "" }]);
   };
 
@@ -169,6 +172,18 @@ export function CreateProjectModal({
                 />
               </div>
             
+              {/* Domain */}
+              <div className="mb-4">
+                <label className="mb-2 block text-sm font-medium text-slate-700">Domain</label>
+                <input
+                  type="text"
+                  placeholder="Enter the domain to which the project is related to (e.g. Healthcare, Finance, Education)"
+                  value={domain}
+                  onChange={(e) => setDomain(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-700 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200"
+                />
+              </div>
+
               {/* Personas */}
               <div className="mb-4">
                 <label className="mb-2 block text-sm font-medium text-slate-700">User Groups *</label>
