@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, MoreVertical, Trash2 } from "lucide-react";
+import { ChevronRight, MoreVertical, Trash2, Pencil } from "lucide-react";
 import { useProjects } from "@/hooks/useProjects";
 import { useTemplatesSummary } from "@/hooks/useTemplatesSummary";
 import { api } from "@/services/api";
@@ -23,6 +23,10 @@ const COLORS = [
   "from-[#6366F1] to-[#818CF8]",
 ];
 
+function dispatchEditProject(projectId) {
+  window.dispatchEvent(new CustomEvent("neurox:edit-project", { detail: { projectId } }));
+}
+
 export default function HomePage() {
   const router = useRouter();
   const [userPersona, setUserPersona] = useState("designer");
@@ -32,18 +36,17 @@ export default function HomePage() {
   const [openMenuIndex, setOpenMenuIndex] = useState(null);
   const [descriptionModal, setDescriptionModal] = useState(null);
 
+  const menuRef = useRef(null);
+
   const {
     projects,
     isLoading: isLoadingProjects,
     error: projectsError,
     deleteProject,
     deleteLoading,
-  } = useProjects(userId, {
-    requireUserId: false,
-    recentOnly: true,
-    limit: 6,
-  });
-  const { summary: templatesSummary, isLoading: isSummaryLoading } = useTemplatesSummary();
+  } = useProjects(userId, { requireUserId: false, recentOnly: true, limit: 6 });
+
+  const { summary: templatesSummary } = useTemplatesSummary();
 
   useEffect(() => {
     const hydrate = async () => {
@@ -58,9 +61,20 @@ export default function HomePage() {
       }
       fetchStages();
     };
-
     hydrate();
   }, []);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (openMenuIndex === null) return;
+    const handler = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setOpenMenuIndex(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [openMenuIndex]);
 
   const fetchStages = async () => {
     setIsLoadingStages(true);
@@ -88,27 +102,35 @@ export default function HomePage() {
     status: p.status || "In Progress",
     startDate: p.startDate,
     color: COLORS[i % COLORS.length],
-    isRealData: true,
   }));
-
-  const recentProjects = mappedProjects;
 
   const normalizeDescription = (text) => String(text || "").replace(/\s+/g, " ").trim();
 
   const handleDeleteProject = async (projectId) => {
-    const ok = window.confirm("Delete this project?");
-    if (!ok) return;
-
+    if (!window.confirm("Delete this project?")) return;
     const result = await deleteProject(projectId);
-    if (!result.success) {
-      alert(`Failed to delete project: ${result.error}`);
-    }
-
+    if (!result.success) alert(`Failed to delete: ${result.error}`);
     setOpenMenuIndex(null);
   };
 
+  const handleEditProject = (projectId) => {
+    setOpenMenuIndex(null);
+    dispatchEditProject(projectId);
+  };
+
+  const statusBadge = (status) =>
+    status === "Completed"
+      ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
+      : "bg-amber-100 text-amber-700 border border-amber-200";
+
   if (userPersona === "manager") {
-    return <ManagerHome projects={mappedProjects} onProjectClick={(p) => router.push(`/projects/${p.projectId}`)} onExpertsClick={() => router.push("/sessions")} />;
+    return (
+      <ManagerHome
+        projects={mappedProjects}
+        onProjectClick={(p) => router.push(`/projects/${p.projectId}`)}
+        onExpertsClick={() => router.push("/sessions")}
+      />
+    );
   }
 
   return (
@@ -117,8 +139,10 @@ export default function HomePage() {
       {/* Recent Projects */}
       <div className="mb-12 mt-4">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-semibold text-[#1f2937]">Recent Projects</h2>
-          {isLoadingProjects && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#702dff]" />}
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-semibold text-[#1f2937]">Recent Projects</h2>
+            {isLoadingProjects && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#702dff]" />}
+          </div>
         </div>
 
         {projectsError && (
@@ -127,14 +151,19 @@ export default function HomePage() {
           </div>
         )}
 
-        {isLoadingProjects && recentProjects.length === 0 ? (
+        {isLoadingProjects && mappedProjects.length === 0 ? (
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#702dff]" />
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {recentProjects.map((project, index) => (
-              <div key={project.projectId || index} onClick={() => router.push(`/projects/${project.projectId}`)} className={`h-[248px] bg-gradient-to-br ${project.color} rounded-2xl shadow-md ring-1 ring-white/20 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 relative overflow-hidden group cursor-pointer`}>
+          /* ── CARD VIEW ── */
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" ref={menuRef}>
+            {mappedProjects.map((project, index) => (
+              <div
+                key={project.projectId || index}
+                onClick={() => router.push(`/projects/${project.projectId}`)}
+                className={`h-[248px] bg-gradient-to-br ${project.color} rounded-2xl shadow-md ring-1 ring-white/20 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden cursor-pointer`}
+              >
                 <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-black/10" />
                 <div className="p-5 relative h-full flex flex-col">
                   <div className="flex items-start justify-between mb-5 gap-3">
@@ -143,18 +172,26 @@ export default function HomePage() {
                       <p className="text-sm text-white/90 truncate">{project.company}</p>
                     </div>
 
+                    {/* Card 3-dot menu */}
                     <div className="relative" onClick={(e) => e.stopPropagation()}>
                       <button
-                        className="w-8 h-8 rounded-lg bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white flex items-center justify-center"
+                        className="w-8 h-8 rounded-lg bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white flex items-center justify-center transition-colors duration-200"
                         onClick={() => setOpenMenuIndex((prev) => (prev === project.projectId ? null : project.projectId))}
                       >
                         <MoreVertical className="w-4 h-4" />
                       </button>
 
                       {openMenuIndex === project.projectId && (
-                        <div className="absolute top-10 right-0 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20 min-w-[140px]">
+                        <div className="absolute top-10 right-0 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-20 min-w-[140px]">
                           <button
-                            className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:opacity-60"
+                            className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors duration-150"
+                            onClick={() => handleEditProject(project.projectId)}
+                          >
+                            <Pencil className="w-4 h-4 text-gray-400" />
+                            Edit
+                          </button>
+                          <button
+                            className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:opacity-60 transition-colors duration-150"
                             onClick={() => handleDeleteProject(project.projectId)}
                             disabled={deleteLoading}
                           >
@@ -165,18 +202,17 @@ export default function HomePage() {
                       )}
                     </div>
                   </div>
-                  <span className={`inline-flex w-fit self-start text-xs px-3 py-1.5 rounded-full font-medium mb-4 ${project.status === "Completed" ? "bg-emerald-500 text-white" : "bg-amber-500 text-white"}`}>{project.status}</span>
+
+                  <span className={`inline-flex w-fit self-start text-xs px-3 py-1.5 rounded-full font-medium mb-4 ${project.status === "Completed" ? "bg-emerald-500 text-white" : "bg-amber-500 text-white"}`}>
+                    {project.status}
+                  </span>
                   <p className="text-sm text-white/95 line-clamp-1">{normalizeDescription(project.description)}</p>
                   {normalizeDescription(project.description).length > 0 && (
                     <button
-                      className="mt-2 self-start text-xs font-semibold text-white/95 underline underline-offset-4 decoration-white/60 hover:decoration-white"
+                      className="mt-2 self-start text-xs font-semibold text-white/95 underline underline-offset-4 decoration-white/60 hover:decoration-white transition-all duration-150"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setDescriptionModal({
-                          title: project.title,
-                          company: project.company,
-                          description: String(project.description || "No description").trim(),
-                        });
+                        setDescriptionModal({ title: project.title, company: project.company, description: String(project.description || "").trim() });
                       }}
                     >
                       Read more
@@ -189,28 +225,19 @@ export default function HomePage() {
         )}
       </div>
 
+      {/* Description modal */}
       {descriptionModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={() => setDescriptionModal(null)}
-        >
-          <div
-            className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setDescriptionModal(null)}>
+          <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">{descriptionModal.title}</h3>
                 <p className="mt-1 text-sm text-gray-500">{descriptionModal.company}</p>
               </div>
-              <button
-                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
-                onClick={() => setDescriptionModal(null)}
-              >
+              <button className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50" onClick={() => setDescriptionModal(null)}>
                 Close
               </button>
             </div>
-
             <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
               <p className="whitespace-pre-wrap text-sm leading-6 text-gray-700">{descriptionModal.description}</p>
             </div>
@@ -226,7 +253,7 @@ export default function HomePage() {
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#702dff]" />
           </div>
         ) : (
-<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
             {designStages.map((stage, index) => {
               const count = templatesSummary[stage.stageId?.toLowerCase()] || 3;
               return (
@@ -251,8 +278,6 @@ export default function HomePage() {
 
       {/* Feature Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-        {/* Card 1 */}
         <div className="bg-white rounded-xl shadow-sm border border-[#e5e7eb] overflow-hidden">
           <div className="flex flex-col sm:flex-row gap-4 p-6">
             <div className="w-full sm:w-48 h-40 bg-gray-200">
@@ -268,7 +293,6 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Card 2 (ADDED BACK — NO OTHER CHANGES) */}
         <div className="bg-white rounded-xl shadow-sm border border-[#e5e7eb] overflow-hidden">
           <div className="flex flex-col sm:flex-row gap-4 p-6">
             <div className="w-full sm:w-48 h-40 bg-gray-200">
@@ -283,7 +307,6 @@ export default function HomePage() {
             </div>
           </div>
         </div>
-
       </div>
 
     </div>

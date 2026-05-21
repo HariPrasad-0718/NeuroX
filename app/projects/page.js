@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MoreVertical, Trash2 } from "lucide-react";
+import { MoreVertical, Trash2, LayoutGrid, List, Eye, Calendar } from "lucide-react";
 import { useProjects } from "@/hooks/useProjects";
 import { api } from "@/services/api";
 
@@ -13,10 +13,16 @@ const COLORS = [
   "from-[#10B981] to-[#34D399]",
 ];
 
+const statusBadge = (status) =>
+  status === "Completed"
+    ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
+    : "bg-amber-100 text-amber-700 border border-amber-200";
+
 export default function ProjectsPage() {
   const router = useRouter();
   const [userId, setUserId] = useState("");
   const [openMenuProjectId, setOpenMenuProjectId] = useState(null);
+  const [viewMode, setViewMode] = useState("list");
 
   const {
     projects,
@@ -37,21 +43,15 @@ export default function ProjectsPage() {
       } catch {
         // no-op; redirect below
       }
-
       router.push("/login");
     };
-
     hydrate();
   }, [router]);
 
   const handleDelete = async (projectId) => {
-    const ok = window.confirm("Delete this project?");
-    if (!ok) return;
-
+    if (!window.confirm("Delete this project?")) return;
     const result = await deleteProject(projectId);
-    if (!result.success) {
-      alert(`Failed to delete project: ${result.error}`);
-    }
+    if (!result.success) alert(`Failed to delete project: ${result.error}`);
     setOpenMenuProjectId(null);
   };
 
@@ -67,8 +67,24 @@ export default function ProjectsPage() {
 
   return (
     <div className="flex-1 bg-[#fafafa]">
-      <div className="px-8 py-6">
+      <div className="px-8 py-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-gray-900">Projects</h1>
+
+        {/* View Toggle */}
+        <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+          <button
+            onClick={() => setViewMode("card")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${viewMode === "card" ? "bg-white text-[#6366F1] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+          >
+            <LayoutGrid className="w-4 h-4" /><span>Card</span>
+          </button>
+          <button
+            onClick={() => setViewMode("list")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${viewMode === "list" ? "bg-white text-[#6366F1] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+          >
+            <List className="w-4 h-4" /><span>List</span>
+          </button>
+        </div>
       </div>
 
       <div className="px-8 pb-8">
@@ -81,7 +97,7 @@ export default function ProjectsPage() {
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {Array.from({ length: 6 }).map((_, idx) => (
-              <div key={`projects-page-skeleton-${idx}`} className="rounded-2xl p-6 bg-white border border-gray-200 shadow-sm">
+              <div key={`skeleton-${idx}`} className="rounded-2xl p-6 bg-white border border-gray-200 shadow-sm">
                 <div className="flex items-start justify-between mb-5 gap-3">
                   <div className="flex-1 space-y-2">
                     <div className="h-5 w-3/4 rounded skeleton-shimmer" />
@@ -102,7 +118,8 @@ export default function ProjectsPage() {
             <h2 className="text-lg font-semibold text-[#1f2937] mb-1">No projects yet</h2>
             <p className="text-sm text-[#6b7280]">Create a project from the header to see it here.</p>
           </div>
-        ) : (
+        ) : viewMode === "card" ? (
+          /* ── CARD VIEW ── */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {mappedProjects.map((project) => (
               <div
@@ -114,14 +131,12 @@ export default function ProjectsPage() {
                   className="absolute inset-0 bg-black/5 group-hover:bg-black/0 transition-all duration-300 cursor-pointer"
                   onClick={() => router.push(`/projects/${project.projectId}`)}
                 />
-
                 <div className="p-6 relative">
                   <div className="flex items-start justify-between mb-5 gap-3">
                     <div className="flex-1 min-w-0 cursor-pointer" onClick={() => router.push(`/projects/${project.projectId}`)}>
                       <h3 className="font-semibold text-white mb-2 truncate text-lg">{project.title}</h3>
                       <p className="text-sm text-white/90 truncate">{project.company}</p>
                     </div>
-
                     <div className="relative">
                       <button
                         className="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 text-white flex items-center justify-center"
@@ -129,7 +144,6 @@ export default function ProjectsPage() {
                       >
                         <MoreVertical className="w-4 h-4" />
                       </button>
-
                       {openMenuProjectId === project.projectId && (
                         <div className="absolute top-10 right-0 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20 min-w-[140px]">
                           <button
@@ -144,18 +158,73 @@ export default function ProjectsPage() {
                       )}
                     </div>
                   </div>
-
-                  <span className={`inline-flex w-fit self-start text-xs px-3 py-1.5 rounded-full font-medium mb-4 ${project.status === "Completed" ? "bg-emerald-500 text-white" : "bg-amber-500 text-white"}`}>
+                  <span className={`inline-flex w-fit text-xs px-3 py-1.5 rounded-full font-medium mb-4 ${project.status === "Completed" ? "bg-emerald-500 text-white" : "bg-amber-500 text-white"}`}>
                     {project.status}
                   </span>
-
                   <p className="text-sm text-white/95 mb-6 line-clamp-2 leading-relaxed cursor-pointer" onClick={() => router.push(`/projects/${project.projectId}`)}>
                     {project.description}
                   </p>
-
                   <span className="text-xs text-white/90 font-medium">
                     {project.startDate ? `Started ${new Date(project.startDate).toLocaleDateString()}` : ""}
                   </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          /* ── LIST VIEW ── */
+          <div className="flex flex-col gap-3">
+            {mappedProjects.map((project) => (
+              <div
+                key={project.projectId}
+                className="bg-white border border-gray-100 rounded-2xl px-5 py-4 flex items-center gap-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
+                onClick={() => router.push(`/projects/${project.projectId}`)}
+              >
+                <div className={`w-1 h-12 rounded-full bg-gradient-to-b ${project.color} flex-shrink-0`} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="font-semibold text-gray-900 truncate text-sm">{project.title}</h3>
+                    <span className={`inline-flex text-xs px-2.5 py-0.5 rounded-full font-medium flex-shrink-0 ${statusBadge(project.status)}`}>
+                      {project.status}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 truncate mb-1">{project.company}</p>
+                  <p className="text-xs text-gray-400 truncate">{project.description}</p>
+                </div>
+                {project.startDate && (
+                  <div className="hidden sm:flex items-center gap-1.5 text-xs text-gray-400 flex-shrink-0">
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>{new Date(project.startDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={() => router.push(`/projects/${project.projectId}`)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#6366F1]/10 text-[#6366F1] text-xs font-medium hover:bg-[#6366F1] hover:text-white transition-all duration-200"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    View
+                  </button>
+                  <div className="relative">
+                    <button
+                      className="w-8 h-8 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 flex items-center justify-center transition-all duration-200"
+                      onClick={() => setOpenMenuProjectId((prev) => (prev === project.projectId ? null : project.projectId))}
+                    >
+                      <MoreVertical className="w-4 h-4" />
+                    </button>
+                    {openMenuProjectId === project.projectId && (
+                      <div className="absolute top-10 right-0 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20 min-w-[140px]">
+                        <button
+                          className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:opacity-60"
+                          onClick={() => handleDelete(project.projectId)}
+                          disabled={deleteLoading}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}

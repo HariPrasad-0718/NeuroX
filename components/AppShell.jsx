@@ -152,14 +152,37 @@ if (data?.success) {
     }
   };
 
+  // Listen for edit-project events dispatched from dashboard cards/list rows
+  useEffect(() => {
+    const handler = async (e) => {
+      const projectId = e.detail?.projectId;
+      if (!projectId) return;
+      try {
+        const res = await api.getFullProject(projectId);
+        if (res.success) {
+          setEditingProject(res.data);
+          setShowCreateModal(true);
+        }
+      } catch (err) {
+        console.error("Failed to load project for editing:", err);
+      }
+    };
+    window.addEventListener("neurox:edit-project", handler);
+    return () => window.removeEventListener("neurox:edit-project", handler);
+  }, []);
+
   const handleCreateProject = async (projectData) => {
   if (editingProject?.projectId) {
-    const result = await updateProject(editingProject.projectId, projectData);
-    if (result.success) {
-      refetchProjects();
-      window.dispatchEvent(new Event("neurox:projects-updated"));
-    } else {
-      alert(`Failed to update: ${result.error}`);
+    try {
+      const result = await api.updateProjectById(editingProject.projectId, projectData);
+      if (result.success) {
+        refetchProjects();
+        window.dispatchEvent(new Event("neurox:projects-updated"));
+      } else {
+        alert(`Failed to update: ${result.error?.message || result.error}`);
+      }
+    } catch (err) {
+      alert(`Failed to update: ${err.message}`);
     }
   } else {
     try {

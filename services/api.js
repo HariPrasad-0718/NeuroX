@@ -124,6 +124,10 @@ export const api = {
   getProjectById: (projectId) =>
     fetchApi(`projects?projectId=${projectId}`, { method: "GET" }),
 
+  // Fetch full project + personas for edit modal
+  getFullProject: (projectId) =>
+    fetchApi(`projects/${projectId}`, { method: "GET" }),
+
   createProject: (projectData, userId) =>
     fetchApi(`projects?userId=${userId}`, {
       method: "POST",
@@ -136,17 +140,18 @@ export const api = {
       body: JSON.stringify(projectData),
     }),
 
-     updateProjectProgress: (
-    projectId,
-    data
-  ) =>
-    fetchApi(
-      `projects/${projectId}/progress`,
-      {
-        method: "PUT",
-        body: JSON.stringify(data),
-      }
-    ),
+  // PUT /api/projects/[id] — update project + personas (used by Edit modal)
+  updateProjectById: (projectId, projectData) =>
+    fetchApi(`projects/${projectId}`, {
+      method: "PUT",
+      body: JSON.stringify(projectData),
+    }),
+
+  updateProjectProgress: (projectId, data) =>
+    fetchApi(`projects/${projectId}/progress`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
 
   deleteProject: (projectId, userId) =>
     fetchApi(`projects?projectId=${projectId}&userId=${userId}`, {
