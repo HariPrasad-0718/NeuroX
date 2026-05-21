@@ -43,6 +43,48 @@ function extractPersonaName(persona) {
 // MAIN API
 // ======================================================
 
+export async function GET(req) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const projectId = Number(searchParams.get("projectId"));
+
+    if (!projectId) {
+      return NextResponse.json({ success: false, error: "projectId required" }, { status: 400 });
+    }
+
+    const pool = await getPool();
+
+    const [psResult, gpResult] = await Promise.all([
+      pool
+        .request()
+        .input("projectId", sql.Int, projectId)
+        .query(`SELECT problem_statement FROM problem_statements WHERE project_id = @projectId`),
+      pool
+        .request()
+        .input("projectId", sql.Int, projectId)
+        .query(`SELECT generated_output, behaviour_and_habits FROM generated_personass WHERE project_id = @projectId`),
+    ]);
+
+    if (!gpResult.recordset.length) {
+      return NextResponse.json({ success: true, exists: false });
+    }
+
+    const problemStatement = psResult.recordset[0]?.problem_statement || "";
+    const personas = gpResult.recordset
+      .map((row) => {
+        try {
+          const card = JSON.parse(row.generated_output);
+          if (!card.behaviours && row.behaviour_and_habits) card.behaviours = row.behaviour_and_habits;
+          return card;
+        } catch { return null; }
+      })
+      .filter(Boolean);
+
+    return NextResponse.json({ success: true, exists: true, problemStatement, personas });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
 export async function POST(req) {
   try {
     const body = await req.json();
@@ -168,6 +210,12 @@ console.log("PERSONAS:", personas);
         )
 
         .input(
+          "behaviourAndHabits",
+          sql.NVarChar(sql.MAX),
+          toText(persona.behaviours)
+        )
+
+        .input(
           "goals",
           sql.NVarChar(sql.MAX),
           toText(persona.goals)
@@ -223,6 +271,7 @@ console.log("PERSONAS:", personas);
             background,
             scenario_text,
             personality,
+            behaviour_and_habits,
             goals,
             frustrations,
             motivations,
@@ -239,6 +288,7 @@ console.log("PERSONAS:", personas);
             @background,
             @scenarioText,
             @personality,
+            @behaviourAndHabits,
             @goals,
             @frustrations,
             @motivations,

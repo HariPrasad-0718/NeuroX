@@ -337,42 +337,43 @@ export default function InformationArchitecturePage() {
   const [zoomLevel, setZoomLevel] = useState(DEFAULT_ZOOM_LEVEL);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [regenerating, setRegenerating] = useState(false);
+  const [iaError, setIaError] = useState("");
   const viewportRef = useRef(null);
   const router = useRouter();
   const searchParams = useSearchParams();
   const projectId = searchParams.get("projectId");
 
   useEffect(() => {
-    const stored = sessionStorage.getItem("informationArchitectureData");
-    const storedPrompt = sessionStorage.getItem("informationArchitecturePrompt");
-    const storedRawResponse = sessionStorage.getItem("informationArchitectureRawResponse");
-
-    if (stored && stored !== "undefined" && stored !== "null") {
-      let parsed;
+    if (!projectId) { setLoading(false); return; }
+    const loadIA = async () => {
+      setLoading(true);
       try {
-        parsed = JSON.parse(stored);
-      } catch {
-        parsed = null;
-      }
-      if (!parsed) return;
-      if (!parsed?.PROMPT && storedPrompt) {
-        parsed.PROMPT = storedPrompt;
-      }
-      if (!parsed?.RAW_RESPONSE && storedRawResponse) {
-        parsed.RAW_RESPONSE = storedRawResponse;
-      }
-      setIaData(parsed);
-      // Mark ideate stage complete
-      if (projectId) {
-        fetch(`/api/projects/${projectId}/progress`, {
-          method: "PUT",
+        const res = await fetch("/api/generate-information-architecture", {
+          method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ stage: "ideate", progress: 100 }),
-        }).then(() => window.dispatchEvent(new Event("neurox:progress-updated")))
-          .catch(() => {});
+          body: JSON.stringify({ projectId }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          setIaData(data.information_architecture);
+          fetch(`/api/projects/${projectId}/progress`, {
+            method: "PUT", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ stage: "ideate", progress: 100 }),
+          }).then(() => window.dispatchEvent(new Event("neurox:progress-updated"))).catch(() => {});
+        } else {
+          setIaError(data.error || "Failed to load IA");
+        }
+      } catch (err) {
+        setIaError(err.message || "Failed to load IA");
+      } finally {
+        setLoading(false);
       }
-    }
+    };
+    loadIA();
   }, [projectId]);
+
 
   const stats = useMemo(() => {
     if (!iaData?.IA_JSON) {
@@ -458,10 +459,38 @@ export default function InformationArchitecturePage() {
     };
   }, [isPromptModalOpen]);
 
-  if (!iaData) {
+  const handleRegenerate = async () => {
+    if (!projectId) return;
+    setRegenerating(true);
+    setIaError("");
+    try {
+      const res = await fetch("/api/generate-information-architecture", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, regenerate: true }),
+      });
+      const data = await res.json();
+      if (data.success) setIaData(data.information_architecture);
+      else setIaError(data.error || "Regeneration failed");
+    } catch (err) {
+      setIaError(err.message || "Regeneration failed");
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p>No Information Architecture Found</p>
+        <p className="text-slate-500">Loading Information Architecture...</p>
+      </div>
+    );
+  }
+
+  if (!iaData) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3">
+        <p className="text-slate-500">{iaError || "No Information Architecture found."}</p>
       </div>
     );
   }
@@ -598,6 +627,16 @@ export default function InformationArchitecturePage() {
 
   <div className="flex flex-wrap items-center gap-2">
     
+    <button
+      type="button"
+      onClick={handleRegenerate}
+      disabled={regenerating}
+      className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 text-sm font-semibold text-white transition hover:bg-white/20 disabled:opacity-60"
+    >
+      <RotateCcw className="h-4 w-4" />
+      {regenerating ? "Regenerating..." : "Regenerate"}
+    </button>
+
     <button
       type="button"
       onClick={handleDownloadIA}

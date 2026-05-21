@@ -423,6 +423,7 @@ export default function DefinePhasePage() {
   const [activeIntervieweeId, setActiveIntervieweeId] = useState(null);
   const [agentCardsByPersona, setAgentCardsByPersona] = useState({});
   const [isGeneratingIA, setIsGeneratingIA] = useState(false);
+  const [loadedFromDb, setLoadedFromDb] = useState(false);
   const [iaError, setIaError] = useState("");
 
   useEffect(() => {
@@ -441,6 +442,21 @@ export default function DefinePhasePage() {
         setProjectName(nextPersonas[0]?.projectName || "");
         setActivePersonaId(nextPersonas[0]?.personaId ?? null);
         setActiveIntervieweeId(nextPersonas[0]?.outputs?.[0]?.intervieweeId ?? null);
+
+        // Check DB for already-generated persona cards
+        const savedRes = await fetch(`/api/save-generated-persona?projectId=${projectId}`);
+        const savedData = await savedRes.json();
+        if (savedData.success && savedData.exists && savedData.personas?.length) {
+          const cards = {};
+          savedData.personas.forEach((card, i) => {
+            const personaId = nextPersonas[i]?.personaId;
+            if (personaId != null) cards[personaId] = normalizeAgentCard(card);
+          });
+          setAgentCardsByPersona(cards);
+          setProblemStatement(savedData.problemStatement || "");
+          setGenerated(true);
+          setLoadedFromDb(true);
+        }
       } catch (err) {
         setError(err.message || "Failed to fetch empathy data");
       } finally {
@@ -525,6 +541,8 @@ await fetch("/api/save-generated-persona", {
 
       personality: card.personality,
 
+      behaviours: card.behaviours,
+
       goals: card.goals,
 
       frustrations: card.frustrations,
@@ -599,30 +617,10 @@ await fetch("/api/save-generated-persona", {
     setIaError("");
 
     try {
-      const personaPayload = Object.values(agentCardsByPersona || {}).map((card, index) => ({
-        persona_id: card?.name ? String(index + 1).padStart(2, "0") : "",
-        header: card?.header || card?.name || "",
-        background: card?.background || "",
-        demographics: card?.demographics || "",
-        personality: card?.personality || [],
-        "behaviours & habits": card?.behaviours || [],
-        goals: card?.goals || [],
-        frustrations: card?.frustrations || [],
-        motivations: card?.motivations || [],
-        "previous experience": card?.previousExperience || [],
-        scenario: card?.scenario || "",
-        "positive themes": card?.positiveThemes || [],
-        "negative themes": card?.negativeThemes || [],
-        "needs & expectations": card?.needs || [],
-      }));
-
       const agentRes = await fetch("/api/generate-information-architecture", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId,
-          combinedPersonaOutput: personaPayload.length ? JSON.stringify(personaPayload) : "",
-        }),
+        body: JSON.stringify({ projectId }),
       });
 
       const agentData = await agentRes.json();
@@ -668,7 +666,8 @@ await fetch("/api/save-generated-persona", {
     if (!generated) return;
     const activeProblem = agentCardsByPersona?.[activePersonaId]?.problemStatement;
     const fallbackProblem = Object.values(agentCardsByPersona || {}).find((card) => String(card?.problemStatement || "").trim())?.problemStatement;
-    setProblemStatement(activeProblem || fallbackProblem || "");
+    const resolved = activeProblem || fallbackProblem || "";
+    if (resolved) setProblemStatement(resolved);
   }, [generated, activePersonaId, agentCardsByPersona]);
 
   const hasAnyOutput = useMemo(
@@ -702,7 +701,7 @@ await fetch("/api/save-generated-persona", {
           {projectName ? <p className="text-sm text-gray-500 mt-0.5">{projectName}</p> : null}
         </div>
 
-        {!loading ? (
+        {!loading && !loadedFromDb ? (
           <button
             onClick={handleGenerate}
             disabled={generating || !personas.length}

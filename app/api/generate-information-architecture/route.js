@@ -337,6 +337,16 @@ const DEFINE_FIELD_MAP = {
   personality: "PERSONALITY",
   "behaviours & habits": "BEHAVIOURS & HABITS",
   behaviors: "BEHAVIOURS & HABITS",
+  behaviours: "BEHAVIOURS & HABITS",
+  needs: "NEEDS & EXPECTATIONS",
+  previousexperience: "PREVIOUS EXPERIENCE",
+  previousExperience: "PREVIOUS EXPERIENCE",
+  positivethemes: "POSITIVE THEMES",
+  positiveThemes: "POSITIVE THEMES",
+  negativethemes: "NEGATIVE THEMES",
+  negativeThemes: "NEGATIVE THEMES",
+  personaname: "HEADER",
+  name: "HEADER",
   goals: "GOALS",
   frustrations: "FRUSTRATIONS",
   motivations: "MOTIVATIONS",
@@ -494,7 +504,7 @@ export async function POST(req) {
 
     const body = await req.json();
 
-    const { projectId, combinedPersonaOutput } = body;
+    const { projectId, combinedPersonaOutput, regenerate } = body;
 
     if (!projectId) {
 
@@ -508,6 +518,22 @@ export async function POST(req) {
     // DB CONNECTION
     // -------------------------------------
 const pool = await getPool();
+
+    // -------------------------------------
+    // CHECK EXISTING IA
+    // -------------------------------------
+    if (!regenerate) {
+      const existingIA = await pool.request()
+        .input("projectId", sql.Int, Number(projectId))
+        .query(`SELECT TOP 1 ia FROM InformationArchitecture WHERE project_id = @projectId ORDER BY created_at DESC`);
+      if (existingIA.recordset.length) {
+        try {
+          const stored = JSON.parse(existingIA.recordset[0].ia);
+          return NextResponse.json({ success: true, information_architecture: stored, fromDb: true });
+        } catch { /* fall through to regenerate */ }
+      }
+    }
+
     // -------------------------------------
     // GET PROBLEM STATEMENT
     // -------------------------------------
@@ -831,6 +857,23 @@ if (directParsed) {
     if (!iaData.PROMPT) {
       iaData.PROMPT = fullPrompt;
     }
+
+    // -------------------------------------
+    // SUCCESS
+    // -------------------------------------
+    // -------------------------------------
+    // SAVE IA TO DB (UPSERT)
+    // -------------------------------------
+    try {
+      await pool.request()
+        .input("projectId", sql.Int, Number(projectId))
+        .input("ia", sql.NVarChar(sql.MAX), JSON.stringify(iaData))
+        .query(`MERGE InformationArchitecture AS target
+          USING (SELECT @projectId AS project_id, @ia AS ia) AS source
+          ON target.project_id = source.project_id
+          WHEN MATCHED THEN UPDATE SET ia = source.ia, created_at = GETDATE()
+          WHEN NOT MATCHED THEN INSERT (project_id, ia) VALUES (source.project_id, source.ia);`);
+    } catch (dbErr) { console.error("IA DB save error:", dbErr); }
 
     // -------------------------------------
     // SUCCESS
