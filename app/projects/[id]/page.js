@@ -449,35 +449,11 @@ const handleGenerateProcessFlow = async () => {
   setProcessFlowError("");
 
   try {
-    let combinedOutput = "";
-    try {
-      const res = await fetch(
-        `/api/personas?projectId=${projectId}&aggregateGenerated=true`
-      );
-      const data = await res.json();
-      if (data?.success) combinedOutput = data?.data?.combinedOutput || "";
-    } catch (_) {}
-
-
+    console.log("Sending generate process flow request:", { projectId });
     const agentRes = await fetch("/api/generate-process-flow", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-
-      body: JSON.stringify({
-        project_description: project?.projectDescription,
-        empathy_map: combinedOutput,
-        persona_name: finalPersonaCard?.name,
-        background: finalPersonaCard?.background,
-        demographics: finalPersonaCard?.demographics,
-        scenario: finalPersonaCard?.scenario,
-        personality: finalPersonaCard?.personality,
-        goals: finalPersonaCard?.goals,
-        frustrations: finalPersonaCard?.frustrations,
-        motivations: finalPersonaCard?.motivations,
-        needs: finalPersonaCard?.needs,
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId }),
     });
 
     const agentData = await agentRes.json();
