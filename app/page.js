@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, MoreVertical, Edit2, Trash2 } from "lucide-react";
+import { ChevronRight, MoreVertical, Trash2, Pencil } from "lucide-react";
 import { useProjects } from "@/hooks/useProjects";
 import { useTemplatesSummary } from "@/hooks/useTemplatesSummary";
 import { api } from "@/services/api";
@@ -23,24 +23,58 @@ const COLORS = [
   "from-[#6366F1] to-[#818CF8]",
 ];
 
+function dispatchEditProject(projectId) {
+  window.dispatchEvent(new CustomEvent("neurox:edit-project", { detail: { projectId } }));
+}
+
 export default function HomePage() {
   const router = useRouter();
-  const [userPersona, setUserPersona] = useState("Designer");
+  const [userPersona, setUserPersona] = useState("designer");
   const [userId, setUserId] = useState("");
   const [designStages, setDesignStages] = useState([]);
   const [isLoadingStages, setIsLoadingStages] = useState(false);
   const [openMenuIndex, setOpenMenuIndex] = useState(null);
+  const [descriptionModal, setDescriptionModal] = useState(null);
 
-  const { projects, isLoading: isLoadingProjects, error: projectsError, deleteProject, refetch: refetchProjects } = useProjects(userId);
-  const { summary: templatesSummary, isLoading: isSummaryLoading } = useTemplatesSummary();
+  const menuRef = useRef(null);
+
+  const {
+    projects,
+    isLoading: isLoadingProjects,
+    error: projectsError,
+    deleteProject,
+    deleteLoading,
+  } = useProjects(userId, { requireUserId: false, recentOnly: true, limit: 6 });
+
+  const { summary: templatesSummary } = useTemplatesSummary();
 
   useEffect(() => {
-    const role = localStorage.getItem("userRole");
-    const id = localStorage.getItem("userId");
-    if (role) setUserPersona(role);
-    if (id) setUserId(id);
-    fetchStages();
+    const hydrate = async () => {
+      try {
+        const response = await api.getSessionUser();
+        if (response?.success && response?.data?.userId) {
+          setUserPersona(String(response.data.role || "designer").toLowerCase());
+          setUserId(String(response.data.userId));
+        }
+      } catch {
+        router.push("/login");
+      }
+      fetchStages();
+    };
+    hydrate();
   }, []);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (openMenuIndex === null) return;
+    const handler = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setOpenMenuIndex(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [openMenuIndex]);
 
   const fetchStages = async () => {
     setIsLoadingStages(true);
@@ -48,7 +82,8 @@ export default function HomePage() {
       const response = await api.getStages();
       if (response.success && response.data) {
         setDesignStages(response.data.map((stage, i) => ({
-          ...stage, image: STAGE_IMAGES[i] || STAGE_IMAGES[0],
+          ...stage,
+          image: STAGE_IMAGES[i] || STAGE_IMAGES[0],
           description: "Visualize user experience touchpoints and emotions.",
         })));
       }
@@ -67,22 +102,47 @@ export default function HomePage() {
     status: p.status || "In Progress",
     startDate: p.startDate,
     color: COLORS[i % COLORS.length],
-    isRealData: true,
   }));
 
-  const recentProjects = mappedProjects.slice(0, 6);
+  const normalizeDescription = (text) => String(text || "").replace(/\s+/g, " ").trim();
 
-  if (userPersona === "Manager") {
-    return <ManagerHome projects={mappedProjects} onProjectClick={(p) => router.push(`/projects/${p.projectId}`)} onExpertsClick={() => router.push("/sessions")} />;
+  const handleDeleteProject = async (projectId) => {
+    if (!window.confirm("Delete this project?")) return;
+    const result = await deleteProject(projectId);
+    if (!result.success) alert(`Failed to delete: ${result.error}`);
+    setOpenMenuIndex(null);
+  };
+
+  const handleEditProject = (projectId) => {
+    setOpenMenuIndex(null);
+    dispatchEditProject(projectId);
+  };
+
+  const statusBadge = (status) =>
+    status === "Completed"
+      ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
+      : "bg-amber-100 text-amber-700 border border-amber-200";
+
+  if (userPersona === "manager") {
+    return (
+      <ManagerHome
+        projects={mappedProjects}
+        onProjectClick={(p) => router.push(`/projects/${p.projectId}`)}
+        onExpertsClick={() => router.push("/sessions")}
+      />
+    );
   }
 
   return (
-    <>
+    <div className="ml-6 mt-6">
+
       {/* Recent Projects */}
-      <div className="mb-12">
+      <div className="mb-12 mt-4">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-semibold text-[#1f2937]">Recent Projects</h2>
-          {isLoadingProjects && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#702dff]" />}
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-semibold text-[#1f2937]">Recent Projects</h2>
+            {isLoadingProjects && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#702dff]" />}
+          </div>
         </div>
 
         {projectsError && (
@@ -91,27 +151,73 @@ export default function HomePage() {
           </div>
         )}
 
-        {isLoadingProjects && recentProjects.length === 0 ? (
+        {isLoadingProjects && mappedProjects.length === 0 ? (
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#702dff]" />
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {recentProjects.map((project, index) => (
-              <div key={project.projectId || index} onClick={() => router.push(`/projects/${project.projectId}`)} className={`bg-gradient-to-br ${project.color} rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 relative overflow-hidden group cursor-pointer`} style={{ backgroundSize: "200% 200%", animation: "gradient 8s ease infinite" }}>
-                <div className="absolute inset-0 bg-black/5 group-hover:bg-black/0 transition-all duration-300" />
-                <div className="p-6 relative">
+          /* ── CARD VIEW ── */
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" ref={menuRef}>
+            {mappedProjects.map((project, index) => (
+              <div
+                key={project.projectId || index}
+                onClick={() => router.push(`/projects/${project.projectId}`)}
+                className={`h-[248px] bg-gradient-to-br ${project.color} rounded-2xl shadow-md ring-1 ring-white/20 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden cursor-pointer`}
+              >
+                <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-black/10" />
+                <div className="p-5 relative h-full flex flex-col">
                   <div className="flex items-start justify-between mb-5 gap-3">
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-white mb-2 truncate text-lg">{project.title}</h3>
                       <p className="text-sm text-white/90 truncate">{project.company}</p>
                     </div>
-                    <span className={`text-xs px-3 py-1.5 rounded-full font-medium shadow-sm ${project.status === "Completed" ? "bg-emerald-500 text-white" : "bg-amber-500 text-white"}`}>{project.status}</span>
+
+                    {/* Card 3-dot menu */}
+                    <div className="relative" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        className="w-8 h-8 rounded-lg bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white flex items-center justify-center transition-colors duration-200"
+                        onClick={() => setOpenMenuIndex((prev) => (prev === project.projectId ? null : project.projectId))}
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+
+                      {openMenuIndex === project.projectId && (
+                        <div className="absolute top-10 right-0 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-20 min-w-[140px]">
+                          <button
+                            className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors duration-150"
+                            onClick={() => handleEditProject(project.projectId)}
+                          >
+                            <Pencil className="w-4 h-4 text-gray-400" />
+                            Edit
+                          </button>
+                          <button
+                            className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:opacity-60 transition-colors duration-150"
+                            onClick={() => handleDeleteProject(project.projectId)}
+                            disabled={deleteLoading}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-sm text-white/95 mb-6 line-clamp-2 leading-relaxed">{project.description}</p>
-                  <span className="text-xs text-white/90 font-medium">
-                    {project.startDate ? `Started ${new Date(project.startDate).toLocaleDateString()}` : ""}
+
+                  <span className={`inline-flex w-fit self-start text-xs px-3 py-1.5 rounded-full font-medium mb-4 ${project.status === "Completed" ? "bg-emerald-500 text-white" : "bg-amber-500 text-white"}`}>
+                    {project.status}
                   </span>
+                  <p className="text-sm text-white/95 line-clamp-1">{normalizeDescription(project.description)}</p>
+                  {normalizeDescription(project.description).length > 0 && (
+                    <button
+                      className="mt-2 self-start text-xs font-semibold text-white/95 underline underline-offset-4 decoration-white/60 hover:decoration-white transition-all duration-150"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDescriptionModal({ title: project.title, company: project.company, description: String(project.description || "").trim() });
+                      }}
+                    >
+                      Read more
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -119,92 +225,82 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* Design Thinking Stages */}
-<div className="mb-12">
-  <h2 className="text-2xl font-semibold text-[#1f2937] mb-6">
-    Design Thinking Stages
-  </h2>
-
-  {isLoadingStages ? (
-    <div className="flex justify-center items-center h-64">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#702dff]" />
-    </div>
-  ) : (
-    <div className="grid gap-6 grid-cols-[repeat(auto-fit,minmax(260px,1fr))]">
-      {designStages.map((stage, index) => {
-        const count =
-          templatesSummary[stage.stageId?.toLowerCase()] || 3;
-
-        return (
-          <div
-            key={stage.stageId || index}
-            onClick={() =>
-              router.push(`/templates?stage=${stage.stageName}`)
-            }
-            className="bg-white rounded-xl shadow-sm border border-[#e5e7eb] overflow-hidden hover:shadow-md transition-shadow cursor-pointer flex flex-col h-full"
-          >
-            {/* Image */}
-            <div className="h-32 overflow-hidden">
-              <img
-                src={stage.image}
-                alt={stage.stageName}
-                className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
-              />
+      {/* Description modal */}
+      {descriptionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setDescriptionModal(null)}>
+          <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">{descriptionModal.title}</h3>
+                <p className="mt-1 text-sm text-gray-500">{descriptionModal.company}</p>
+              </div>
+              <button className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50" onClick={() => setDescriptionModal(null)}>
+                Close
+              </button>
             </div>
-
-            {/* Content */}
-            <div className="p-4 flex flex-col flex-grow">
-              <h3 className="font-semibold text-[#1f2937] mb-2">
-                {stage.stageName}
-              </h3>
-
-              <p className="text-sm text-[#6b7280] mb-4 flex-grow">
-                {stage.description}
-              </p>
-
-              {isSummaryLoading ? (
-                <div className="animate-pulse h-6 w-32 bg-gray-200 rounded" />
-              ) : (
-                <button className="flex items-center gap-2 text-sm text-[#6366F1] hover:text-[#4f46e5] font-medium transition-colors group mt-auto">
-                  <span>Templates Available {count}</span>
-                  <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-                </button>
-              )}
+            <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <p className="whitespace-pre-wrap text-sm leading-6 text-gray-700">{descriptionModal.description}</p>
             </div>
           </div>
-        );
-      })}
-    </div>
-  )}
-</div>
+        </div>
+      )}
+
+      {/* Design Thinking Stages */}
+      <div className="mb-12">
+        <h2 className="text-2xl font-semibold text-[#1f2937] mb-6">Design Thinking Stages</h2>
+        {isLoadingStages ? (
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#702dff]" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+            {designStages.map((stage, index) => {
+              const count = templatesSummary[stage.stageId?.toLowerCase()] || 3;
+              return (
+                <div key={stage.stageId || index} onClick={() => router.push(`/templates?stage=${stage.stageName}`)} className="bg-white rounded-xl shadow-sm border border-[#e5e7eb] overflow-hidden hover:shadow-md transition-shadow cursor-pointer">
+                  <div className="h-48 overflow-hidden">
+                    <img src={stage.image} alt={stage.stageName} className="w-full h-full object-cover" />
+                  </div>
+                  <div className="p-4">
+                    <h3 className="font-semibold text-[#1f2937] mb-2">{stage.stageName}</h3>
+                    <p className="text-sm text-[#6b7280] mb-4">{stage.description}</p>
+                    <button className="flex items-center gap-2 text-sm text-[#6366F1] font-medium">
+                      <span>Templates Available {count}</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Feature Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl shadow-sm border border-[#e5e7eb] overflow-hidden hover:shadow-md transition-shadow cursor-pointer">
+        <div className="bg-white rounded-xl shadow-sm border border-[#e5e7eb] overflow-hidden">
           <div className="flex flex-col sm:flex-row gap-4 p-6">
-            <div className="w-full sm:w-48 h-40 flex-shrink-0 rounded-lg overflow-hidden bg-gray-200">
-              <img src="https://images.unsplash.com/photo-1552664730-d307ca884978?w=400&h=300&fit=crop" alt="Experts" className="w-full h-full object-cover" />
+            <div className="w-full sm:w-48 h-40 bg-gray-200">
+              <img src="https://images.unsplash.com/photo-1552664730-d307ca884978?w=400&h=300&fit=crop" className="w-full h-full object-cover" />
             </div>
-            <div className="flex-1 flex flex-col justify-between">
-              <div>
-                <h3 className="text-xl font-semibold text-[#1f2937] mb-2">Design Thinking Experts</h3>
-                <p className="text-sm text-[#6b7280] mb-4">Get personalized guidance from experienced UX professionals</p>
-              </div>
+            <div>
+              <h3 className="text-xl font-semibold mb-2">Design Thinking Experts</h3>
+              <p className="text-sm mb-4">Get personalized guidance from experienced UX professionals</p>
               <button onClick={() => router.push("/experts")} className="bg-[#6366F1] text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium hover:bg-[#4f46e5] transition-colors self-start">
                 <span>Book a Session</span><ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </div>
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-[#e5e7eb] overflow-hidden hover:shadow-md transition-shadow cursor-pointer">
+
+        <div className="bg-white rounded-xl shadow-sm border border-[#e5e7eb] overflow-hidden">
           <div className="flex flex-col sm:flex-row gap-4 p-6">
-            <div className="w-full sm:w-48 h-40 flex-shrink-0 rounded-lg overflow-hidden bg-gray-200">
-              <img src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=400&h=300&fit=crop" alt="Knowledge" className="w-full h-full object-cover" />
+            <div className="w-full sm:w-48 h-40 bg-gray-200">
+              <img src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=400&h=300&fit=crop" className="w-full h-full object-cover" />
             </div>
-            <div className="flex-1 flex flex-col justify-between">
-              <div>
-                <h3 className="text-xl font-semibold text-[#1f2937] mb-2">Expert-Curated Knowledge Repository</h3>
-                <p className="text-sm text-[#6b7280] mb-4">Access documents, case studies, and resources organized by Design Thinking stages.</p>
-              </div>
+            <div>
+              <h3 className="text-xl font-semibold mb-2">Expert-Curated Knowledge Repository</h3>
+              <p className="text-sm mb-4">Access documents, case studies, and resources organized by Design Thinking stages.</p>
               <button className="bg-[#6366F1] text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium hover:bg-[#4f46e5] transition-colors self-start">
                 <span>Explore</span><ChevronRight className="w-4 h-4" />
               </button>
@@ -212,6 +308,7 @@ export default function HomePage() {
           </div>
         </div>
       </div>
-    </>
+
+    </div>
   );
 }

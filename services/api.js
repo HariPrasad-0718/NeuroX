@@ -11,7 +11,7 @@ async function fetchApi(endpoint, options = {}) {
   };
 
   try {
-    const response = await fetch(url, { ...options, headers });
+    const response = await fetch(url, { ...options, headers, credentials: "include" });
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -25,21 +25,53 @@ async function fetchApi(endpoint, options = {}) {
   }
 }
 
-export const api = {
-  // --- Users ---
-  getCurrentUser: (userId) =>
-    fetchApi(`users?userId=${userId}`, { method: "GET" }),
 
-  updateUser: (userId, userData, requestingUserId) =>
-    fetchApi(`users?userId=${requestingUserId}`, {
-      method: "PUT",
-      body: JSON.stringify({ userId, ...userData }),
+export const api = {
+  // --- Auth ---
+  signup: (payload) =>
+    fetchApi("auth/signup", {
+      method: "POST",
+      body: JSON.stringify(payload),
     }),
+
+  login: (payload) =>
+    fetchApi("auth/login", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  logout: () =>
+    fetchApi("auth/logout", {
+      method: "POST",
+    }),
+
+  getSessionUser: () =>
+    fetchApi("auth/me", {
+      method: "GET",
+    }),
+
+  updateCurrentUser: (userData) =>
+    fetchApi("auth/me", {
+      method: "PUT",
+      body: JSON.stringify(userData),
+    }),
+
+  // --- Users ---
+  getCurrentUser: () =>
+    fetchApi("auth/me", { method: "GET" }),
+
+  updateUser: (userData) => fetchApi("auth/me", {
+    method: "PUT",
+    body: JSON.stringify(userData),
+  }),
 
   // --- Stages ---
   getStages: () => fetchApi("stages", { method: "GET" }),
 
   // --- Templates ---
+  getTemplates: () =>
+    fetchApi("templates", { method: "GET" }),
+
   getTemplatesByStage: (stageId) =>
     fetchApi(`templates?stageId=${stageId}`, { method: "GET" }),
 
@@ -78,10 +110,23 @@ export const api = {
     }),
 
   // --- Projects ---
-  getProjects: () => fetchApi("projects", { method: "GET" }),
+  getProjects: (userId, options = {}) => {
+    const params = new URLSearchParams();
+
+    if (userId) params.set("userId", userId);
+    if (options.recentOnly) params.set("recent", "true");
+    if (options.limit) params.set("limit", String(options.limit));
+
+    const query = params.toString();
+    return fetchApi(query ? `projects?${query}` : "projects", { method: "GET" });
+  },
 
   getProjectById: (projectId) =>
     fetchApi(`projects?projectId=${projectId}`, { method: "GET" }),
+
+  // Fetch full project + personas for edit modal
+  getFullProject: (projectId) =>
+    fetchApi(`projects/${projectId}`, { method: "GET" }),
 
   createProject: (projectData, userId) =>
     fetchApi(`projects?userId=${userId}`, {
@@ -93,6 +138,19 @@ export const api = {
     fetchApi(`projects?projectId=${projectId}&userId=${userId}`, {
       method: "PUT",
       body: JSON.stringify(projectData),
+    }),
+
+  // PUT /api/projects/[id] — update project + personas (used by Edit modal)
+  updateProjectById: (projectId, projectData) =>
+    fetchApi(`projects/${projectId}`, {
+      method: "PUT",
+      body: JSON.stringify(projectData),
+    }),
+
+  updateProjectProgress: (projectId, data) =>
+    fetchApi(`projects/${projectId}/progress`, {
+      method: "PUT",
+      body: JSON.stringify(data),
     }),
 
   deleteProject: (projectId, userId) =>

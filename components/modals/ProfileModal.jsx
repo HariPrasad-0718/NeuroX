@@ -15,7 +15,7 @@ export function ProfileModal({ isOpen, onClose, userData, onEdit }) {
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 transition-opacity" onClick={onClose} />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
         <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full pointer-events-auto" onClick={(e) => e.stopPropagation()}>
-          <div className="relative bg-gradient-to-br from-[#702dff] to-[#9b59ff] px-6 pt-6 pb-12 rounded-t-2xl">
+          <div className="relative bg-gradient-to-br from-[#702dff] to-[#9b59ff] px-4 pt-4 pb-15 rounded-t-2xl">
             <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-lg flex items-center justify-center transition-colors">
               <X className="w-4 h-4 text-white" />
             </button>
@@ -25,7 +25,7 @@ export function ProfileModal({ isOpen, onClose, userData, onEdit }) {
               </div>
             </div>
           </div>
-          <div className="px-6 -mt-8 pb-6">
+          <div className="px-6 pb-6">
             <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-5 mb-4">
               <h2 className="text-2xl font-semibold text-gray-900 text-center mb-1">{userData?.name}</h2>
               <p className="text-center text-sm text-[#702dff] font-medium mb-4">{userData?.role}</p>

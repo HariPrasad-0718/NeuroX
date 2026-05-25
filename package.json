@@ -8,18 +8,28 @@
     "start": "next start"
   },
   "dependencies": {
+    "@azure/storage-blob": "^12.31.0",
+    "@google/generative-ai": "^0.24.1",
+    "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "docx": "^9.6.1",
+    "file-saver": "^2.0.5",
+    "html-to-image": "^1.11.13",
+    "html2canvas": "^1.4.1",
+    "jose": "^6.2.2",
+    "jspdf": "^4.2.1",
     "lucide-react": "^0.487.0",
     "mssql": "^11.0.1",
     "next": "^15.3.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "reactflow": "^11.11.4",
     "tailwind-merge": "^3.0.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.4",
-    "tailwindcss": "^4.1.4",
-    "postcss": "^8.5.3"
+    "postcss": "^8.5.3",
+    "tailwindcss": "^4.1.4"
   }
 }

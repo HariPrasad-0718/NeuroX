@@ -14,7 +14,7 @@ import {
 import Logo from "./Logo";
 
 const navItems = [
-  { icon: Home, label: "Home", href: "/" },
+  { icon: Home, label: "Home", href: "/dashboard" },
   { icon: Folder, label: "Projects", href: "/projects" },
   { icon: BookOpen, label: "Templates", href: "/templates" },
   { icon: Users, label: "Experts", href: "/experts" },
@@ -25,7 +25,7 @@ export default function Sidebar({ onLogout }) {
   const pathname = usePathname();
 
   const isActive = (href) => {
-    if (href === "/") return pathname === "/";
+    if (href === "/dashboard") return pathname === "/dashboard" || pathname === "/";
     return pathname.startsWith(href);
   };
 
