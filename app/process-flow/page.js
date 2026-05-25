@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import UXJourneyFlow from "@/components/UXJourneyFlow";
 
-export default function ProcessFlowPage() {
+function ProcessFlowContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const projectId = searchParams.get("projectId");
@@ -394,5 +394,13 @@ export default function ProcessFlowPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function ProcessFlowPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><p>Loading...</p></div>}>
+      <ProcessFlowContent />
+    </Suspense>
   );
 }

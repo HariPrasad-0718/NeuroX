@@ -8,7 +8,7 @@ const STYLE = {
   decision: { bg:"#fef7ec", border:"#f8d7a6", text:"#7c2d12", chipBg:"#ffedd5", chipText:"#9a3412", chip:"DECISION", radius:12  },
   process:  { bg:"#ffffff", border:"#d7e1f2", text:"#0f172a", chipBg:"#eef4ff", chipText:"#1d4ed8", chip:"PROCESS",  radius:16  },
 };
-
+// sample
 export default function UXJourneyFlow({ flow }) {
   const nodes = (flow?.nodes || []).map(n => ({
     ...n,

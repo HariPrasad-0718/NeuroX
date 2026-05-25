@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 
@@ -75,7 +75,7 @@ function parseSummaryAndInsights(rawText) {
   };
 }
 
-export default function ViewPersonaPage() {
+function ViewPersonaContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -1501,3 +1501,10 @@ const [editingSections, setEditingSections] = useState({
   );
 }
 
+export default function ViewPersonaPage() {
+  return (
+    <Suspense fallback={<p className="p-6">Loading...</p>}>
+      <ViewPersonaContent />
+    </Suspense>
+  );
+}

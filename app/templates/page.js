@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Download, ArrowRight } from "lucide-react";
 import { api } from "@/services/api";
@@ -35,7 +35,7 @@ const DESCRIPTIONS = {
   "Support Documentation": "Help guides and support resources.",
 };
 
-export default function TemplatesPage() {
+function TemplatesContent() {
   const searchParams = useSearchParams();
   const initialStage = searchParams.get("stage") || "All";
   const [activeFilter, setActiveFilter] = useState(initialStage);
@@ -146,5 +146,13 @@ export default function TemplatesPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function TemplatesPage() {
+  return (
+    <Suspense fallback={<div className="flex-1 bg-[#fafafa] px-8 py-6"><p className="text-gray-500">Loading...</p></div>}>
+      <TemplatesContent />
+    </Suspense>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
-
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 // Utility functions for parsing fields
@@ -63,7 +62,7 @@ function themeList(text, dotCls) {
   });
 }
 
-export default function FinalPersonaPage() {
+function FinalPersonaContent() {
   const searchParams = useSearchParams();
   const projectId = searchParams.get("projectId");
 
@@ -255,5 +254,13 @@ export default function FinalPersonaPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function FinalPersonaPage() {
+  return (
+    <Suspense fallback={<p className="p-6">Loading...</p>}>
+      <FinalPersonaContent />
+    </Suspense>
   );
 }

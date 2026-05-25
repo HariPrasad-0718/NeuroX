@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Minus, Plus, RotateCcw, X } from "lucide-react";
 import jsPDF from "jspdf";
@@ -332,7 +332,7 @@ function formatPromptText(prompt) {
     .trim();
 }
 
-export default function InformationArchitecturePage() {
+function InformationArchitectureContent() {
   const [iaData, setIaData] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(DEFAULT_ZOOM_LEVEL);
   const [viewportWidth, setViewportWidth] = useState(0);
@@ -715,5 +715,13 @@ className="rounded-2xl border border-slate-200 bg-white p-4 shadow-inner" style=
         </div>
       </div>
     </div>
+  );
+}
+
+export default function InformationArchitecturePage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><p className="text-slate-500">Loading...</p></div>}>
+      <InformationArchitectureContent />
+    </Suspense>
   );
 }
