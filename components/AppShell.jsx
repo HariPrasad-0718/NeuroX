@@ -192,7 +192,8 @@ if (data?.success) {
         clientName: projectData.company,
         startDate: projectData.startDate,
         endDate: projectData.targetDate,
-        personas: projectData.personas   // ✅ THIS FIXES EVERYTHING
+        domain: projectData.domain || "",
+        personas: projectData.personas,
       };
 
       console.log("FINAL DATA SENT TO API:", apiData); // ✅ debug

@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, ChevronDown, Upload, Download, Share2, Trash2, FileText, Link as LinkIcon, Loader2, AlertTriangle, HandHeart, Lightbulb } from "lucide-react";
 import { api } from "@/services/api";
@@ -27,14 +27,8 @@ const STAGE_TEMPLATES = {
   { id: "process-flow", name: "Process Flow", icon: FileText, type: "agent" },
 ],
  ideate: [
-
-  { 
-    id: "information-architecture", 
-    name: "Information Architecture", 
-    icon: FileText, 
-    type: "agent" 
-  },
-
+  { id: "information-architecture", name: "Information Architecture", icon: FileText, type: "agent" },
+  { id: "wireframe-reviewer", name: "Wireframe Reviewer", icon: FileText, type: "upload" },
 ],
   prototype: [
     { id: "low-fidelity", name: "Low Fidelity Prototype", icon: LinkIcon, type: "link" },
@@ -51,43 +45,23 @@ const STAGE_TEMPLATES = {
 };
 
 const EMPATHIZE_CARD_MEDIA = {
-  "empathy-map": {
-    image: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=1200&h=800&fit=crop",
-    eyebrow: "Collaborative input",
-    title: "Interview Assist",
-    description: "Capture user thoughts, feelings, and context before stepping into the workspace.",
-  },
-  "user-persona": {
-    image: "https://images.unsplash.com/photo-1552664730-d307ca884978?w=1200&h=800&fit=crop",
-    eyebrow: "Profile framing",
-    title: "Empathy Map",
-    description: "Review the persona structure and prepare a standard or uploaded reference template.",
-  },
-  "other-files": {
-    image: "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=1200&h=800&fit=crop",
-    eyebrow: "Supporting inputs",
-    title: "Other Files",
-    description: "Keep supporting research artifacts and additional input materials accessible for the empathize phase.",
-  },
+  "empathy-map":   { bg: "from-violet-100 to-indigo-100", iconColor: "text-indigo-400", icon: "<svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\" width=\"48\" height=\"48\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1.5\" d=\"M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z\"/></svg>", eyebrow: "Collaborative input", title: "Interview Assist", description: "Capture user thoughts, feelings, and context before stepping into the workspace." },
+  "user-persona":  { bg: "from-purple-100 to-pink-100",   iconColor: "text-purple-400", icon: "<svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\" width=\"48\" height=\"48\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1.5\" d=\"M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z\"/></svg>", eyebrow: "Profile framing",     title: "Empathy Map",      description: "Review the persona structure and prepare a standard or uploaded reference template." },
+  "other-files":   { bg: "from-blue-100 to-cyan-100",     iconColor: "text-blue-400",   icon: "<svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\" width=\"48\" height=\"48\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1.5\" d=\"M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z\"/></svg>",   eyebrow: "Supporting inputs",   title: "Other Files",      description: "Keep supporting research artifacts and additional input materials accessible." },
 };
 
 const DEFINE_CARD_MEDIA = {
-  "problem-statement": {
-    image: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=1200&h=800&fit=crop",
-    eyebrow: "Problem framing",
-    title: "Problem Definition",
-    description: "Clearly define the problem based on user insights.",
-  },
-  "process-flow": {
-  image:
-    "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=1200&h=800&fit=crop",
-  eyebrow: "Workflow Design",
-  title: "Process Flow",
-  description: "Generate AI-based process flow from combined persona insights.",
-},
+  "problem-statement": { bg: "from-amber-100 to-orange-100", iconColor: "text-amber-500", icon: "<svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\" width=\"48\" height=\"48\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1.5\" d=\"M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01\"/></svg>", eyebrow: "Problem framing",  title: "Problem Definition", description: "Clearly define the problem based on user insights." },
+  "process-flow":      { bg: "from-teal-100 to-emerald-100", iconColor: "text-teal-500",  icon: "<svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\" width=\"48\" height=\"48\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1.5\" d=\"M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2\"/></svg>",  eyebrow: "Workflow Design",  title: "Process Flow",       description: "Generate AI-based process flow from combined persona insights." },
 };
 
 const IDEATE_CARD_MEDIA = {
+  "wireframe-reviewer": {
+    image: "https://images.unsplash.com/photo-1581291518857-4e27b48ff24e?w=1200&h=800&fit=crop",
+    eyebrow: "Design Review",
+    title: "Wireframe Reviewer",
+    description: "Upload a wireframe image for AI-powered review and analysis.",
+  },
   "information-architecture": {
     image:
       "https://images.unsplash.com/photo-1558655146-d09347e92766?w=1200&h=800&fit=crop",
@@ -97,6 +71,21 @@ const IDEATE_CARD_MEDIA = {
       "Generate AI-powered information architecture from persona insights and project requirements.",
   },
 };
+
+
+const PROTOTYPE_CARD_MEDIA = {
+  "low-fidelity": { image: "https://images.unsplash.com/photo-1586717791821-3f44a563fa4c?w=1200&h=800&fit=crop", eyebrow: "Early Concepts", title: "Low Fidelity Prototype", description: "Sketch and wireframe your ideas to quickly validate concepts with users." },
+  "high-fidelity": { image: "https://images.unsplash.com/photo-1561070791-2526d30994b5?w=1200&h=800&fit=crop", eyebrow: "Polished Design", title: "High Fidelity Prototype", description: "Build a detailed, interactive prototype that closely resembles the final product." },
+};
+const TEST_CARD_MEDIA = {
+  "test-results": { image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1200&h=800&fit=crop", eyebrow: "Validation", title: "Test Results", description: "Document and analyze usability test findings to guide design decisions." },
+  "user-feedback": { image: "https://images.unsplash.com/photo-1516321497487-e288fb19713f?w=1200&h=800&fit=crop", eyebrow: "User Insights", title: "User Feedback", description: "Collect and synthesize feedback from real users to improve your solution." },
+};
+const IMPLEMENT_CARD_MEDIA = {
+  "implementation-plan": { image: "https://images.unsplash.com/photo-1507925921958-8a62f3d1a50d?w=1200&h=800&fit=crop", eyebrow: "Execution", title: "Implementation Plan", description: "Define the roadmap and steps needed to bring your solution to life." },
+  "final-deliverables": { image: "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=1200&h=800&fit=crop", eyebrow: "Delivery", title: "Final Deliverables", description: "Package and present the completed solution and all supporting artifacts." },
+};
+const STAGE_MEDIA_MAP = { prototype: PROTOTYPE_CARD_MEDIA, test: TEST_CARD_MEDIA, implement: IMPLEMENT_CARD_MEDIA };
 
 export default function ProjectDetailPage() {
   const params = useParams();
@@ -400,7 +389,7 @@ const [informationArchitectureError, setInformationArchitectureError] = useState
     const combinedOutput = data?.data?.combinedOutput || "";
     setCombinedPersonaOutput(combinedOutput);
 
-    // 🔥 STEP 2: SEND TO AGENT
+    // ðŸ”¥ STEP 2: SEND TO AGENT
     const agentRes = await fetch("/api/generate-persona-card", {
       method: "POST",
       headers: {
@@ -431,7 +420,7 @@ const [informationArchitectureError, setInformationArchitectureError] = useState
     setFinalPersonaCard(agentData.persona_card);
 
 
-    console.log("✅ FINAL PERSONA CARD:", agentData.persona_card);
+    console.log("âœ… FINAL PERSONA CARD:", agentData.persona_card);
 
     // OPTIONAL: store or show in UI
     // setFinalPersonaCard(agentData.persona_card);
@@ -463,7 +452,7 @@ const handleGenerateProcessFlow = async () => {
       throw new Error(agentData?.error || "Process Flow generation failed");
     }
 
-    // ✅ Navigate to new page with data
+    // âœ… Navigate to new page with data
     sessionStorage.removeItem("processFlowData");
     sessionStorage.setItem(
       "processFlowData",
@@ -526,7 +515,7 @@ const handleGenerateInformationArchitecture = async () => {
       );
     }
 
-    // ✅ FIX: set state so UI can show it
+    // âœ… FIX: set state so UI can show it
     setInformationArchitectureData(agentData.information_architecture);
 
     sessionStorage.setItem(
@@ -566,203 +555,310 @@ const handleGenerateInformationArchitecture = async () => {
     await fetchPersonaCards();
   };
 
+  const handleMarkStageComplete = async (stageId) => {
+    if (completedStages.includes(stageId)) return;
+    try {
+      await fetch(`/api/projects/${projectId}/progress`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stage: stageId, progress: 100 }),
+      });
+      setCompletedStages((prev) => [...prev, stageId]);
+      window.dispatchEvent(new Event("neurox:progress-updated"));
+    } catch (err) { console.error("Failed to mark stage complete:", err); }
+  };
   const renderUploadButton = (label) => (
-    <label className="block w-full">
+    <label className="block w-full cursor-pointer">
       <input type="file" className="hidden" onChange={() => alert("Upload will connect to document API")} />
-      <span className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50">
+      <span className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 transition-all hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700">
         <Upload className="h-4 w-4" />
         {label}
       </span>
     </label>
   );
 
-  const renderEmpathizeTemplateCard = (template, downloadableTemplateId) => {
+  const renderEmpathizeTemplateCard = (template, downloadableTemplateId, isCompleted) => {
     const media = EMPATHIZE_CARD_MEDIA[template.id] || EMPATHIZE_CARD_MEDIA["other-files"];
     const workspaceUrl = getWorkspaceUrl(template.name);
-    const topActionLabel = template.id === "empathy-map"
-      ? "Click here"
-      : template.id === "user-persona"
-        ? "View personas"
-        : "View other files";
+    const topActionLabel = template.id === "empathy-map" ? "Click here" : template.id === "user-persona" ? "View Personas" : "View Files";
     const primaryFooterLabel = template.id === "user-persona" ? "Use Basic Template" : "Use Standard Template";
     const uploadLabel = template.id === "empathy-map" ? "Upload Standard Template" : "Upload Templates";
-
-  
     return (
-      <div key={template.id} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md">
-        <div className="relative h-52 overflow-hidden">
-          <img src={media.image} alt={template.name} className="h-full w-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-gray-950/70 via-gray-950/10 to-transparent" />
-          <div className="absolute inset-x-0 bottom-0 p-5 text-white">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/75">{media.eyebrow}</p>
-            <h4 className="mt-2 text-xl font-semibold">{media.title}</h4>
-            <p className="mt-1 max-w-sm text-sm leading-6 text-white/85">{media.description}</p>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                if (template.id === "user-persona") {
-                    // togglePersonaSection();   // ✅ SHOW INSIDE SAME PAGE
-
-                  router.push(`/view-persona?projectId=${encodeURIComponent(projectId)}&projectName=${encodeURIComponent(project?.projectName || "")}`);
-                  return;
-                }
-                router.push(workspaceUrl);
-              }}
-              className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-white underline decoration-white/40 underline-offset-4 transition hover:decoration-white"
-            >
-              {topActionLabel}
-              <span aria-hidden="true">→</span>
-            </button>
+      <div key={template.id} className={`group relative overflow-hidden rounded-2xl bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-100 ${isCompleted ? "border border-indigo-300 shadow-md shadow-indigo-100 ring-1 ring-indigo-200" : "border border-gray-100 shadow-sm"}`}>
+        {isCompleted && (
+          <div className="absolute top-3 right-3 z-10 flex items-center gap-1 bg-indigo-600 text-white text-[10px] font-semibold px-2.5 py-1 rounded-full shadow-lg shadow-indigo-200">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/></svg>
+            Completed
           </div>
-        </div>
-
-        <div className="space-y-3 p-4">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!downloadableTemplateId) return;
-              window.location.assign(`/api/templates/download/${downloadableTemplateId}`);
-            }}
-            disabled={!downloadableTemplateId}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-900 px-3 py-2.5 text-sm font-medium text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-500"
-          >
-            <Download className="h-4 w-4" />
-            {primaryFooterLabel}
-          </button>
-
-          {renderUploadButton(uploadLabel)}
+        )}
+        <div className="p-5">
+          <div className="flex items-start gap-4">
+            <div className={`flex-shrink-0 w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center ${media.iconColor} group-hover:bg-indigo-100 transition-colors`} dangerouslySetInnerHTML={{ __html: media.icon.replace('width="48" height="48"', 'width="24" height="24"') }} />
+            <div className="flex-1 min-w-0 pt-0.5">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-indigo-400 mb-0.5">{media.eyebrow}</p>
+              <h4 className="text-sm font-semibold text-gray-900 leading-snug">{media.title}</h4>
+              <p className="mt-1 text-xs text-gray-500 leading-relaxed line-clamp-2">{media.description}</p>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-col gap-2">
+            <button
+              onClick={(e) => { e.stopPropagation(); if (template.id === "user-persona") { router.push(`/view-persona?projectId=${encodeURIComponent(projectId)}&projectName=${encodeURIComponent(project?.projectName || "")}`); return; } router.push(workspaceUrl); }}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-200 active:scale-[0.98]"
+            >
+              {topActionLabel} <span aria-hidden="true">â†’</span>
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); if (!downloadableTemplateId) return; window.location.assign(`/api/templates/download/${downloadableTemplateId}`); }}
+              disabled={!downloadableTemplateId}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-700 transition-all hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Download className="h-4 w-4" />{primaryFooterLabel}
+            </button>
+            {renderUploadButton(uploadLabel)}
+          </div>
         </div>
       </div>
     );
   };
 
-  const renderDefineTemplateCard = (template, downloadableTemplateId) => {
+  const renderDefineTemplateCard = (template, downloadableTemplateId, isCompleted) => {
   const media = DEFINE_CARD_MEDIA[template.id] || DEFINE_CARD_MEDIA["problem-statement"];
   const workspaceUrl = getWorkspaceUrl(template.name);
-
   return (
-    <div
-      key={template.id}
-      className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md"
-    >
-      {/* IMAGE SECTION */}
-      <div className="relative h-52 overflow-hidden">
-        <img
-          src={media.image}
-          alt={template.name}
-          className="h-full w-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-gray-950/70 via-gray-950/10 to-transparent" />
-
-        <div className="absolute inset-x-0 bottom-0 p-5 text-white">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/75">
-            {media.eyebrow}
-          </p>
-
-          <h4 className="mt-2 text-xl font-semibold">{media.title}</h4>
-
-          <p className="mt-1 max-w-sm text-sm leading-6 text-white/85">
-            {media.description}
-          </p>
-
-          <button
-  onClick={(e) => {
-    e.stopPropagation();
-
-    // PROCESS FLOW CARD
-    if (template.id === "process-flow") {
-      handleGenerateProcessFlow();
-      return;
-    }
-
-    // PROBLEM STATEMENT CARD
-    router.push(`/projects/${projectId}/define#problem-definition-card`);
-  }}
-  className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-white underline decoration-white/40 underline-offset-4"
->
-  {template.id === "process-flow"
-    ? isGeneratingProcessFlow
-      ? "Generating..."
-      : "Generate →"
-    : "Define →"}
-</button>
-{template.id === "process-flow" && processFlowError && (
-  <p className="mt-3 rounded-md bg-red-50/95 px-2.5 py-2 text-xs font-medium text-red-700">
-    {processFlowError}
-  </p>
-)}
+    <div key={template.id} className={`group relative overflow-hidden rounded-2xl bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-100 ${isCompleted ? "border border-indigo-300 shadow-md shadow-indigo-100 ring-1 ring-indigo-200" : "border border-gray-100 shadow-sm"}`}>
+      {isCompleted && (
+        <div className="absolute top-3 right-3 z-10 flex items-center gap-1 bg-indigo-600 text-white text-[10px] font-semibold px-2.5 py-1 rounded-full shadow-lg shadow-indigo-200">
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/></svg>
+          Completed
         </div>
-      </div>
-
-      {/* BUTTONS */}
-      <div className="space-y-3 p-4">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            if (!downloadableTemplateId) return;
-            window.location.assign(`/api/templates/download/${downloadableTemplateId}`);
-          }}
-          disabled={!downloadableTemplateId}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-900 px-3 py-2.5 text-sm font-medium text-white transition hover:bg-gray-800 disabled:bg-gray-200 disabled:text-gray-500"
-        >
-          <Download className="h-4 w-4" />
-          Use Standard Template
-        </button>
-
-        {renderUploadButton("Upload Template")}
+      )}
+      <div className="p-5">
+        <div className="flex items-start gap-4">
+          <div className={`flex-shrink-0 w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center ${media.iconColor} group-hover:bg-indigo-100 transition-colors`} dangerouslySetInnerHTML={{ __html: media.icon.replace('width="48" height="48"', 'width="24" height="24"') }} />
+          <div className="flex-1 min-w-0 pt-0.5">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-indigo-400 mb-0.5">{media.eyebrow}</p>
+            <h4 className="text-sm font-semibold text-gray-900 leading-snug">{media.title}</h4>
+            <p className="mt-1 text-xs text-gray-500 leading-relaxed line-clamp-2">{media.description}</p>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-col gap-2">
+          {template.id === "process-flow" ? (
+            <>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleGenerateProcessFlow(); }}
+                disabled={isGeneratingProcessFlow}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isGeneratingProcessFlow ? "Generating..." : "Generate â†’"}
+              </button>
+              {processFlowError && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600">{processFlowError}</p>}
+            </>
+          ) : (
+            <button
+              onClick={(e) => { e.stopPropagation(); router.push(`/projects/${projectId}/define#problem-definition-card`); }}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-200 active:scale-[0.98]"
+            >
+              Define â†’
+            </button>
+          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); if (!downloadableTemplateId) return; window.location.assign(`/api/templates/download/${downloadableTemplateId}`); }}
+            disabled={!downloadableTemplateId}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-700 transition-all hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Download className="h-4 w-4" />Use Standard Template
+          </button>
+          {renderUploadButton("Upload Template")}
+        </div>
       </div>
     </div>
   );
 };
 
-const renderIdeateTemplateCard = (template) => {
-  const media =
-    IDEATE_CARD_MEDIA[template.id] ||
-    IDEATE_CARD_MEDIA["information-architecture"];
+
+
+const renderGenericCard = (template, stageId, downloadableTemplateId, link, isCompleted) => {
+  const mediaMap = STAGE_MEDIA_MAP[stageId] || {};
+  const media = mediaMap[template.id] || { image: "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=1200&h=800&fit=crop", eyebrow: stageId, title: template.name, description: "" };
+  return (
+    <div key={template.id} className={`overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:shadow-md hover:-translate-y-0.5 ${isCompleted ? "border-emerald-300 ring-1 ring-emerald-200" : "border-gray-200"}`}>
+      <div className="relative h-44 overflow-hidden">
+        <img src={media.image} alt={template.name} className="h-full w-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-t from-gray-950/70 via-gray-950/10 to-transparent" />
+        {isCompleted && (
+          <div className="absolute top-3 right-3 flex items-center gap-1 bg-emerald-500 text-white text-xs font-semibold px-2.5 py-1 rounded-full shadow">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/></svg>
+            Completed
+          </div>
+        )}
+        <div className="absolute inset-x-0 bottom-0 p-4 text-white">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-white/70">{media.eyebrow}</p>
+          <h4 className="mt-1 text-base font-semibold">{media.title}</h4>
+          {media.description && <p className="mt-0.5 text-xs text-white/80 line-clamp-2">{media.description}</p>}
+        </div>
+      </div>
+      <div className="space-y-2.5 p-4">
+        {template.type === "link" && (
+          <input type="text" value={link} onChange={(e) => setPrototypeLinks((prev) => ({ ...prev, [`${stageId}-${template.id}`]: e.target.value }))} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" placeholder="Paste prototype link..." />
+        )}
+        {template.type === "file" && (
+          <label className="block w-full cursor-pointer">
+            <input type="file" className="hidden" onChange={() => alert("Upload will connect to document API")} />
+            <span className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"><Upload className="h-4 w-4" />Upload File</span>
+          </label>
+        )}
+        {downloadableTemplateId && (
+          <button onClick={() => window.location.assign(`/api/templates/download/${downloadableTemplateId}`)} className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-gray-800">
+            <Download className="h-4 w-4" />Download Template
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+const WireframeReviewerCard = () => {
+  const [image, setImage] = useState(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [wireframeError, setWireframeError] = useState("");
+  const inputRef = useRef(null);
+
+  const handleFile = async (file) => {
+    if (!file || isGenerating) return;
+
+    setWireframeError("");
+    setIsGenerating(true);
+    setImage({ name: file.name, url: URL.createObjectURL(file) });
+
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+
+      const response = await fetch("/api/analyze-wireframe", { method: "POST", body: formData });
+      const data = await response.json();
+
+      if (!data.success) {
+        setWireframeError(data.error || "Analysis failed. Please try again.");
+        setIsGenerating(false);
+        return;
+      }
+
+      sessionStorage.setItem("wireframeResult", data.result);
+      router.push(`/projects/${projectId}/wireframe-result`);
+    } catch (error) {
+      console.error(error);
+      setWireframeError("Something went wrong. Please try again.");
+      setIsGenerating(false);
+    }
+  };
+
+  const onDrop = (e) => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); };
+
+  const handleRemove = () => {
+    setImage(null);
+    setWireframeError("");
+    if (inputRef.current) inputRef.current.value = "";
+  };
 
   return (
-    <div
-      key={template.id}
-      className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md"
-    >
+    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md">
       <div className="relative h-52 overflow-hidden">
-        <img
-          src={media.image}
-          alt={template.name}
-          className="h-full w-full object-cover"
-        />
-
-        <div className="absolute inset-0 bg-gradient-to-t from-gray-950/70 via-gray-950/10 to-transparent" />
-
-        <div className="absolute inset-x-0 bottom-0 p-5 text-white">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/75">
-            {media.eyebrow}
-          </p>
-
-          <h4 className="mt-2 text-xl font-semibold">
-            {media.title}
-          </h4>
-
-          <p className="mt-1 max-w-sm text-sm leading-6 text-white/85">
-            {media.description}
-          </p>
-
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleGenerateInformationArchitecture();
-            }}
-            disabled={isGeneratingIA}
-            className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-white underline decoration-white/40 underline-offset-4"
+        {image ? (
+          <>
+            <img src={image.url} alt="Wireframe preview" className="h-full w-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-t from-gray-950/70 via-gray-950/10 to-transparent" />
+            {isGenerating && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-indigo-950/60 backdrop-blur-sm">
+                <Loader2 className="w-8 h-8 text-white animate-spin mb-2" />
+                <p className="text-sm text-white font-medium">Generating analysis…</p>
+              </div>
+            )}
+          </>
+        ) : (
+          <div
+            className={`h-full w-full flex flex-col items-center justify-center bg-gradient-to-br from-indigo-50 to-purple-50 border-2 border-dashed border-indigo-200 ${isGenerating ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+            onDrop={isGenerating ? undefined : onDrop}
+            onDragOver={(e) => e.preventDefault()}
+            onClick={() => !isGenerating && inputRef.current?.click()}
           >
-            {isGeneratingIA ? "Generating..." : "Generate →"}
-          </button>
+            <svg className="w-10 h-10 text-indigo-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+            <p className="text-sm text-indigo-400 font-medium">Drop image here or click to upload</p>
+            <p className="text-xs text-indigo-300 mt-1">PNG, JPG, JPEG, WEBP</p>
+          </div>
+        )}
+        <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={isGenerating} onChange={(e) => handleFile(e.target.files[0])} />
+      </div>
 
-          {informationArchitectureError ? (
-            <p className="mt-3 rounded-md bg-red-50/95 px-2.5 py-2 text-xs font-medium text-red-700">
-              {informationArchitectureError}
-            </p>
-          ) : null}
+      <div className="p-5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">Design Review</p>
+        <h4 className="mt-1 text-lg font-semibold text-gray-900">Wireframe Reviewer</h4>
+        <p className="mt-1 text-sm text-gray-500 leading-5">Upload a wireframe image for AI-powered review and analysis.</p>
+
+        {wireframeError && (
+          <div className="mt-3 flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
+            <svg className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-red-700">{wireframeError}</p>
+              <button onClick={() => inputRef.current?.click()} className="mt-1 text-xs font-medium text-indigo-600 hover:text-indigo-800">Retry →</button>
+            </div>
+          </div>
+        )}
+
+        {!wireframeError && image ? (
+          <div className="mt-3 flex items-center justify-between gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2">
+            <div className="flex items-center gap-2 min-w-0">
+              {isGenerating
+                ? <Loader2 className="w-4 h-4 text-indigo-500 flex-shrink-0 animate-spin" />
+                : <svg className="w-4 h-4 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+              }
+              <span className="text-xs text-green-700 font-medium truncate">{image.name}</span>
+            </div>
+            {!isGenerating && (
+              <button onClick={handleRemove} className="text-xs text-red-500 hover:text-red-700 flex-shrink-0 font-medium">Remove</button>
+            )}
+          </div>
+        ) : !wireframeError && (
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={isGenerating}
+            className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-indigo-600 underline decoration-indigo-300 underline-offset-4 hover:text-indigo-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Upload Image →
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+const renderIdeateTemplateCard = (template, isCompleted) => {
+  const media = IDEATE_CARD_MEDIA[template.id] || IDEATE_CARD_MEDIA["information-architecture"];
+  return (
+    <div key={template.id} className={`group relative overflow-hidden rounded-2xl bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-100 ${isCompleted ? "border border-indigo-300 shadow-md shadow-indigo-100 ring-1 ring-indigo-200" : "border border-gray-100 shadow-sm"}`}>
+      {isCompleted && (
+        <div className="absolute top-3 right-3 z-10 flex items-center gap-1 bg-indigo-600 text-white text-[10px] font-semibold px-2.5 py-1 rounded-full shadow-lg shadow-indigo-200">
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/></svg>
+          Completed
+        </div>
+      )}
+      <div className="p-5">
+        <div className="flex items-start gap-4">
+          <div className={`flex-shrink-0 w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-500 group-hover:bg-indigo-100 transition-colors`}>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="24" height="24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/></svg>
+          </div>
+          <div className="flex-1 min-w-0 pt-0.5">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-indigo-400 mb-0.5">{media.eyebrow}</p>
+            <h4 className="text-sm font-semibold text-gray-900 leading-snug">{media.title}</h4>
+            <p className="mt-1 text-xs text-gray-500 leading-relaxed line-clamp-2">{media.description}</p>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-col gap-2">
+          <button
+            onClick={(e) => { e.stopPropagation(); handleGenerateInformationArchitecture(); }}
+            disabled={isGeneratingIA}
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {isGeneratingIA ? "Generating..." : "Generate IA"}
+          </button>
+          {informationArchitectureError && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600">{informationArchitectureError}</p>}
         </div>
       </div>
     </div>
@@ -813,7 +909,7 @@ const renderIdeateTemplateCard = (template) => {
   {project.projectDescription || "No description"}
   {!showFullDesc && "..."}
 </p>
-            {/* ✅ PROGRESS BAR */}
+            {/* âœ… PROGRESS BAR */}
             
             <div className="flex items-center gap-8 mt-4">
               <div className="flex items-center gap-2"><span className="text-xs uppercase tracking-wide text-gray-500 font-medium">Client</span><span className="text-sm text-gray-900 font-medium">{project.client || "N/A"}</span></div>
@@ -836,7 +932,7 @@ const renderIdeateTemplateCard = (template) => {
             {STAGES.map((stage ,index ) => {
               const isExpanded = expandedStage === stage.id;
               return (
-                <div key={stage.id} className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-sm transition-shadow">
+                <div key={stage.id} className={`bg-white rounded-lg border overflow-hidden transition-all duration-200 hover:shadow-sm ${completedStages.includes(stage.id) ? "border-emerald-300 ring-1 ring-emerald-100 shadow-emerald-50" : "border-gray-200"}`}>
                   <div
   className="p-6 cursor-pointer"
   onClick={() => setExpandedStage(isExpanded ? null : stage.id)}
@@ -879,6 +975,13 @@ const renderIdeateTemplateCard = (template) => {
     </div>
 
 
+  <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+      {completedStages.includes(stage.id) ? (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/></svg>Completed</span>
+      ) : (
+        <button onClick={() => handleMarkStageComplete(stage.id)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 text-xs font-medium hover:border-emerald-300 hover:text-emerald-700 hover:bg-emerald-50 transition-all duration-200">Mark as Complete</button>
+      )}
+    </div>
   </div>
 </div>
                   {isExpanded && (
@@ -894,14 +997,14 @@ const renderIdeateTemplateCard = (template) => {
                           if (stage.id === "empathize") {
                             return (
                               <div key={template.id} className="space-y-3">
-                                {renderEmpathizeTemplateCard(template, downloadableTemplateId)}
+                                {renderEmpathizeTemplateCard(template, downloadableTemplateId, completedStages.includes(stage.id))}
                                 {documents.length > 0 && (
                                   <div className="space-y-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
                                     {documents.map((doc) => (
                                       <div key={doc.documentId} className="rounded-lg border border-gray-200 bg-white p-2.5">
                                         <div className="mb-1 flex items-center gap-2"><FileText className="h-4 w-4 text-blue-500" /><span className="truncate text-xs text-gray-900">{getFileName(doc.blobPath)}</span></div>
                                         <div className="flex items-center justify-between">
-                                          <span className="text-xs text-gray-500">{doc.status} • {new Date(doc.createdAt).toLocaleDateString()}</span>
+                                          <span className="text-xs text-gray-500">{doc.status} â€¢ {new Date(doc.createdAt).toLocaleDateString()}</span>
                                           <div className="flex items-center gap-2">
                                             <button className="text-blue-600 hover:text-blue-800"><Download className="h-3 w-3" /></button>
                                             <button onClick={async () => { if (window.confirm("Delete this document?")) { try { await api.deleteDocument(doc.documentId); await fetchDocuments(); alert("Document deleted"); } catch (err) { alert("Delete failed: " + err.message); } } }} className="text-red-500 hover:text-red-700"><Trash2 className="h-3 w-3" /></button>
@@ -917,75 +1020,29 @@ const renderIdeateTemplateCard = (template) => {
                           if (stage.id === "define") {
                         return (
                           <div key={template.id} className="space-y-3">
-                            {renderDefineTemplateCard(template, downloadableTemplateId)}
+                            {renderDefineTemplateCard(template, downloadableTemplateId, completedStages.includes(stage.id))}
 
                             {/* Documents are loaded lazily when the documents feature is available. */}
                           </div>
                         );
                       }
 
-                      if (stage.id === "ideate" && template.id === "information-architecture") {
+                               if (stage.id === "ideate" && template.id === "wireframe-reviewer") {
                         return (
                           <div key={template.id} className="space-y-3">
-                            {renderIdeateTemplateCard(template)}
+                            <WireframeReviewerCard />
+                          </div>
+                        );
+                      }
+                          if (stage.id === "ideate" && template.id === "information-architecture") {
+                        return (
+                          <div key={template.id} className="space-y-3">
+                            {renderIdeateTemplateCard(template, completedStages.includes(stage.id))}
                           </div>
                         );
                       }
 
-                          return (
-                            <div key={template.id} className="bg-white border-2 border-dashed border-gray-300 rounded-lg p-4">
-                              <div className="flex items-center gap-2 mb-3"><TemplateIcon className="w-4 h-4 text-gray-600" /><span className="text-sm font-medium text-gray-900">{template.name}</span></div>
-                              {template.type === "file" && (
-                                <div className="mb-3">
-                                  <label className="block">
-                                    <input type="file" className="hidden" onChange={() => alert("Upload will connect to document API")} />
-                                    <div className="flex items-center justify-center gap-2 px-3 py-2 rounded text-sm text-gray-700 cursor-pointer bg-gray-100 hover:bg-gray-200"><Upload className="w-4 h-4" /><span>Choose File</span></div>
-                                  </label>
-                                </div>
-                              )}
-                              {template.type === "link" && (
-                                <div className="mb-3"><input type="text" value={link} onChange={(e) => setPrototypeLinks({ ...prototypeLinks, [`${stage.id}-${template.id}`]: e.target.value })} className="w-full px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded text-sm text-gray-700" placeholder="Enter prototype link" /></div>
-                              )}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const url = `/projects/${projectId}/workspace?template=${encodeURIComponent(template.name)}&projectName=${encodeURIComponent(project.projectName)}&description=${encodeURIComponent(project.projectDescription)}`;
-                                  console.log("Navigating to:", url);
-                                  router.push(url);
-                                }}
-                                className="w-full px-3 py-2 bg-[#702dff] text-white rounded text-sm"
-                              >
-                                Use Template
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (!downloadableTemplateId) return;
-                                  window.location.assign(`/api/templates/download/${downloadableTemplateId}`);
-                                }}
-                                disabled={!downloadableTemplateId}
-                                className="w-full px-3 py-2 mt-2 border border-gray-300 text-gray-700 rounded text-sm hover:bg-gray-50 disabled:opacity-50"
-                              >
-                                Download Template
-                              </button>
-                              {documents.length > 0 && (
-                                <div className="space-y-2 pt-3 border-t border-gray-200">
-                                  {documents.length.map((doc) => (
-                                    <div key={doc.documentId} className="bg-blue-50 rounded p-2 border border-blue-100">
-                                      <div className="flex items-center gap-2 mb-1"><FileText className="w-4 h-4 text-blue-500" /><span className="text-xs text-gray-900 truncate">{getFileName(doc.blobPath)}</span></div>
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-xs text-gray-500">{doc.status} • {new Date(doc.createdAt).toLocaleDateString()}</span>
-                                        <div className="flex items-center gap-2">
-                                          <button className="text-blue-600 hover:text-blue-800"><Download className="w-3 h-3" /></button>
-                                          <button onClick={async () => { if (window.confirm("Delete this document?")) { try { await api.deleteDocument(doc.documentId); await fetchDocuments(); alert("Document deleted"); } catch (err) { alert("Delete failed: " + err.message); } } }} className="text-red-500 hover:text-red-700"><Trash2 className="w-3 h-3" /></button>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          );
+                          return renderGenericCard(template, stage.id, downloadableTemplateId, link, completedStages.includes(stage.id));
                         })}
                       </div>
                     </div>
@@ -1144,7 +1201,7 @@ const renderIdeateTemplateCard = (template) => {
               <p className="rounded-lg border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500">No personas found for this project.</p>
             ) : (
               <>
-                {/* Persona group tabs — same style as workspace */}
+                {/* Persona group tabs â€” same style as workspace */}
                 <div className="mb-4 border-b border-gray-200 pb-0 flex gap-2 flex-wrap">
                   {personaCards.map((card) => (
                     <button

@@ -85,6 +85,7 @@ export async function GET(request) {
               client_name,
               start_date,
               end_date,
+              domain,
               created_at,
               created_by
             FROM projectss
@@ -102,6 +103,7 @@ export async function GET(request) {
               client_name,
               start_date,
               end_date,
+              domain,
               created_at,
               created_by
             FROM projectss

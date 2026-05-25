@@ -100,6 +100,7 @@ export function CreateProjectModal({
       targetDate,
       sharedWith,
       status,
+      domain,
       personas: filteredPersonas,
     };
 
