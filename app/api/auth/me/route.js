@@ -1,6 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
+import logger from "@/lib/logger";
 
 function errorResponse(message, status = 500) {
   return NextResponse.json(
@@ -47,7 +48,7 @@ export async function GET(request) {
       },
     });
   } catch (error) {
-    console.error("GET /api/auth/me error:", error);
+    logger.error("GET /api/auth/me error", { error });
     return errorResponse(
       error?.message || "Internal server error while fetching user",
       500
@@ -123,7 +124,7 @@ export async function PUT(request) {
       },
     });
   } catch (error) {
-    console.error("PUT /api/auth/me error:", error);
+    logger.error("PUT /api/auth/me error", { error });
     return errorResponse(
       error?.message || "Internal server error while updating user",
       500

@@ -2,38 +2,17 @@ import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { AUTH_COOKIE_NAME, getAuthCookieOptions, signAuthToken } from "@/lib/auth";
-
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const ALLOWED_ROLES = ["designer", "manager"];
+import { validateBody } from "@/lib/validate";
+import { loginSchema } from "@/lib/schemas";
+import logger from "@/lib/logger";
 
 export async function POST(request) {
+  const { data, error } = await validateBody(request, loginSchema);
+  if (error) return error;
+
+  const { email, password, role } = data;
+
   try {
-    const body = await request.json();
-    const email = String(body?.email || "").trim().toLowerCase();
-    const password = String(body?.password || "");
-    const role = String(body?.role || "").trim().toLowerCase();
-
-    if (!email || !password || !role) {
-      return NextResponse.json(
-        { success: false, error: { message: "Email, password, and role are required" } },
-        { status: 400 }
-      );
-    }
-
-    if (!EMAIL_REGEX.test(email)) {
-      return NextResponse.json(
-        { success: false, error: { message: "Invalid email format" } },
-        { status: 400 }
-      );
-    }
-
-    if (!ALLOWED_ROLES.includes(role)) {
-      return NextResponse.json(
-        { success: false, error: { message: "Invalid role" } },
-        { status: 400 }
-      );
-    }
-
     const pool = await getPool();
     const result = await pool
       .request()
@@ -73,16 +52,13 @@ export async function POST(request) {
 
     const response = NextResponse.json({
       success: true,
-      data: {
-        userId: user.user_id,
-        role: user.role,
-      },
+      data: { userId: user.user_id, role: user.role },
     });
 
     response.cookies.set(AUTH_COOKIE_NAME, token, getAuthCookieOptions());
     return response;
-  } catch (error) {
-    console.error("POST /api/auth/login error:", error);
+  } catch (err) {
+    logger.error("POST /api/auth/login error", { error: err });
     return NextResponse.json(
       { success: false, error: { message: "Login failed" } },
       { status: 500 }

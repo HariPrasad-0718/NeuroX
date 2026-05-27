@@ -1,28 +1,20 @@
 import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/withAuth";
 import { enhancePersonaDescription } from "@/lib/agent5i";
+import { aiLightLimiter, rateLimitedResponse } from "@/lib/rateLimit";
+import { validateBody } from "@/lib/validate";
+import { enhancePersonaSchema } from "@/lib/schemas";
 
-export async function POST(request) {
+export const POST = withAuth(async (request, _ctx, user) => {
+  const { data, error } = await validateBody(request, enhancePersonaSchema);
+  if (error) return error;
+
+  const { limited, retryAfterSec } = aiLightLimiter.check(String(user.userId));
+  if (limited) return rateLimitedResponse(retryAfterSec);
+
+  const { project_description: projectDescription, persona_title: personaTitle, persona_description: personaDescription } = data;
+
   try {
-    const body = await request.json();
-
-    const projectDescription = (body?.project_description || "").trim();
-    const personaTitle = (body?.persona_title || "").trim();
-    const personaDescription = (body?.persona_description || "").trim();
-
-    if (!projectDescription) {
-      return NextResponse.json(
-        { success: false, error: { message: "project_description is required" } },
-        { status: 400 }
-      );
-    }
-
-    if (!personaTitle) {
-      return NextResponse.json(
-        { success: false, error: { message: "persona_title is required" } },
-        { status: 400 }
-      );
-    }
-
     const enhanced = await enhancePersonaDescription({
       projectDescription,
       personaTitle,
@@ -42,4 +34,4 @@ export async function POST(request) {
       { status: 500 }
     );
   }
-}
+});

@@ -1,0 +1,675 @@
+# NeuroX - Engineering Change Log
+
+> **Scope:** All changes made during the enterprise-readiness refactor session.  
+> **Date:** May 2026
+
+---
+
+## Table of Contents
+
+1. [What Was There Before](#1-what-was-there-before)
+2. [New Files Created](#2-new-files-created)
+3. [Authentication & Authorization](#3-authentication--authorization)
+4. [Zod Input Validation](#4-zod-input-validation)
+5. [Structured Logging](#5-structured-logging)
+6. [Rate Limiting](#6-rate-limiting)
+7. [External Agent Hardening](#7-external-agent-hardening)
+8. [Frontend Architecture](#8-frontend-architecture)
+9. [Security Headers & Config](#9-security-headers--config)
+10. [Environment Variables](#10-environment-variables)
+11. [API Route Reference](#11-api-route-reference)
+12. [Patterns Every Dev Must Follow](#12-patterns-every-dev-must-follow)
+13. [Known Limitations & Future Work](#13-known-limitations--future-work)
+
+---
+
+## 1. What Was There Before
+
+Before this refactor, the codebase had the following problems:
+
+| Problem                                | Detail                                                                                                        |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| **Zero auth on 15 routes**             | Routes like `/api/personas`, `/api/interviewees`, `/api/generate-*` had no authentication check whatsoever    |
+| **Hardcoded credentials**              | `yarramachu.sunaini@c5i.ai` / `Subbareddy@9014` were committed directly in source files                       |
+| **Real DB password in `.env.example`** | `DB_PASSWORD=Neuroxproject@1234` and the real Azure SQL server hostname were committed                        |
+| **`.env.example` was gitignored**      | The template file was never committed, making onboarding impossible                                           |
+| **No input validation**                | API routes parsed `body.field` directly with no type checking, length limits, or required-field enforcement   |
+| **All console.log in production**      | 54+ `console.log`/`console.error` calls leaked internal data to server logs                                   |
+| **No request timeouts**                | 7 external fetch calls to the Agent5i webhook had no timeout — a hanging agent would hang the request forever |
+| **Hardcoded dev URLs**                 | `agent5idev.c5ailabs.com` was hardcoded in production routes                                                  |
+| **No rate limiting**                   | AI generation endpoints (which call paid external agents) had no throttle                                     |
+| **Duplicated auth state**              | `AppShell` and `useCurrentUser` both fetched `/api/auth/me` independently on every navigation                 |
+| **No error boundaries**                | An unhandled React error in any component crashed the entire app with a blank screen                          |
+
+---
+
+## 2. New Files Created
+
+### `lib/withAuth.js`
+
+Higher-Order Function (HOF) that wraps any Next.js App Router route handler with JWT authentication.
+
+```js
+// Usage in any route file
+export const POST = withAuth(async (req, ctx, user) => {
+  // user = { userId, name, email, role, createdAt }
+  // If the cookie is missing or invalid, withAuth returns 401 automatically
+});
+```
+
+- Reads the `session` HttpOnly cookie
+- Verifies the JWT using `jose`
+- Passes the decoded `user` object as the **third argument** to the handler
+- Returns `{ success: false, error: { message: "Unauthorized" } }` with 401 if invalid
+
+**Do NOT add `withAuth` to:** `auth/login`, `auth/signup`, `auth/logout`, `auth/me` — these are intentionally public.
+
+---
+
+### `lib/schemas.js`
+
+Single source of truth for all Zod validation schemas. Every API body/query is validated here.
+
+Key exports:
+
+```
+loginSchema, signupSchema
+createProjectSchema, updateProjectSchema, updateProjectByIdSchema
+createPersonaSchema, patchPersonaSchema
+createIntervieweeSchema
+generateQuestionsSchema, generatePersonaSchema, generatePersonaFromTranscriptSchema
+generatePersonaCardSchema       — takes empathy_data_and_context (large text blob)
+generateProcessFlowSchema       — takes projectId + regenerate flag
+generateIASchema                — takes projectId + combinedPersonaOutput + regenerate
+generateUXJourneySchema         — takes project_description + persona fields (NO projectId)
+generateAppBuildPromptSchema    — takes projectId only
+descriptionSchema               — research summary, all fields optional
+saveGeneratedPersonaSchema      — projectId + problemStatement + personas[]
+enhancePersonaSchema            — project_description + persona_title + persona_description
+updateInterviewSummarySchema, updatePersonaOutputSchema
+updateTranscriptSchema
+updateProgressSchema            — stage (enum) + progress (0–100)
+createUserAdminSchema, updateUserAdminSchema
+getPersonasQuerySchema, getIntervieweesQuerySchema, getProjectQuerySchema
+deleteIntervieweeQuerySchema, deleteProjectQuerySchema
+updateProgressSchema
+```
+
+Primitive helpers also exported: `positiveInt`, `nonEmptyString`
+
+---
+
+### `lib/validate.js`
+
+Two helpers that wrap Zod parsing and return a consistent `{ data, error }` tuple.
+
+```js
+// JSON body (async)
+const { data, error } = await validateBody(req, mySchema);
+if (error) return error; // error is already a NextResponse with 400 status
+
+// URL query params (sync)
+const { data, error } = validateQuery(req, mySchema);
+if (error) return error;
+```
+
+On validation failure the response looks like:
+
+```json
+{
+  "success": false,
+  "error": {
+    "message": "Validation failed",
+    "fields": { "projectId": ["Must be a positive number"] }
+  }
+}
+```
+
+---
+
+### `lib/logger.js`
+
+Structured logger. Replaces all `console.*` calls in API routes and lib files.
+
+```js
+import logger from "@/lib/logger";
+
+logger.debug("Payload built", { agentName }); // dev-only, silent in production
+logger.info("DB connected");
+logger.warn("Persona parse failed", { error });
+logger.error("Agent request failed", { error, projectId });
+```
+
+**Production** → writes newline-delimited JSON to stdout (compatible with Datadog, Azure Monitor, CloudWatch).  
+**Development** → coloured, human-readable console output.
+
+> ⚠️ Never use `console.log/error/warn` in API routes or lib files. Use `logger` instead.
+
+---
+
+### `lib/rateLimit.js`
+
+In-memory sliding-window rate limiter. No Redis required for single-server deploys.
+
+```js
+import { createRateLimiter, rateLimitedResponse } from "@/lib/rateLimit";
+
+const limiter = createRateLimiter({ limit: 10, windowMs: 60_000 });
+
+export const POST = withAuth(async (req, ctx, user) => {
+  const { limited, retryAfterSec } = limiter.check(String(user.userId));
+  if (limited) return rateLimitedResponse(retryAfterSec);
+  // ...
+});
+```
+
+Pre-built limiters (keyed on `userId`):
+| Export | Limit | Window | Used by |
+|---|---|---|---|
+| `aiHeavyLimiter` | 5 req | 1 min | IA, app-build-prompt, persona-card, process-flow |
+| `aiStandardLimiter` | 15 req | 1 min | UX journey, generate-persona, generate-questions |
+| `aiLightLimiter` | 30 req | 1 min | enhance-persona, description, analyze-wireframe |
+
+Rate-limited requests receive HTTP 429 with a `Retry-After` header.
+
+> ⚠️ The `Map` is process-scoped. If you run multiple Node.js instances (e.g. PM2 cluster, Kubernetes) the counters won't be shared. Swap the store for Redis when that becomes necessary.
+
+---
+
+### `context/AuthContext.jsx`
+
+Global React Context that owns the single `/api/auth/me` call for the entire app.
+
+```js
+import { useAuth } from "@/context/AuthContext";
+
+const { user, isLoading, logout, updateUser, refetch } = useAuth();
+// user = { userId, name, email, role, createdAt } | null
+```
+
+- Fetches exactly **once** on mount
+- Redirects unauthenticated users to `/login` (except on public paths)
+- Exposed in layout via `<AuthProvider>` wrapping the root layout
+
+---
+
+### `hooks/useCurrentUser.js` (rewritten)
+
+Thin backward-compatibility wrapper over `useAuth()`. Existing components that used this hook continue to work unchanged.
+
+```js
+const { userData, isLoading, error, isUpdating, updateUser, refetch } =
+  useCurrentUser();
+```
+
+---
+
+### `components/ErrorBoundary.jsx`
+
+Class-based React error boundary with an optional `label` prop for identification.
+
+```jsx
+<ErrorBoundary label="Persona Card">
+  <PersonaCardComponent />
+</ErrorBoundary>
+```
+
+Also exports `withErrorBoundary(Component, label)` HOC.
+
+---
+
+### `app/error.js`
+
+Next.js global error boundary (Client Component). Shows a "Try again" button and "Go to Dashboard" fallback. Error message is shown only in `development`.
+
+---
+
+## 3. Authentication & Authorization
+
+### Before
+
+- Auth was done route-by-route with manual `getUserFromRequest` calls
+- 15 routes had **zero authentication**
+
+### After
+
+All routes except the auth endpoints themselves now use `withAuth`:
+
+```js
+// Pattern used everywhere
+export const POST = withAuth(async (req, ctx, user) => {
+  // user.userId is guaranteed to exist here
+});
+```
+
+**Intentionally public (no withAuth):**
+
+- `POST /api/auth/login`
+- `POST /api/auth/signup`
+- `POST /api/auth/logout`
+- `GET /api/auth/me` — uses `getUserFromRequest` directly because it IS the session probe
+
+**All other 25 routes are protected.**
+
+---
+
+## 4. Zod Input Validation
+
+### Before
+
+```js
+// Typical old pattern — no type safety, no length limits
+const body = await req.json();
+const { projectId } = body;
+if (!projectId)
+  return NextResponse.json({ error: "projectId required" }, { status: 400 });
+```
+
+### After
+
+```js
+// New pattern — validated, coerced, trimmed
+const { data, error } = await validateBody(req, generateIASchema);
+if (error) return error;
+const { projectId, combinedPersonaOutput, regenerate } = data;
+```
+
+**Every route now has:**
+
+- Type coercion (`positiveInt` uses `z.coerce.number()` so `"42"` → `42`)
+- Max length enforcement on all strings
+- Enum validation on role, stage, etc.
+- Optional fields with safe defaults
+- Consistent 400 response with field-level error details
+
+---
+
+## 5. Structured Logging
+
+### Before
+
+54+ `console.log` / `console.error` calls scattered across all API routes and lib files, leaking internal payloads, agent credentials shape, and stack traces to stdout in production.
+
+### After
+
+All replaced with `logger.debug|info|warn|error`. Debug logs are completely suppressed in production.
+
+**Files that now use the logger:**
+
+- All 29 API route files
+- `lib/db.js` (DB connection events)
+- `lib/agent5i.js` (agent response events)
+
+---
+
+## 6. Rate Limiting
+
+10 AI generation routes are now rate-limited per userId. See the `lib/rateLimit.js` section above for the tier table.
+
+Adding rate limiting to a new AI route:
+
+```js
+import { aiStandardLimiter, rateLimitedResponse } from "@/lib/rateLimit";
+
+export const POST = withAuth(async (req, ctx, user) => {
+  const { limited, retryAfterSec } = aiStandardLimiter.check(
+    String(user.userId),
+  );
+  if (limited) return rateLimitedResponse(retryAfterSec);
+  // ...
+});
+```
+
+---
+
+## 7. External Agent Hardening
+
+### Hardcoded credentials removed
+
+The following files previously had credentials embedded in source:
+
+| File                                     | What was there                          | What's there now               |
+| ---------------------------------------- | --------------------------------------- | ------------------------------ |
+| `app/api/analyze-wireframe/route.js`     | `username: "yarramachu.sunaini@c5i.ai"` | `process.env.AGENT5I_USERNAME` |
+| `app/api/generate-persona-card/route.js` | Hardcoded fallback password             | `process.env.AGENT5I_PASSWORD` |
+
+All credential reads now follow this pattern:
+
+```js
+const USERNAME =
+  process.env.AGENT5I_USERNAME || process.env.AGENT_USERNAME || "";
+const PASSWORD =
+  process.env.AGENT5I_PASSWORD || process.env.AGENT_PASSWORD || "";
+// Guard — return 500 if missing rather than silently failing
+if (!USERNAME || !PASSWORD) {
+  return NextResponse.json(
+    { success: false, error: "Agent credentials not configured" },
+    { status: 500 },
+  );
+}
+```
+
+### Hardcoded dev URLs removed
+
+Three routes previously pointed directly to `agent5idev.c5ailabs.com`. All URLs are now read from env:
+
+```js
+const WEBHOOK_URL =
+  process.env.AGENT5I_WEBHOOK_URL ||
+  "https://agent5i.c5ailabs.com/api/recipes/webhook/agent/";
+```
+
+Set `AGENT5I_WEBHOOK_URL=https://agent5idev.c5ailabs.com/...` in `.env.local` for local dev against the dev environment.
+
+### AbortSignal timeouts
+
+All 7 external `fetch()` calls now have timeouts:
+
+| Route                               | Timeout |
+| ----------------------------------- | ------- |
+| `description`                       | 60s     |
+| `lib/agent5i.js` (shared)           | 60s     |
+| `generate-process-flow`             | 90s     |
+| `generate-ux-journey`               | 120s    |
+| `generate-information-architecture` | 180s    |
+| `generate-persona-card`             | 180s    |
+| `generate-app-build-prompt`         | 180s    |
+
+On timeout the handler returns `{ success: false, error: "Agent request timed out" }` with HTTP 504 (or 500 for `AbortError`).
+
+---
+
+## 8. Frontend Architecture
+
+### AuthContext (single source of truth)
+
+Before this change, both `AppShell.jsx` and `useCurrentUser.js` independently fetched `/api/auth/me` on every page load — doubling the auth requests on every navigation.
+
+**Now:** `AuthContext` fetches once. `AppShell` and all components consume `useAuth()`.
+
+```
+app/layout.js
+  └── AuthProvider (context/AuthContext.jsx)
+        └── AppShell.jsx
+              └── useAuth() — reads from context, no new fetch
+```
+
+### Error Boundaries
+
+Two layers of error catching:
+
+1. **`app/error.js`** — Next.js route-level boundary, catches errors that escape any page component
+2. **`components/ErrorBoundary.jsx`** — Inline boundary for individual widget isolation
+
+The `AppShell` wraps its page content in `<ErrorBoundary label="Page">` so one broken page doesn't crash the shell.
+
+---
+
+## 9. Security Headers & Config
+
+`next.config.mjs` now sets the following headers on **every response**:
+
+| Header                    | Value                                                                                                                                                 |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Content-Security-Policy` | Restricts scripts, styles, connections to known origins. Explicitly allows both `agent5i.c5ailabs.com` and `agent5idev.c5ailabs.com` in `connect-src` |
+| `X-Content-Type-Options`  | `nosniff`                                                                                                                                             |
+| `X-Frame-Options`         | `DENY`                                                                                                                                                |
+| `X-XSS-Protection`        | `1; mode=block`                                                                                                                                       |
+| `Referrer-Policy`         | `strict-origin-when-cross-origin`                                                                                                                     |
+| `Permissions-Policy`      | Disables camera, microphone, geolocation                                                                                                              |
+
+If you add a new external API domain, you **must** add it to the CSP `connect-src` directive in `next.config.mjs`.
+
+---
+
+## 10. Environment Variables
+
+`.env.example` was rewritten from scratch. It now:
+
+- Documents every one of the 23 env vars the app reads
+- Uses placeholder values only (no real credentials)
+- Is committed to git (it was previously gitignored — fixed)
+
+### Required variables
+
+```bash
+# Database (Azure SQL)
+DB_USER=
+DB_PASSWORD=
+DB_SERVER=                 # e.g. yourserver.database.windows.net
+DB_NAME=
+
+# Auth
+JWT_SECRET=                # min 32 chars, random string
+NEXTAUTH_SECRET=           # same or different random string
+NEXTAUTH_URL=              # e.g. http://localhost:3000
+
+# Agent5i — core
+AGENT5I_WEBHOOK_URL=       # https://agent5i.c5ailabs.com/api/recipes/webhook/agent/
+AGENT5I_USERNAME=
+AGENT5I_PASSWORD=
+
+# Agent5i — named agents (optional overrides)
+AGENT5I_WIREFRAME_AGENT_NAME=
+AGENT5I_IA_AGENT_NAME=
+AGENT5I_APP_PROMPT_AGENT_NAME=
+AGENT5I_PERSONA_AGENT_NAME=
+AGENT5I_QUESTION_AGENT_NAME=
+
+# Azure Blob Storage
+AZURE_STORAGE_ACCOUNT_NAME=
+AZURE_STORAGE_ACCOUNT_KEY=
+AZURE_STORAGE_CONTAINER_NAME=
+AZURE_STORAGE_SAS_EXPIRY_MINUTES=
+
+# AI (Gemini)
+GEMINI_API_KEY=
+
+# App
+NODE_ENV=development
+NEXT_PUBLIC_APP_URL=
+```
+
+> Never commit `.env` or `.env.local`. Both are in `.gitignore`.  
+> Always commit `.env.example` with placeholder values.
+
+---
+
+## 11. API Route Reference
+
+### Public routes (no auth required)
+
+| Method | Path               | Description                                           |
+| ------ | ------------------ | ----------------------------------------------------- |
+| POST   | `/api/auth/login`  | Validate credentials, set session cookie              |
+| POST   | `/api/auth/signup` | Create account                                        |
+| POST   | `/api/auth/logout` | Clear session cookie                                  |
+| GET    | `/api/auth/me`     | Return current user from cookie (used by AuthContext) |
+
+### Protected routes (withAuth required)
+
+#### Projects
+
+| Method | Path                          | Description                                           |
+| ------ | ----------------------------- | ----------------------------------------------------- |
+| GET    | `/api/projects`               | List all projects for current user                    |
+| POST   | `/api/projects`               | Create project (with optional persona AI enhancement) |
+| PUT    | `/api/projects`               | Update project (query `?projectId=`)                  |
+| DELETE | `/api/projects`               | Delete project + cascade (query `?projectId=`)        |
+| GET    | `/api/projects/[id]`          | Get single project with personas                      |
+| PUT    | `/api/projects/[id]`          | Update project fields + persona upsert                |
+| GET    | `/api/projects/[id]/progress` | Get stage progress percentages                        |
+| PUT    | `/api/projects/[id]/progress` | Update a stage's progress                             |
+
+#### Personas & Interviews
+
+| Method | Path                            | Description                                                                |
+| ------ | ------------------------------- | -------------------------------------------------------------------------- |
+| GET    | `/api/personas`                 | Fetch personas (supports `aggregateGenerated`, `groupByInterviewee` flags) |
+| PATCH  | `/api/personas`                 | Update persona description                                                 |
+| GET    | `/api/interviewees`             | Fetch interviewees for a persona                                           |
+| POST   | `/api/interviewees`             | Create interviewee (copies questions from existing sibling)                |
+| DELETE | `/api/interviewees`             | Delete interviewee + cascade                                               |
+| GET    | `/api/generate-questions`       | Fetch question history for an interviewee                                  |
+| PATCH  | `/api/generate-questions`       | Save transcript + auto-generate summary                                    |
+| POST   | `/api/generate-questions`       | **[AI]** Generate questions from persona description                       |
+| GET    | `/api/generate-persona`         | Fetch stored persona output for an interview                               |
+| POST   | `/api/generate-persona`         | **[AI]** Generate persona from interview transcript                        |
+| POST   | `/api/update-interview-summary` | Manually update interview summary                                          |
+| POST   | `/api/update-persona-output`    | Manually update persona output text                                        |
+
+#### AI Generation
+
+| Method | Path                                     | Limiter           | Timeout               | Description                                  |
+| ------ | ---------------------------------------- | ----------------- | --------------------- | -------------------------------------------- |
+| POST   | `/api/enhance-persona`                   | Light (30/min)    | 60s (via agent5i lib) | Enhance a persona description                |
+| POST   | `/api/description`                       | Light (30/min)    | 60s                   | Generate research summary from transcript    |
+| POST   | `/api/analyze-wireframe`                 | Light (30/min)    | (agent manages)       | Analyze wireframe image via FormData         |
+| POST   | `/api/generate-persona-card`             | Heavy (5/min)     | 180s                  | Generate full persona card from empathy data |
+| POST   | `/api/generate-process-flow`             | Heavy (5/min)     | 90s                   | Generate UX process flow diagram             |
+| POST   | `/api/generate-ux-journey`               | Standard (15/min) | 120s                  | Generate UX journey flow                     |
+| POST   | `/api/generate-information-architecture` | Heavy (5/min)     | 180s                  | Generate IA from define phase output         |
+| POST   | `/api/generate-app-build-prompt`         | Heavy (5/min)     | 180s                  | Generate comprehensive app build prompt      |
+| POST   | `/api/save-generated-persona`            | —                 | —                     | Save AI-generated persona cards to DB        |
+
+#### Lookup / Admin
+
+| Method          | Path                           | Description                          |
+| --------------- | ------------------------------ | ------------------------------------ |
+| GET             | `/api/stages`                  | List design thinking stages (static) |
+| GET             | `/api/templates`               | Fetch templates filtered by stage    |
+| GET             | `/api/templates/download/[id]` | Generate Azure Blob SAS download URL |
+| GET/POST/PUT    | `/api/users`                   | User admin CRUD                      |
+| GET             | `/api/experts`                 | List experts (stub — returns `[]`)   |
+| GET/POST/DELETE | `/api/bookings`                | Bookings (stub)                      |
+| GET/POST/DELETE | `/api/documents`               | Documents (stub)                     |
+
+---
+
+## 12. Patterns Every Dev Must Follow
+
+### Adding a new API route
+
+```js
+// Minimum required structure
+import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/withAuth";
+import { validateBody } from "@/lib/validate";
+import { mySchema } from "@/lib/schemas"; // add schema to schemas.js first
+import logger from "@/lib/logger";
+// If it calls an external agent, also import the appropriate limiter:
+import { aiStandardLimiter, rateLimitedResponse } from "@/lib/rateLimit";
+
+export const POST = withAuth(async (req, ctx, user) => {
+  // 1. Validate input
+  const { data, error } = await validateBody(req, mySchema);
+  if (error) return error;
+
+  // 2. Rate-limit if calling an external AI service
+  const { limited, retryAfterSec } = aiStandardLimiter.check(
+    String(user.userId),
+  );
+  if (limited) return rateLimitedResponse(retryAfterSec);
+
+  // 3. Business logic
+  try {
+    // use user.userId, data.xxx
+    return NextResponse.json({ success: true, data: result });
+  } catch (err) {
+    logger.error("POST /api/my-route error", { error: err });
+    return NextResponse.json(
+      { success: false, error: { message: err.message } },
+      { status: 500 },
+    );
+  }
+});
+```
+
+### Adding a new Zod schema
+
+Add it to `lib/schemas.js`. Never define schemas inline in route files.
+
+```js
+export const myNewSchema = z.object({
+  projectId: positiveInt, // coerces "42" → 42
+  name: nonEmptyString.max(150), // trims, rejects ""
+  description: z.string().max(4000).trim().optional().default(""),
+  role: z.enum(["designer", "manager"]),
+});
+```
+
+### Never do these things
+
+```js
+// ❌ Direct body access
+const body = await req.json();
+const { id } = body;
+
+// ❌ Manual auth check
+const user = await getUserFromRequest(req);
+if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+// ❌ Console in API routes
+console.log("debug:", data);
+
+// ❌ Hardcoded agent URL
+const res = await fetch("https://agent5i.c5ailabs.com/...");
+
+// ❌ Fetch without timeout
+await fetch(URL, { method: "POST", body: JSON.stringify(payload) });
+```
+
+---
+
+## 13. Known Limitations & Future Work
+
+| Item                             | Detail                                                                                                                                                                                                                           | Priority        |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| **Rate limiter is in-process**   | The `Map`-based limiter won't sync across multiple Node.js instances. Replace with Redis (`ioredis` + sliding window) when deploying with PM2 cluster or Kubernetes.                                                             | Medium          |
+| **`auth/me` rate limit**         | The session probe endpoint has no rate limit — a brute-force attacker could probe it rapidly. Add a per-IP rate limit (IP extracted from `X-Forwarded-For`).                                                                     | Medium          |
+| **Frontend console calls**       | `console.*` calls in page components (`app/projects/[id]/page.js`, etc.) were intentionally left as-is — browser devtools depend on them. Review and prune debug logs before public launch.                                      | Low             |
+| **Stub routes**                  | `/api/bookings`, `/api/documents`, `/api/experts` return empty arrays. Full implementation depends on DB schema additions.                                                                                                       | Backlog         |
+| **CSP `unsafe-inline`**          | The current CSP allows inline styles. Migrate to CSS Modules or hashed styles to enable a stricter policy.                                                                                                                       | Low             |
+| **`auth/me` PUT**                | The profile update endpoint (`PUT /api/auth/me`) still uses `getUserFromRequest` manually because it predates `withAuth`. It works correctly but is inconsistent with the rest of the codebase. Migrate when touching that file. | Low             |
+| **Multi-instance rate limiting** | See first row. Production SLA depends on this if horizontal scaling is used.                                                                                                                                                     | High if scaling |
+
+---
+
+## Appendix — File Map
+
+```
+NeuroX/
+├── lib/
+│   ├── auth.js              — JWT sign/verify, cookie helpers, getUserFromRequest
+│   ├── db.js                — Azure SQL singleton pool (mssql)
+│   ├── agent5i.js           — Shared Agent5i webhook client (enhance, questions, summary, persona)
+│   ├── withAuth.js          — ✨ NEW: Auth HOF for route handlers
+│   ├── schemas.js           — ✨ NEW: All Zod schemas
+│   ├── validate.js          — ✨ NEW: validateBody / validateQuery helpers
+│   ├── logger.js            — ✨ NEW: Structured logger (JSON in prod, pretty in dev)
+│   └── rateLimit.js         — ✨ NEW: In-memory sliding-window rate limiter
+│
+├── context/
+│   └── AuthContext.jsx      — ✨ NEW: Global auth state, single /api/auth/me fetch
+│
+├── hooks/
+│   └── useCurrentUser.js    — ✨ REWRITTEN: Thin wrapper over useAuth()
+│
+├── components/
+│   ├── AppShell.jsx         — ✨ REWRITTEN: Uses useAuth(), no duplicate fetch
+│   └── ErrorBoundary.jsx    — ✨ NEW: Class-based error boundary + withErrorBoundary HOC
+│
+├── app/
+│   ├── error.js             — ✨ NEW: Next.js global error boundary
+│   ├── layout.js            — MODIFIED: Wrapped with <AuthProvider>
+│   └── api/                 — ALL 29 routes modified (withAuth + Zod + logger + rate limit)
+│
+├── next.config.mjs          — ✨ REWRITTEN: Full security headers suite
+├── .env.example             — ✨ REWRITTEN: All 23 vars documented, no real values
+└── .gitignore               — MODIFIED: .env.example removed from ignore list
+```
+
+---
+
+_Generated during the enterprise-readiness refactor — May 2026._  
+_Contact the original author for questions about the Agent5i integration architecture._

@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
-import { getUserFromRequest } from "@/lib/auth";
+import { withAuth } from "@/lib/withAuth";
+import { validateBody, validateQuery } from "@/lib/validate";
 import { generatePersonaFromTranscript, generateSummaryFromTranscript } from "@/lib/agent5i";
+import { generatePersonaFromTranscriptSchema, positiveInt } from "@/lib/schemas";
+import { z } from "zod";
+import { aiStandardLimiter, rateLimitedResponse } from "@/lib/rateLimit";
+
+const getGeneratePersonaQuerySchema = z.object({ interviewId: positiveInt });
 
 async function getOwnedInterviewContext(pool, interviewId, userId) {
   const result = await pool
@@ -26,33 +32,16 @@ async function getOwnedInterviewContext(pool, interviewId, userId) {
 }
 
 // GET /api/generate-persona?interviewId=123
-export async function GET(request) {
+export const GET = withAuth(async (request, _ctx, user) => {
+  const { data, error: validationError } = validateQuery(request, getGeneratePersonaQuerySchema);
+  if (validationError) return validationError;
+
+  const { interviewId } = data;
+
   try {
-    const sessionUser = await getUserFromRequest(request);
-    if (!sessionUser?.userId) {
-      return NextResponse.json(
-        { success: false, error: { message: "Unauthorized" } },
-        { status: 401 }
-      );
-    }
-
-    const { searchParams } = new URL(request.url);
-    const interviewId = Number(searchParams.get("interviewId"));
-
-    if (!interviewId) {
-      return NextResponse.json(
-        { success: false, error: { message: "interviewId is required" } },
-        { status: 400 }
-      );
-    }
-
     const pool = await getPool();
 
-    const context = await getOwnedInterviewContext(
-      pool,
-      interviewId,
-      Number(sessionUser.userId)
-    );
+    const context = await getOwnedInterviewContext(pool, interviewId, Number(user.userId));
 
     if (!context) {
       return NextResponse.json(
@@ -86,38 +75,23 @@ export async function GET(request) {
       { status: 500 }
     );
   }
-}
+});
 
 // POST /api/generate-persona
 // Body: { interviewId, transcript? }
-export async function POST(request) {
+export const POST = withAuth(async (request, _ctx, user) => {
+  const { data, error: validationError } = await validateBody(request, generatePersonaFromTranscriptSchema);
+  if (validationError) return validationError;
+
+  const { limited, retryAfterSec } = aiStandardLimiter.check(String(user.userId));
+  if (limited) return rateLimitedResponse(retryAfterSec);
+
+  const { interviewId, transcript: transcriptFromBody } = data;
+
   try {
-    const sessionUser = await getUserFromRequest(request);
-    if (!sessionUser?.userId) {
-      return NextResponse.json(
-        { success: false, error: { message: "Unauthorized" } },
-        { status: 401 }
-      );
-    }
-
-    const body = await request.json();
-    const interviewId = Number(body?.interviewId);
-    const transcriptFromBody = typeof body?.transcript === "string" ? body.transcript : null;
-
-    if (!interviewId) {
-      return NextResponse.json(
-        { success: false, error: { message: "interviewId is required" } },
-        { status: 400 }
-      );
-    }
-
     const pool = await getPool();
 
-    const context = await getOwnedInterviewContext(
-      pool,
-      interviewId,
-      Number(sessionUser.userId)
-    );
+    const context = await getOwnedInterviewContext(pool, interviewId, Number(user.userId));
 
     if (!context) {
       return NextResponse.json(
@@ -126,7 +100,7 @@ export async function POST(request) {
       );
     }
 
-    const transcript = (transcriptFromBody ?? context.transcript ?? "").trim();
+    const transcript = (transcriptFromBody || context.transcript || "").trim();
 
     if (!transcript) {
       return NextResponse.json(
@@ -140,19 +114,17 @@ export async function POST(request) {
       );
     }
 
-    if (transcriptFromBody !== null) {
+    if (transcriptFromBody) {
       let computedSummary = null;
 
-      if (transcript) {
-        try {
-          computedSummary = await generateSummaryFromTranscript({
-            projectDescription: context.project_description || "Project context not provided",
-            userAnswers: transcript,
-            personaName: context.interviewee_name || "",
-          });
-        } catch (summaryError) {
-          console.error("SUMMARY GENERATION ERROR:", summaryError);
-        }
+      try {
+        computedSummary = await generateSummaryFromTranscript({
+          projectDescription: context.project_description || "Project context not provided",
+          userAnswers: transcript,
+          personaName: context.interviewee_name || "",
+        });
+      } catch {
+        // non-fatal; summary generation failure should not block persona generation
       }
 
       await pool
@@ -186,10 +158,7 @@ export async function POST(request) {
 
     return NextResponse.json({
       success: true,
-      data: {
-        interviewId,
-        persona_output: personaOutput,
-      },
+      data: { interviewId, persona_output: personaOutput },
     });
   } catch (error) {
     return NextResponse.json(
@@ -197,4 +166,4 @@ export async function POST(request) {
       { status: 500 }
     );
   }
-}
+});

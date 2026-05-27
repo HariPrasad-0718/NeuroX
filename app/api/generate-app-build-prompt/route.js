@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
+import { withAuth } from "@/lib/withAuth";
+import { validateBody } from "@/lib/validate";
+import { generateAppBuildPromptSchema } from "@/lib/schemas";
+import { aiHeavyLimiter, rateLimitedResponse } from "@/lib/rateLimit";
 
 const WEBHOOK_URL =
   process.env.AGENT5I_WEBHOOK_URL ||
-  "https://agent5idev.c5ailabs.com/api/recipes/webhook/agent/";
+  "https://agent5i.c5ailabs.com/api/recipes/webhook/agent/";
 
 const USERNAME = process.env.AGENT5I_USERNAME || process.env.AGENT_USERNAME || "";
 const PASSWORD = process.env.AGENT5I_PASSWORD || process.env.AGENT_PASSWORD || "";
@@ -165,17 +169,16 @@ function buildUserInput({
   return sections.join("\n\n");
 }
 
-export async function POST(req) {
-  try {
-    const body = await req.json();
-    const { projectId } = body;
+export const POST = withAuth(async (req, _ctx, user) => {
+  const { data, error: validationError } = await validateBody(req, generateAppBuildPromptSchema);
+  if (validationError) return validationError;
 
-    if (!projectId) {
-      return NextResponse.json(
-        { success: false, error: "projectId is required" },
-        { status: 400 }
-      );
-    }
+  const { limited, retryAfterSec } = aiHeavyLimiter.check(String(user.userId));
+  if (limited) return rateLimitedResponse(retryAfterSec);
+
+  const { projectId } = data;
+
+  try {
 
     if (!USERNAME || !PASSWORD) {
       return NextResponse.json(
@@ -356,4 +359,4 @@ export async function POST(req) {
       { status: 500 }
     );
   }
-}
+});

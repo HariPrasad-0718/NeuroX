@@ -1,12 +1,29 @@
 ﻿import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/withAuth";
+import logger from "@/lib/logger";
+import { aiLightLimiter, rateLimitedResponse } from "@/lib/rateLimit";
 
 const WEBHOOK_URL =
-  "https://agent5idev.c5ailabs.com/api/recipes/webhook/agent/";
+  process.env.AGENT5I_WEBHOOK_URL || "https://agent5i.c5ailabs.com/api/recipes/webhook/agent/";
+const WIREFRAME_AGENT_NAME =
+  process.env.AGENT5I_WIREFRAME_AGENT_NAME || "Wireframe Analyzer Agent";
 
-export async function POST(request) {
+export const POST = withAuth(async (request, _ctx, user) => {
+  const { limited, retryAfterSec } = aiLightLimiter.check(String(user.userId));
+  if (limited) return rateLimitedResponse(retryAfterSec);
+
   try {
-    const formData = await request.formData();
+    const username = process.env.AGENT5I_USERNAME || process.env.AGENT_USERNAME || "";
+    const password = process.env.AGENT5I_PASSWORD || process.env.AGENT_PASSWORD || "";
 
+    if (!username || !password) {
+      return NextResponse.json(
+        { success: false, error: "Agent credentials are not configured" },
+        { status: 500 }
+      );
+    }
+
+    const formData = await request.formData();
     const image = formData.get("image");
 
     if (!image) {
@@ -16,7 +33,7 @@ export async function POST(request) {
       });
     }
 
-    // Convert image â†’ buffer
+    // Convert image → buffer
     const bytes = await image.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
@@ -26,20 +43,9 @@ export async function POST(request) {
     // Multipart form data for agent
     const agentFormData = new FormData();
 
-    agentFormData.append(
-      "name",
-      "Wireframe Analyzer Agent"
-    );
-
-    agentFormData.append(
-      "username",
-      "yarramachu.sunaini@c5i.ai"
-    );
-
-    agentFormData.append(
-      "password",
-      "Subbareddy@9014"
-    );
+    agentFormData.append("name", WIREFRAME_AGENT_NAME);
+    agentFormData.append("username", username);
+    agentFormData.append("password", password);
 
     agentFormData.append(
       "user_input",
@@ -112,11 +118,11 @@ export async function POST(request) {
     });
    
   } catch (error) {
-    console.error(error);
+    logger.error("POST /api/analyze-wireframe error", { error });
 
     return NextResponse.json({
       success: false,
       error: error.message,
     });
   }
-}
+});

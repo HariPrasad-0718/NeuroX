@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/withAuth";
+import { validateBody } from "@/lib/validate";
+import { generateUXJourneySchema } from "@/lib/schemas";
+import logger from "@/lib/logger";
+import { aiStandardLimiter, rateLimitedResponse } from "@/lib/rateLimit";
 
 const WEBHOOK_URL =
-  "https://agent5i.c5ailabs.com/api/recipes/webhook/agent/";
+  process.env.AGENT5I_WEBHOOK_URL || "https://agent5i.c5ailabs.com/api/recipes/webhook/agent/";
 
 const USERNAME = process.env.AGENT_USERNAME;
 const PASSWORD = process.env.AGENT_PASSWORD;
@@ -116,20 +121,17 @@ function buildPayload(body) {
   };
 }
 
-export async function POST(req) {
+export const POST = withAuth(async (req, _ctx, user) => {
+  const { data, error: validationError } = await validateBody(req, generateUXJourneySchema);
+  if (validationError) return validationError;
+
+  const { limited, retryAfterSec } = aiStandardLimiter.check(String(user.userId));
+  if (limited) return rateLimitedResponse(retryAfterSec);
+
   try {
-    const body = await req.json();
+    const payload = buildPayload(data);
 
-    if (!body.project_description) {
-      return NextResponse.json(
-        { error: "project_description is required" },
-        { status: 400 }
-      );
-    }
-
-    const payload = buildPayload(body);
-
-    console.log("UX JOURNEY PAYLOAD:", payload);
+    logger.debug("UX journey payload built", { agentName: payload.name });
 
     const response = await fetch(WEBHOOK_URL, {
       method: "POST",
@@ -137,6 +139,7 @@ export async function POST(req) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(120000),
     });
 
     const text = await response.text();
@@ -149,7 +152,7 @@ export async function POST(req) {
       parsed = text;
     }
 
-    console.log("UX JOURNEY RAW RESPONSE:", parsed);
+    logger.debug("UX journey raw response received", { hasNodes: !!parsed?.nodes });
 
     const flow = extractUxJourney(parsed);
 
@@ -169,7 +172,7 @@ export async function POST(req) {
       process_flow: flow,
     });
   } catch (error) {
-    console.error("UX JOURNEY ERROR:", error);
+    logger.error("UX journey generation failed", { error });
 
     return NextResponse.json(
       {
@@ -179,4 +182,4 @@ export async function POST(req) {
       { status: 500 }
     );
   }
-}
+});

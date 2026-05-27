@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
+import { withAuth } from "@/lib/withAuth";
+import { validateBody } from "@/lib/validate";
+import { generateProcessFlowSchema } from "@/lib/schemas";
+import logger from "@/lib/logger";
+import { aiHeavyLimiter, rateLimitedResponse } from "@/lib/rateLimit";
 
-const WEBHOOK_URL = "https://agent5i.c5ailabs.com/api/recipes/webhook/agent/";
+const WEBHOOK_URL =
+  process.env.AGENT5I_WEBHOOK_URL || "https://agent5i.c5ailabs.com/api/recipes/webhook/agent/";
 const USERNAME = process.env.AGENT_USERNAME || process.env.AGENT5I_USERNAME;
 const PASSWORD = process.env.AGENT_PASSWORD || process.env.AGENT5I_PASSWORD;
 const AGENT_NAME = "UX Journey Flow Generator";
@@ -115,15 +121,16 @@ async function callAgent(pfInput) {
   return normalizeFlow(flow);
 }
 
-export async function POST(req) {
+export const POST = withAuth(async (req, _ctx, user) => {
+  const { data, error: validationError } = await validateBody(req, generateProcessFlowSchema);
+  if (validationError) return validationError;
+
+  const { limited, retryAfterSec } = aiHeavyLimiter.check(String(user.userId));
+  if (limited) return rateLimitedResponse(retryAfterSec);
+
+  const { projectId, regenerate } = data;
+
   try {
-    const body = await req.json();
-    const { projectId, regenerate } = body;
-
-    if (!projectId) {
-      return NextResponse.json({ success: false, error: "projectId is required" }, { status: 400 });
-    }
-
     const pool = await getPool();
 
     // ── CHECK EXISTING ──────────────────────────────────────
@@ -149,9 +156,9 @@ export async function POST(req) {
         let pfInput;
         try { pfInput = JSON.parse(stored.recordset[0].pf_input); } catch { pfInput = null; }
         if (pfInput) {
-          console.log("Regenerate using pf_input:", pfInput);
+          logger.debug("Regenerating process flow from stored pf_input");
           const flow = await callAgent(pfInput);
-          console.log("New regenerated process flow:", flow);
+          logger.debug("Process flow regenerated", { nodeCount: flow?.nodes?.length });
           await pool.request()
             .input("projectId", sql.Int, Number(projectId))
             .input("processFlow", sql.NVarChar(sql.MAX), JSON.stringify(flow))
@@ -237,4 +244,4 @@ export async function POST(req) {
       { status: 500 }
     );
   }
-}
+});

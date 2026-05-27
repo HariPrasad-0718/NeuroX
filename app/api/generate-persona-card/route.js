@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/withAuth";
+import { validateBody } from "@/lib/validate";
+import { generatePersonaCardSchema } from "@/lib/schemas";
+import logger from "@/lib/logger";
+import { aiHeavyLimiter, rateLimitedResponse } from "@/lib/rateLimit";
 
-const WEBHOOK_URL = "https://agent5i.c5ailabs.com/api/recipes/webhook/agent/";
+const WEBHOOK_URL =
+  process.env.AGENT5I_WEBHOOK_URL || "https://agent5i.c5ailabs.com/api/recipes/webhook/agent/";
 
-const USERNAME = process.env.AGENT5I_USERNAME || "yarramachu.sunaini@c5i.ai";
-const PASSWORD = process.env.AGENT5I_PASSWORD || "Subbareddy@9014";
+const USERNAME = process.env.AGENT5I_USERNAME || process.env.AGENT_USERNAME || "";
+const PASSWORD = process.env.AGENT5I_PASSWORD || process.env.AGENT_PASSWORD || "";
 
 const PERSONA_CREATION_AGENT_NAME = "Persona Creation Agent";
 
@@ -223,7 +229,7 @@ function extractPersonaCard(data, options = {}) {
   const cleanData = selectedFromCards || findPersonaPayload(data) || data;
   const fallbackText = extractFallbackText(data);
 
-  console.log("CLEANED AGENT DATA:", cleanData); // ✅ DEBUG
+  logger.debug("Persona card data extracted from agent response", { hasPersonaSignals: hasPersonaSignals(cleanData) });
 
   if (typeof cleanData !== "object") {
     return {
@@ -313,20 +319,18 @@ function buildPayload(empathy_data_and_context) {
 }
 
 // -------- MAIN API --------
-export async function POST(req) {
+export const POST = withAuth(async (req, _ctx, user) => {
+  const { data, error: validationError } = await validateBody(req, generatePersonaCardSchema);
+  if (validationError) return validationError;
+
+  const { limited, retryAfterSec } = aiHeavyLimiter.check(String(user.userId));
+  if (limited) return rateLimitedResponse(retryAfterSec);
+
+  const { empathy_data_and_context } = data;
+  const targetPersonaId =
+    String(empathy_data_and_context).match(/Persona ID:\s*([0-9]+)/i)?.[1] || "";
+
   try {
-    const body = await req.json();
-    const empathy_data_and_context = body?.empathy_data_and_context?.trim();
-    const targetPersonaId =
-      String(empathy_data_and_context || "").match(/Persona ID:\s*([0-9]+)/i)?.[1] || "";
-
-    if (!empathy_data_and_context) {
-      return NextResponse.json(
-        { error: "empathy_data_and_context is required" },
-        { status: 400 }
-      );
-    }
-
     const payload = buildPayload(empathy_data_and_context);
 
     const response = await fetch(WEBHOOK_URL, {
@@ -335,6 +339,7 @@ export async function POST(req) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(180000),
     });
 
     const contentType = response.headers.get("content-type") || "";
@@ -377,4 +382,4 @@ export async function POST(req) {
       { status: 500 }
     );
   }
-}
+});

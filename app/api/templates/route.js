@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
+import { withAuth } from "@/lib/withAuth";
+import logger from "@/lib/logger";
 
 function normalizeStage(value) {
   return String(value || "").trim().toLowerCase();
@@ -19,7 +21,7 @@ function toTemplateDto(row) {
 }
 
 // GET /api/templates — Fetch all templates, or filter by ?stageId= or ?templateId=
-export async function GET(request) {
+export const GET = withAuth(async (request) => {
   try {
     const { searchParams } = new URL(request.url);
     const summary = searchParams.get("summary");
@@ -86,10 +88,10 @@ export async function GET(request) {
     const data = result.recordset.map(toTemplateDto);
     return NextResponse.json({ success: true, data });
   } catch (error) {
-    console.error("GET /api/templates error:", error);
+    logger.error("GET /api/templates error", { error });
     return NextResponse.json(
       { success: false, error: { message: error.message } },
       { status: 500 }
     );
   }
-}
+});

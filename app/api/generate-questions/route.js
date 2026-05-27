@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
-import { getUserFromRequest } from "@/lib/auth";
+import { withAuth } from "@/lib/withAuth";
+import { validateBody, validateQuery } from "@/lib/validate";
 import { generatePersonaQuestions, generateSummaryFromTranscript } from "@/lib/agent5i";
+import { generateQuestionsSchema, updateTranscriptSchema, positiveInt } from "@/lib/schemas";
+import { z } from "zod";
+import { aiStandardLimiter, rateLimitedResponse } from "@/lib/rateLimit";
+
+const getQuestionsQuerySchema = z.object({ intervieweeId: positiveInt });
 
 function groupQuestionHistory(rows) {
   const map = new Map();
@@ -28,32 +34,19 @@ function groupQuestionHistory(rows) {
 }
 
 // GET /api/generate-questions?intervieweeId=123
-export async function GET(request) {
+export const GET = withAuth(async (request, _ctx, user) => {
+  const { data, error: validationError } = validateQuery(request, getQuestionsQuerySchema);
+  if (validationError) return validationError;
+
+  const { intervieweeId } = data;
+
   try {
-    const sessionUser = await getUserFromRequest(request);
-    if (!sessionUser?.userId) {
-      return NextResponse.json(
-        { success: false, error: { message: "Unauthorized" } },
-        { status: 401 }
-      );
-    }
-
-    const { searchParams } = new URL(request.url);
-    const intervieweeId = Number(searchParams.get("intervieweeId"));
-
-    if (!intervieweeId) {
-      return NextResponse.json(
-        { success: false, error: { message: "intervieweeId is required" } },
-        { status: 400 }
-      );
-    }
-
     const pool = await getPool();
 
     const result = await pool
       .request()
       .input("intervieweeId", sql.Int, intervieweeId)
-      .input("userId", sql.Int, Number(sessionUser.userId))
+      .input("userId", sql.Int, Number(user.userId))
       .query(`
         SELECT
           i.interview_id,
@@ -75,10 +68,7 @@ export async function GET(request) {
 
     return NextResponse.json({
       success: true,
-      data: {
-        latest: history[0] || null,
-        history,
-      },
+      data: { latest: history[0] || null, history },
     });
   } catch (error) {
     return NextResponse.json(
@@ -86,38 +76,23 @@ export async function GET(request) {
       { status: 500 }
     );
   }
-}
+});
 
 // PATCH /api/generate-questions
 // Body: { interviewId, transcript }
-export async function PATCH(request) {
+export const PATCH = withAuth(async (request, _ctx, user) => {
+  const { data, error: validationError } = await validateBody(request, updateTranscriptSchema);
+  if (validationError) return validationError;
+
+  const { interviewId, transcript } = data;
+
   try {
-    const sessionUser = await getUserFromRequest(request);
-    if (!sessionUser?.userId) {
-      return NextResponse.json(
-        { success: false, error: { message: "Unauthorized" } },
-        { status: 401 }
-      );
-    }
-
-    const body = await request.json();
-    const interviewId = Number(body.interviewId);
-    const transcript = body.transcript ?? "";
-
-    if (!interviewId) {
-      return NextResponse.json(
-        { success: false, error: { message: "interviewId is required" } },
-        { status: 400 }
-      );
-    }
-
     const pool = await getPool();
 
-    // Ownership check — only the project creator can update
     const ownerCheck = await pool
       .request()
       .input("interviewId", sql.Int, interviewId)
-      .input("userId", sql.Int, Number(sessionUser.userId))
+      .input("userId", sql.Int, Number(user.userId))
       .query(`
         SELECT
           i.interview_id,
@@ -139,7 +114,7 @@ export async function PATCH(request) {
     }
 
     const interviewContext = ownerCheck.recordset[0];
-    const normalizedTranscript = String(transcript || "").trim();
+    const normalizedTranscript = transcript.trim();
     let computedSummary = null;
 
     if (normalizedTranscript) {
@@ -149,8 +124,8 @@ export async function PATCH(request) {
           userAnswers: normalizedTranscript,
           personaName: interviewContext.interviewee_name || "",
         });
-      } catch (summaryError) {
-        console.error("SUMMARY GENERATION ERROR:", summaryError);
+      } catch {
+        // non-fatal
       }
     }
 
@@ -168,9 +143,7 @@ export async function PATCH(request) {
 
     return NextResponse.json({
       success: true,
-      data: {
-        summaryGenerated: Boolean(computedSummary),
-      },
+      data: { summaryGenerated: Boolean(computedSummary) },
     });
   } catch (error) {
     return NextResponse.json(
@@ -178,53 +151,26 @@ export async function PATCH(request) {
       { status: 500 }
     );
   }
-}
+});
 
 // POST /api/generate-questions
 // Body: { personaId, description|project_description, user_group|persona_title, persona_description }
-export async function POST(request) {
+export const POST = withAuth(async (request, _ctx, user) => {
+  const { data, error: validationError } = await validateBody(request, generateQuestionsSchema);
+  if (validationError) return validationError;
+
+  const { limited, retryAfterSec } = aiStandardLimiter.check(String(user.userId));
+  if (limited) return rateLimitedResponse(retryAfterSec);
+
+  const { personaId, description, user_group: userGroup, persona_description: personaDescription } = data;
+
   try {
-    const sessionUser = await getUserFromRequest(request);
-    if (!sessionUser?.userId) {
-      return NextResponse.json(
-        { success: false, error: { message: "Unauthorized" } },
-        { status: 401 }
-      );
-    }
-
-    const body = await request.json();
-    const personaId = Number(body.personaId);
-    const description = (body.description || body.project_description || "").trim();
-    const userGroup = (body.user_group || body.group_title || body.persona_title || "").trim();
-    const personaDescription = (body.persona_description || body.group_description || "").trim();
-
-    if (!personaId) {
-      return NextResponse.json(
-        { success: false, error: { message: "personaId is required" } },
-        { status: 400 }
-      );
-    }
-
-    if (!description) {
-      return NextResponse.json(
-        { success: false, error: { message: "description is required" } },
-        { status: 400 }
-      );
-    }
-
-    if (!userGroup) {
-      return NextResponse.json(
-        { success: false, error: { message: "user_group is required" } },
-        { status: 400 }
-      );
-    }
-
     const pool = await getPool();
 
     const ownershipResult = await pool
       .request()
       .input("personaId", sql.Int, personaId)
-      .input("userId", sql.Int, Number(sessionUser.userId))
+      .input("userId", sql.Int, Number(user.userId))
       .query(`
         SELECT p.persona_id
         FROM personass p
@@ -252,7 +198,10 @@ export async function POST(request) {
     const interviewees = intervieweesResult.recordset;
     if (!interviewees.length) {
       return NextResponse.json(
-        { success: false, error: { message: "Add at least one interviewee before generating questions" } },
+        {
+          success: false,
+          error: { message: "Add at least one interviewee before generating questions" },
+        },
         { status: 400 }
       );
     }
@@ -287,10 +236,8 @@ export async function POST(request) {
               OUTPUT INSERTED.interview_id
               VALUES (@intervieweeId, NULL, NULL)
             `);
-
           interviewId = insertedInterview.recordset[0].interview_id;
         } else {
-          // Regeneration should keep the same interview_id but reset stale transcript/persona output.
           await new sql.Request(transaction)
             .input("interviewId", sql.Int, interviewId)
             .query(`
@@ -322,20 +269,13 @@ export async function POST(request) {
 
       await transaction.commit();
     } catch (transactionError) {
-      try {
-        await transaction.rollback();
-      } catch {
-        // no-op
-      }
+      try { await transaction.rollback(); } catch { /* no-op */ }
       throw transactionError;
     }
 
     return NextResponse.json({
       success: true,
-      data: {
-        questions,
-        appliedToInterviewees: interviewees.length,
-      },
+      data: { questions, appliedToInterviewees: interviewees.length },
     });
   } catch (error) {
     return NextResponse.json(
@@ -343,4 +283,4 @@ export async function POST(request) {
       { status: 500 }
     );
   }
-}
+});

@@ -1,7 +1,7 @@
 import { BlobServiceClient, StorageSharedKeyCredential } from "@azure/storage-blob";
 import { NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
-import { getUserFromRequest } from "@/lib/auth";
+import { withAuth } from "@/lib/withAuth";
 
 const accountName = process.env.AZURE_STORAGE_ACCOUNT_NAME;
 const accountKey = process.env.AZURE_STORAGE_ACCOUNT_KEY;
@@ -22,16 +22,8 @@ function getBlobNameFromUrl(fileUrl) {
   return pathParts[pathParts.length - 1];
 }
 
-export async function GET(request, { params }) {
+export const GET = withAuth(async (request, { params }) => {
   try {
-    const sessionUser = await getUserFromRequest(request);
-    if (!sessionUser?.userId) {
-      return NextResponse.json(
-        { success: false, error: { message: "Unauthorized" } },
-        { status: 401 }
-      );
-    }
-
     if (!accountName || !accountKey) {
       return NextResponse.json(
         { success: false, error: { message: "Azure storage credentials are not configured" } },
@@ -97,4 +89,4 @@ export async function GET(request, { params }) {
       { status: 500 }
     );
   }
-}
+});

@@ -1,5 +1,10 @@
 node_modules/
 .next/
+
+# Real secret files — never commit these
 .env
 .env.local
-.env.example
+.env.*.local
+
+# .env.example is intentionally committed — it documents required variables
+# DO NOT add .env.example here

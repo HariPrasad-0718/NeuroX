@@ -1,60 +1,25 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { api } from "@/services/api";
+/**
+ * useCurrentUser — thin wrapper around AuthContext.
+ *
+ * Kept for backwards compatibility with components that already import it.
+ * New code should prefer `useAuth()` from "@/context/AuthContext" directly.
+ *
+ * Returns the same shape as before so no call sites need to change:
+ *   { userData, isLoading, error, isUpdating, updateUser, refetch }
+ */
+import { useAuth } from "@/context/AuthContext";
 
 export function useCurrentUser() {
-  const [userData, setUserData] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [isUpdating, setIsUpdating] = useState(false);
-
-  const fetchCurrentUser = async () => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await api.getCurrentUser();
-      if (response.success && response.data) {
-        setUserData(response.data);
-      }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const updateUser = async (updatedData) => {
-    if (!userData?.userId) {
-      return { success: false, error: "No user ID available" };
-    }
-
-    setIsUpdating(true);
-    try {
-      const response = await api.updateUser(updatedData);
-      if (response.success && response.data) {
-        setUserData(response.data);
-        return { success: true, data: response.data };
-      }
-      throw new Error(response.error?.message || "Failed to update user");
-    } catch (err) {
-      return { success: false, error: err.message };
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchCurrentUser();
-  }, []);
+  const { user, isLoading, isUpdating, updateUser, refetch } = useAuth();
 
   return {
-    userData,
+    userData:   user,       // { userId, name, email, role, createdAt } | null
     isLoading,
-    error,
     isUpdating,
     updateUser,
-    refetch: fetchCurrentUser,
+    refetch,
+    error: null,            // errors now trigger redirect via AuthContext
   };
 }

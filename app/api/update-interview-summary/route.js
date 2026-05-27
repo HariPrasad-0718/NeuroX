@@ -1,44 +1,24 @@
 import { NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
-import { getUserFromRequest } from "@/lib/auth";
+import { withAuth } from "@/lib/withAuth";
+import { validateBody } from "@/lib/validate";
+import { updateInterviewSummarySchema } from "@/lib/schemas";
 
 // POST /api/update-interview-summary
 // Body: { interviewId, summary }
-export async function POST(request) {
+export const POST = withAuth(async (request, _ctx, user) => {
+  const { data, error: validationError } = await validateBody(request, updateInterviewSummarySchema);
+  if (validationError) return validationError;
+
+  const { interviewId, summary } = data;
+
   try {
-    const sessionUser = await getUserFromRequest(request);
-
-    if (!sessionUser?.userId) {
-      return NextResponse.json(
-        { success: false, error: { message: "Unauthorized" } },
-        { status: 401 }
-      );
-    }
-
-    const body = await request.json();
-    const interviewId = Number(body?.interviewId);
-    const summary = String(body?.summary ?? "").trim();
-
-    if (!interviewId) {
-      return NextResponse.json(
-        { success: false, error: { message: "interviewId is required" } },
-        { status: 400 }
-      );
-    }
-
-    if (!summary) {
-      return NextResponse.json(
-        { success: false, error: { message: "summary is required" } },
-        { status: 400 }
-      );
-    }
-
     const pool = await getPool();
 
     const ownershipCheck = await pool
       .request()
       .input("interviewId", sql.Int, interviewId)
-      .input("userId", sql.Int, Number(sessionUser.userId))
+      .input("userId", sql.Int, Number(user.userId))
       .query(`
         SELECT i.interview_id
         FROM interviewss i
@@ -66,16 +46,11 @@ export async function POST(request) {
         WHERE interview_id = @interviewId
       `);
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        interviewId,
-      },
-    });
+    return NextResponse.json({ success: true, data: { interviewId } });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: { message: error.message || "Unexpected server error" } },
       { status: 500 }
     );
   }
-}
+});

@@ -1,24 +1,18 @@
 import { getPool, sql } from "@/lib/db";
 import { NextResponse } from "next/server";
-import { getUserFromRequest } from "@/lib/auth";
+import { withAuth } from "@/lib/withAuth";
+import { validateBody } from "@/lib/validate";
+import { updateProjectByIdSchema } from "@/lib/schemas";
 
-export async function GET(request, { params }) {
+export const GET = withAuth(async (request, { params }, user) => {
   try {
-    const sessionUser = await getUserFromRequest(request);
-    if (!sessionUser?.userId) {
-      return NextResponse.json(
-        { success: false, error: { message: "Unauthorized" } },
-        { status: 401 }
-      );
-    }
-
-    const projectId = Number(params.id);
+    const projectId = Number((await params).id);
     const pool = await getPool();
 
     const projectResult = await pool
       .request()
       .input("projectId", sql.Int, projectId)
-      .input("userId", sql.Int, Number(sessionUser.userId))
+      .input("userId", sql.Int, Number(user.userId))
       .query(`
         SELECT project_id, project_name, description, client_name, start_date, end_date, domain
         FROM projectss
@@ -61,39 +55,39 @@ export async function GET(request, { params }) {
       },
     });
   } catch (error) {
-    console.error("GET /api/projects/[id] error:", error);
     return NextResponse.json(
       { success: false, error: { message: error.message } },
       { status: 500 }
     );
   }
-}
+});
 
-export async function PUT(request, { params }) {
+export const PUT = withAuth(async (request, { params }, user) => {
+  const { data, error: validationError } = await validateBody(request, updateProjectByIdSchema);
+  if (validationError) return validationError;
+
   try {
-    const sessionUser = await getUserFromRequest(request);
-    if (!sessionUser?.userId) {
-      return NextResponse.json(
-        { success: false, error: { message: "Unauthorized" } },
-        { status: 401 }
-      );
-    }
-
-    const projectId = Number(params.id);
-    const body = await request.json();
+    const projectId = Number((await params).id);
     const pool = await getPool();
 
-    // Update project row
+    const projectName = data.title || data.projectName || "";
+    const description = data.description || data.projectDescription || "";
+    const clientName = data.company || data.clientName || data.client || "";
+    const startDate = data.startDate || null;
+    const endDate = data.endDate || data.targetDate || null;
+    const domain = data.domain || "";
+    const personas = data.personas;
+
     const updateResult = await pool
       .request()
       .input("projectId", sql.Int, projectId)
-      .input("userId", sql.Int, Number(sessionUser.userId))
-      .input("projectName", sql.NVarChar, body.title || body.projectName || "")
-      .input("description", sql.NVarChar, body.description || body.projectDescription || "")
-      .input("clientName", sql.NVarChar, body.company || body.clientName || body.client || "")
-      .input("startDate", sql.Date, body.startDate ? new Date(body.startDate) : null)
-      .input("endDate", sql.Date, (body.targetDate || body.endDate) ? new Date(body.targetDate || body.endDate) : null)
-      .input("domain", sql.NVarChar, body.domain || "")
+      .input("userId", sql.Int, Number(user.userId))
+      .input("projectName", sql.NVarChar, projectName)
+      .input("description", sql.NVarChar, description)
+      .input("clientName", sql.NVarChar, clientName)
+      .input("startDate", sql.Date, startDate ? new Date(startDate) : null)
+      .input("endDate", sql.Date, endDate ? new Date(endDate) : null)
+      .input("domain", sql.NVarChar, domain)
       .query(`
         UPDATE projectss
         SET project_name = @projectName,
@@ -112,14 +106,11 @@ export async function PUT(request, { params }) {
       );
     }
 
-    // Persona upsert / delete
-    const personas = body.personas;
     if (Array.isArray(personas)) {
       const incomingIds = personas
         .filter((p) => p.personaId)
         .map((p) => Number(p.personaId));
 
-      // Delete removed personas
       if (incomingIds.length > 0) {
         await pool
           .request()
@@ -166,10 +157,9 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json({ success: true, data: { projectId } });
   } catch (error) {
-    console.error("PUT /api/projects/[id] error:", error);
     return NextResponse.json(
       { success: false, error: { message: error.message } },
       { status: 500 }
     );
   }
-}
+});

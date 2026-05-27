@@ -1,5 +1,9 @@
 import { getPool, sql } from "@/lib/db";
 import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/withAuth";
+import { validateBody } from "@/lib/validate";
+import { saveGeneratedPersonaSchema } from "@/lib/schemas";
+import logger from "@/lib/logger";
 
 // ======================================================
 // HELPERS
@@ -43,7 +47,7 @@ function extractPersonaName(persona) {
 // MAIN API
 // ======================================================
 
-export async function GET(req) {
+export const GET = withAuth(async (req) => {
   try {
     const { searchParams } = new URL(req.url);
     const projectId = Number(searchParams.get("projectId"));
@@ -84,33 +88,15 @@ export async function GET(req) {
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
-}
-export async function POST(req) {
+});
+
+export const POST = withAuth(async (req) => {
+  const { data, error: validationError } = await validateBody(req, saveGeneratedPersonaSchema);
+  if (validationError) return validationError;
+
+  const { projectId, problemStatement, personas } = data;
+
   try {
-    const body = await req.json();
-
-    const {
-      projectId,
-      problemStatement,
-      personas,
-    } = body;
-
-    console.log("SAVE API BODY:", body);
-console.log("PERSONAS:", personas);
-    // ======================================================
-    // VALIDATION
-    // ======================================================
-
-    if (!projectId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "projectId required",
-        },
-        { status: 400 }
-      );
-    }
-
     const pool = await getPool();
 
     // ======================================================
@@ -170,7 +156,7 @@ console.log("PERSONAS:", personas);
     // ======================================================
 
     for (const persona of personas || []) {
-        console.log("PERSONA INSERT:", persona);
+        logger.debug("Inserting persona", { personaName });
 
       const personaName = extractPersonaName(persona);
 
@@ -312,10 +298,7 @@ console.log("PERSONAS:", personas);
 
   } catch (error) {
 
-    console.error(
-      "SAVE GENERATED PERSONA ERROR:",
-      error
-    );
+    logger.error("POST /api/save-generated-persona error", { error });
 
     return NextResponse.json(
       {
@@ -325,4 +308,4 @@ console.log("PERSONAS:", personas);
       { status: 500 }
     );
   }
-}
+});

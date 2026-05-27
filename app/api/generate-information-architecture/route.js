@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
+import { withAuth } from "@/lib/withAuth";
+import { validateBody } from "@/lib/validate";
+import { generateIASchema } from "@/lib/schemas";
+import logger from "@/lib/logger";
+import { aiHeavyLimiter, rateLimitedResponse } from "@/lib/rateLimit";
 
 const WEBHOOK_URL =
   process.env.AGENT5I_WEBHOOK_URL ||
-  "https://agent5idev.c5ailabs.com/api/recipes/webhook/agent/";
+  "https://agent5i.c5ailabs.com/api/recipes/webhook/agent/";
 
 const USERNAME = process.env.AGENT5I_USERNAME || process.env.AGENT_USERNAME || "";
 const PASSWORD = process.env.AGENT5I_PASSWORD || process.env.AGENT_PASSWORD || "";
@@ -498,21 +503,16 @@ function dedupePersonas(personas) {
 // -------------------------------------
 // POST
 // -------------------------------------
-export async function POST(req) {
+export const POST = withAuth(async (req, _ctx, user) => {
+  const { data, error: validationError } = await validateBody(req, generateIASchema);
+  if (validationError) return validationError;
+
+  const { limited, retryAfterSec } = aiHeavyLimiter.check(String(user.userId));
+  if (limited) return rateLimitedResponse(retryAfterSec);
+
+  const { projectId, combinedPersonaOutput, regenerate } = data;
 
   try {
-
-    const body = await req.json();
-
-    const { projectId, combinedPersonaOutput, regenerate } = body;
-
-    if (!projectId) {
-
-      return NextResponse.json({
-        success: false,
-        error: "projectId required",
-      });
-    }
 
     // -------------------------------------
     // DB CONNECTION
@@ -585,10 +585,7 @@ ORDER BY created_at ASC
 
       } catch (err) {
 
-        console.error(
-          "Failed parsing generated_output:",
-          err
-        );
+        logger.warn("Failed parsing generated_output", { error: err });
       }
     }
 
@@ -605,16 +602,7 @@ ORDER BY created_at ASC
     error: "No define phase combined outputs found for this project",
   });
 }
-    // -------------------------------------
-    // DEBUG
-    // -------------------------------------
-    console.log(
-      "\n=========== FINAL IA INPUT ==========="
-    );
-
-    console.log(
-      JSON.stringify(defineOutputs, null, 2)
-    );
+    logger.debug("IA generation input built", { personaCount: defineOutputs.length });
 
     const formattedInput = formatPersonaInput(defineOutputs);
     const fullPrompt = `${IA_PROMPT}\n\nINPUT:\n\n${formattedInput}`;
@@ -644,13 +632,7 @@ ORDER BY created_at ASC
       password: PASSWORD,
     };
 
-    console.log(
-      "\n=========== PAYLOAD ==========="
-    );
-
-    console.log(
-      JSON.stringify(payload, null, 2)
-    );
+    logger.debug("IA agent payload built", { agentName: payload.name });
 
     // -------------------------------------
     // API CALL
@@ -701,13 +683,7 @@ ORDER BY created_at ASC
 
     const data = tryParseJson(raw) || { raw, contentType };
 
-    console.log(
-      "\n=========== IA RESPONSE ==========="
-    );
-
-    console.log(
-      JSON.stringify(data, null, 2)
-    );
+    logger.debug("IA agent response received", { hasMessage: !!data?.message });
 
     // -------------------------------------
     // GET RAW RESPONSE
@@ -787,10 +763,7 @@ if (directParsed) {
 
     } catch (e) {
 
-      console.error(
-        "Failed parsing IA_JSON:",
-        e
-      );
+      logger.warn("Failed parsing IA_JSON from regex match", { error: e });
     }
   }
 
@@ -873,7 +846,7 @@ if (directParsed) {
           ON target.project_id = source.project_id
           WHEN MATCHED THEN UPDATE SET ia = source.ia, created_at = GETDATE()
           WHEN NOT MATCHED THEN INSERT (project_id, ia) VALUES (source.project_id, source.ia);`);
-    } catch (dbErr) { console.error("IA DB save error:", dbErr); }
+    } catch (dbErr) { logger.error("IA DB save error", { error: dbErr }); }
 
     // -------------------------------------
     // SUCCESS
@@ -889,15 +862,11 @@ if (directParsed) {
 
   } catch (err) {
 
-    console.error(
-      "\n=========== IA ERROR ==========="
-    );
-
-    console.error(err);
+    logger.error("POST /api/generate-information-architecture error", { error: err });
 
     return NextResponse.json({
       success: false,
       error: err.message,
     });
   }
-}
+});

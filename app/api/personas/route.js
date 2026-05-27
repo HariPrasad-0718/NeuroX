@@ -1,35 +1,33 @@
 import { getPool, sql } from "@/lib/db";
 import { NextResponse } from "next/server";
-import { getUserFromRequest } from "@/lib/auth";
+import { withAuth } from "@/lib/withAuth";
+import { validateBody, validateQuery } from "@/lib/validate";
+import {
+  getPersonasQuerySchema,
+  patchPersonaSchema,
+} from "@/lib/schemas";
 
-export async function GET(request) {
+export const GET = withAuth(async (req) => {
+  const { data, error: validationError } = validateQuery(req, getPersonasQuerySchema);
+  if (validationError) return validationError;
+
+  const { projectId, includeGenerated, groupByInterviewee, aggregateGenerated } = data;
+
+  const flagTrue = (v) => String(v || "").toLowerCase() === "true";
+  const incGen = flagTrue(includeGenerated);
+  const groupByIE = flagTrue(groupByInterviewee);
+  const aggGen = flagTrue(aggregateGenerated);
+
   try {
-    const { searchParams } = new URL(request.url);
-
-    const projectId = searchParams.get("projectId");
-    const includeGenerated =
-      String(searchParams.get("includeGenerated") || "").toLowerCase() === "true";
-    const groupByInterviewee =
-      String(searchParams.get("groupByInterviewee") || "").toLowerCase() === "true";
-    const aggregateGenerated =
-      String(searchParams.get("aggregateGenerated") || "").toLowerCase() === "true";
-
-    if (!projectId) {
-      return NextResponse.json(
-        { success: false, error: { message: "projectId required" } },
-        { status: 400 }
-      );
-    }
-
     const pool = await getPool();
 
     // =========================================================
-    // ✅ AGGREGATED COMBINED OUTPUT (FIXED VERSION)
+    // AGGREGATED COMBINED OUTPUT
     // =========================================================
-    if (aggregateGenerated) {
+    if (aggGen) {
       const result = await pool
         .request()
-        .input("projectId", sql.Int, Number(projectId))
+        .input("projectId", sql.Int, projectId)
         .query(`
           SELECT
             p.persona_id,
@@ -65,9 +63,6 @@ export async function GET(request) {
 
       const personaMap = new Map();
 
-      // =========================================================
-      // ✅ SINGLE CLEAN LOOP (NO DUPLICATES)
-      // =========================================================
       for (const row of result.recordset) {
         if (!personaMap.has(row.persona_id)) {
           personaMap.set(row.persona_id, {
@@ -76,30 +71,21 @@ export async function GET(request) {
             projectName: row.project_name || "",
             projectDescription: row.project_description || "",
             outputs: [],
-            seen: new Set(), // 🔥 prevents duplicates
+            seen: new Set(),
           });
         }
 
         const persona = personaMap.get(row.persona_id);
-
-        // ✅ UNIQUE KEY (IMPORTANT)
         const uniqueKey = `${row.interview_id}-${row.interviewee_id}`;
 
         if (persona.seen.has(uniqueKey)) continue;
         persona.seen.add(uniqueKey);
 
-        const outputText = String(row.generated_output || "").trim();
-        const transcriptText = String(row.transcript || "").trim();
-        const summaryText = String(row.summary || "").trim();
-        const outcomeText = String(row.interview_outcome || "").trim();
-
-        // ✅ ALWAYS INCLUDE INTERVIEWEE
         persona.outputs.push({
           interviewId: row.interview_id,
           intervieweeId: row.interviewee_id,
           intervieweeName: row.interviewee_name || "Unknown",
           generatedAt: row.generated_at,
-
           demographics: {
             gender: row.gender,
             age: row.age,
@@ -108,37 +94,23 @@ export async function GET(request) {
             title: row.title,
             education: row.education,
           },
-
-          summary: summaryText || "No summary available",
-          transcript: transcriptText || "No transcript available",
-          interviewOutcome: outcomeText || "No outcome available",
-          personaOutput: outputText || "No persona output available",
+          summary: String(row.summary || "").trim() || "No summary available",
+          transcript: String(row.transcript || "").trim() || "No transcript available",
+          interviewOutcome: String(row.interview_outcome || "").trim() || "No outcome available",
+          personaOutput: String(row.generated_output || "").trim() || "No persona output available",
         });
       }
 
       const personas = Array.from(personaMap.values());
-
-      // remove helper set
       personas.forEach((p) => delete p.seen);
 
-      // =========================================================
-      // ✅ BUILD COMBINED OUTPUT STRING
-      // =========================================================
       const combinedOutput = personas
         .map((persona) => {
-          const header = `Persona ID: ${persona.personaId}
-Persona Name: ${persona.personaName}`;
-
-          const projectInfo = `Project Name: ${persona.projectName || "N/A"}
-Project Description: ${String(
-            persona.projectDescription || "No project description available."
-          ).trim()}`;
+          const header = `Persona ID: ${persona.personaId}\nPersona Name: ${persona.personaName}`;
+          const projectInfo = `Project Name: ${persona.projectName || "N/A"}\nProject Description: ${String(persona.projectDescription || "No project description available.").trim()}`;
 
           if (!persona.outputs.length) {
-            return `${header}
-${projectInfo}
-Persona Outputs:
-No interview details available.`;
+            return `${header}\n${projectInfo}\nPersona Outputs:\nNo interview details available.`;
           }
 
           const body = persona.outputs
@@ -159,58 +131,34 @@ No interview details available.`;
 
               const demographicText = [
                 output.demographics.gender && `Gender: ${output.demographics.gender}`,
-                output.demographics.age !== null &&
-                  output.demographics.age !== undefined &&
-                  `Age: ${output.demographics.age}`,
-                output.demographics.location &&
-                  `Location: ${output.demographics.location}`,
-                output.demographics.relationshipStatus &&
-                  `Relationship Status: ${output.demographics.relationshipStatus}`,
+                output.demographics.age != null && `Age: ${output.demographics.age}`,
+                output.demographics.location && `Location: ${output.demographics.location}`,
+                output.demographics.relationshipStatus && `Relationship Status: ${output.demographics.relationshipStatus}`,
                 output.demographics.title && `Title: ${output.demographics.title}`,
-                output.demographics.education &&
-                  `Education: ${output.demographics.education}`,
+                output.demographics.education && `Education: ${output.demographics.education}`,
               ]
                 .filter(Boolean)
                 .join("\n");
 
-              return `${metadata}
-${demographicText ? `${demographicText}\n` : ""}
-
-Summary:
-${output.summary}
-
-Interview Outcome:
-${output.interviewOutcome}
-
-Persona Output:
-${output.personaOutput}`;
+              return `${metadata}\n${demographicText ? `${demographicText}\n` : ""}\nSummary:\n${output.summary}\n\nInterview Outcome:\n${output.interviewOutcome}\n\nPersona Output:\n${output.personaOutput}`;
             })
             .join("\n\n");
 
-          return `${header}
-${projectInfo}
-Persona Outputs:
-${body}`;
+          return `${header}\n${projectInfo}\nPersona Outputs:\n${body}`;
         })
         .join("\n\n----------------------------------------\n\n");
 
-      return NextResponse.json({
-        success: true,
-        data: {
-          personas,
-          combinedOutput,
-        },
-      });
+      return NextResponse.json({ success: true, data: { personas, combinedOutput } });
     }
 
     // =========================================================
-    // ✅ NORMAL FETCH (UNCHANGED)
+    // NORMAL FETCH
     // =========================================================
     const result =
-      includeGenerated && groupByInterviewee
+      incGen && groupByIE
         ? await pool
             .request()
-            .input("projectId", sql.Int, Number(projectId))
+            .input("projectId", sql.Int, projectId)
             .query(`
               SELECT
                 p.persona_id,
@@ -244,63 +192,37 @@ ${body}`;
             `)
         : await pool
             .request()
-            .input("projectId", sql.Int, Number(projectId))
+            .input("projectId", sql.Int, projectId)
             .query(`
               SELECT persona_id, persona_name, persona_description
               FROM personass
               WHERE project_id = @projectId
             `);
 
-    return NextResponse.json({
-      success: true,
-      data: result.recordset,
-    });
+    return NextResponse.json({ success: true, data: result.recordset });
   } catch (error) {
-    console.error("PERSONA FETCH ERROR:", error);
-
     return NextResponse.json(
       { success: false, error: { message: error.message } },
       { status: 500 }
     );
   }
-}
+});
 
 // PATCH /api/personas
 // Body: { personaId, personaDescription }
-export async function PATCH(request) {
+export const PATCH = withAuth(async (req, _ctx, user) => {
+  const { data, error: validationError } = await validateBody(req, patchPersonaSchema);
+  if (validationError) return validationError;
+
+  const { personaId, personaDescription } = data;
+
   try {
-    const sessionUser = await getUserFromRequest(request);
-    if (!sessionUser?.userId) {
-      return NextResponse.json(
-        { success: false, error: { message: "Unauthorized" } },
-        { status: 401 }
-      );
-    }
-
-    const body = await request.json();
-    const personaId = Number(body?.personaId);
-    const personaDescription = String(body?.personaDescription ?? "").trim();
-
-    if (!personaId) {
-      return NextResponse.json(
-        { success: false, error: { message: "personaId is required" } },
-        { status: 400 }
-      );
-    }
-
-    if (!personaDescription) {
-      return NextResponse.json(
-        { success: false, error: { message: "personaDescription is required" } },
-        { status: 400 }
-      );
-    }
-
     const pool = await getPool();
 
     const ownershipResult = await pool
       .request()
       .input("personaId", sql.Int, personaId)
-      .input("userId", sql.Int, Number(sessionUser.userId))
+      .input("userId", sql.Int, Number(user.userId))
       .query(`
         SELECT p.persona_id
         FROM personass p
@@ -326,17 +248,11 @@ export async function PATCH(request) {
         WHERE persona_id = @personaId
       `);
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        personaId,
-        personaDescription,
-      },
-    });
+    return NextResponse.json({ success: true, data: { personaId, personaDescription } });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: { message: error.message } },
       { status: 500 }
     );
   }
-}
+});
