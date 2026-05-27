@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, LayoutDashboard, Sparkles } from "lucide-react";
+import { ArrowLeft, LayoutDashboard, Sparkles, X } from "lucide-react";
 
 function decodeUnicode(str) {
   return str.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
@@ -55,6 +55,10 @@ export default function WireframeResultPage() {
   const router = useRouter();
   const { id } = useParams();
   const [raw, setRaw] = useState("");
+  const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
+  const [promptLoading, setPromptLoading] = useState(false);
+  const [promptError, setPromptError] = useState("");
+  const [agentPrompt, setAgentPrompt] = useState("");
 
   useEffect(() => {
     const stored = sessionStorage.getItem("wireframeResult");
@@ -63,6 +67,56 @@ export default function WireframeResultPage() {
       sessionStorage.removeItem("wireframeResult");
     }
   }, []);
+
+  useEffect(() => {
+    if (!isPromptModalOpen) return undefined;
+
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setIsPromptModalOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isPromptModalOpen]);
+
+  const handleOpenPromptModal = async () => {
+    setIsPromptModalOpen(true);
+
+    if (!id) {
+      setPromptError("Project id is missing.");
+      return;
+    }
+
+    if (agentPrompt && !promptError) {
+      return;
+    }
+
+    setPromptLoading(true);
+    setPromptError("");
+
+    try {
+      const res = await fetch("/api/generate-app-build-prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: Number(id) }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || "Failed to get prompt from agent");
+      }
+
+      const promptText = String(data.prompt || data.rawMessage || "").trim();
+      setAgentPrompt(promptText);
+    } catch (err) {
+      setPromptError(err.message || "Failed to get prompt from agent");
+      setAgentPrompt("");
+    } finally {
+      setPromptLoading(false);
+    }
+  };
 
   const { summary, enhancements, raw: parsedRaw } = parseResult(raw);
   const hasContent = summary || enhancements.length > 0;
@@ -94,14 +148,23 @@ export default function WireframeResultPage() {
             {summary && (
               <div className="rounded-2xl border border-indigo-100 bg-white shadow-sm overflow-hidden">
                 {/* Section header */}
-                <div className="bg-gradient-to-r from-indigo-600 to-indigo-500 px-6 py-5 flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
-                    <LayoutDashboard className="w-5 h-5 text-white" />
+                <div className="bg-gradient-to-r from-indigo-600 to-indigo-500 px-6 py-5 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                      <LayoutDashboard className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-indigo-200">Section 1</p>
+                      <h2 className="text-base font-bold text-white">Wireframe Summary</h2>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-indigo-200">Section 1</p>
-                    <h2 className="text-base font-bold text-white">Wireframe Summary</h2>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={handleOpenPromptModal}
+                    className="inline-flex h-9 items-center justify-center rounded-lg border border-white/30 bg-white/10 px-3 text-sm font-semibold text-white transition hover:bg-white/20"
+                  >
+                    Prompt
+                  </button>
                 </div>
                 {/* Body */}
                 <div className="px-7 py-6">
@@ -152,6 +215,52 @@ export default function WireframeResultPage() {
             {!summary && enhancements.length === 0 && parsedRaw && (
               <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-7">
                 <pre className="whitespace-pre-wrap text-sm text-gray-700 leading-relaxed">{parsedRaw}</pre>
+              </div>
+            )}
+
+            {isPromptModalOpen && (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"
+                onClick={() => setIsPromptModalOpen(false)}
+              >
+                <div
+                  className="w-full max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between border-b border-slate-200 bg-slate-900 px-5 py-4">
+                    <h3 className="text-base font-semibold text-white">Prompt from Agent</h3>
+                    <button
+                      type="button"
+                      onClick={() => setIsPromptModalOpen(false)}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/20 bg-white/10 text-white transition hover:bg-white/20"
+                      aria-label="Close prompt modal"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="max-h-[70vh] overflow-auto bg-slate-50 p-5">
+                    {promptLoading ? (
+                      <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+                        Fetching prompt from agent...
+                      </div>
+                    ) : promptError ? (
+                      <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                        {promptError}
+                      </div>
+                    ) : agentPrompt ? (
+                      <div className="rounded-xl border border-slate-200 bg-white p-4">
+                        <pre className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-700">
+                          {agentPrompt}
+                        </pre>
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+                        Prompt not available.
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 
