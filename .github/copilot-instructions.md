@@ -3,6 +3,8 @@
 This is a Next.js 15 App Router project called NeuroX (Design Thinking Platform).
 Full standards are in `SPEC.md`. Full AI context is in `CLAUDE.md`. Read both.
 
+> **API contract:** `lib/openapi.js` is the OpenAPI 3.0 spec. Update it whenever you add or change a route. Live UI at `/api-docs`.
+
 ---
 
 ## Critical Rules (Copilot must follow these)
@@ -38,6 +40,38 @@ console.error("Error:", err);
 const url = "https://agent5idev.c5ailabs.com/api/...";
 const pass = "hardcoded_password";
 ```
+
+### API Contract — MUST update lib/openapi.js
+
+**Every new or changed route must have a matching entry in `lib/openapi.js`.**
+
+```js
+// Minimal OpenAPI path entry (add to the `paths` section in lib/openapi.js)
+"/api/my-feature": {
+  post: {
+    tags: ["My Tag"],
+    summary: "Short description",
+    description: "Full explanation. Rate limit if applicable.",
+    security: [{ cookieAuth: [] }],  // omit for public routes
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: { $ref: "#/components/schemas/MyFeatureRequest" },
+        },
+      },
+    },
+    responses: {
+      200: { description: "Success", content: { "application/json": { schema: { $ref: "#/components/schemas/SuccessEnvelope" } } } },
+      400: { description: "Validation error", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } },
+      401: { description: "Not authenticated", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } },
+    },
+  },
+},
+```
+
+Add new request/response shapes under `components.schemas` and `$ref` them.
+Verify the spec renders at `/api-docs` after `npm run dev`.
 
 ### Always Generate
 
@@ -113,4 +147,22 @@ aiLightLimiter    // 30/min — light AI (wireframe, enhance)
 
 ## Auth Routes That Are Intentionally Public (no withAuth)
 
-`/api/auth/login`, `/api/auth/signup`, `/api/auth/logout`, `/api/auth/me`
+`/api/auth/login`, `/api/auth/signup`, `/api/auth/logout`, `/api/auth/me`, `/api/docs`, `/api-docs`
+
+---
+
+## New Route Checklist
+
+Before finalising any new route:
+- [ ] `withAuth` wraps the handler (or route is explicitly public)
+- [ ] Schema added to `lib/schemas.js`, input validated via `validateBody` / `validateQuery`
+- [ ] Ownership check before any user-data query
+- [ ] `logger` used — no `console.*`
+- [ ] SQL uses `.input()` parameterized bindings only
+- [ ] External `fetch` has `AbortSignal.timeout(...)`
+- [ ] AI route has rate limiter (`aiHeavyLimiter` / `aiStandardLimiter` / `aiLightLimiter`)
+- [ ] No hardcoded credentials or URLs
+- [ ] New env vars added to `.env.example`
+- [ ] Response shape: `{ success, data }` or `{ success, error: { message } }`
+- [ ] **`lib/openapi.js` updated** with the new endpoint
+- [ ] Verified at `/api-docs` after `npm run dev`

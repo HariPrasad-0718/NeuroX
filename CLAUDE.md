@@ -3,6 +3,7 @@
 > This file is automatically loaded by Claude Code at the start of every session.
 > GitHub Copilot users: paste this into `.github/copilot-instructions.md` as well.
 > Full standards document: `SPEC.md`
+> Live API docs: run `npm run dev` → open `/api-docs` | Raw JSON spec: `/api/docs`
 
 ---
 
@@ -15,6 +16,7 @@
 - **Logging:** `lib/logger.js` — never `console.*` in `app/api/` or `lib/`
 - **Rate limiting:** `lib/rateLimit.js` — 3 tiers (heavy/standard/light)
 - **AI platform:** Agent5i webhook — URL from `process.env.AGENT5I_WEBHOOK_URL`
+- **API docs:** OpenAPI 3.0 spec in `lib/openapi.js` → served at `/api/docs` → Swagger UI at `/api-docs`
 
 ---
 
@@ -135,6 +137,7 @@ logger.error("failed", { error }); // always in catch blocks
 8. **Always** rate limit any route that calls an external AI service
 9. **Always** put new Zod schemas in `lib/schemas.js`
 10. **Always** return `{ success: true, data: {...} }` or `{ success: false, error: { message } }`
+11. **Always** update `lib/openapi.js` in the same commit when adding, changing, or removing an API route
 
 ---
 
@@ -218,5 +221,55 @@ Before submitting any AI-generated code for review:
 - [ ] No hardcoded credentials/URLs
 - [ ] New env vars added to `.env.example`
 - [ ] Response follows `{ success, data }` / `{ success, error }` shape
+- [ ] **`lib/openapi.js` updated** with the new/modified endpoint
+- [ ] Verified at `/api-docs` after `npm run dev`
 
 Full standards: read `SPEC.md`
+
+---
+
+## API Contract — `lib/openapi.js`
+
+The OpenAPI 3.0 spec lives entirely in `lib/openapi.js`. It is the **single source of truth** for every API contract.
+
+```
+lib/openapi.js          ← EDIT HERE to update the contract
+app/api/docs/route.js   ← DO NOT EDIT (serves the spec as JSON at /api/docs)
+app/api-docs/page.js    ← DO NOT EDIT (renders Swagger UI at /api-docs)
+```
+
+### Adding a new endpoint to the spec
+
+1. Add a new path entry under `paths` in `lib/openapi.js`
+2. Add request/response schemas under `components.schemas` if needed
+3. Reference them with `{ $ref: "#/components/schemas/MySchema" }`
+4. Tag it under `tags` (add a new tag to the array if needed)
+5. Set `security: [{ cookieAuth: [] }]` for protected routes; `security: []` for public ones
+
+### Minimal example
+
+```js
+// In lib/openapi.js → paths:
+"/api/my-feature": {
+  post: {
+    tags: ["My Tag"],
+    summary: "Do the thing",
+    description: "**Rate limit: 15 req/min (Standard AI).**  Explain what it does.",
+    security: [{ cookieAuth: [] }],
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: { $ref: "#/components/schemas/MyFeatureRequest" },
+        },
+      },
+    },
+    responses: {
+      200: { description: "Success", content: { "application/json": { schema: { $ref: "#/components/schemas/SuccessEnvelope" } } } },
+      400: { description: "Validation error", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } },
+      401: { description: "Not authenticated", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } },
+      429: { description: "Rate limit exceeded", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } },
+    },
+  },
+},
+```
