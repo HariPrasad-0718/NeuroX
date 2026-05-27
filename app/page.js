@@ -7,6 +7,7 @@ import { useProjects } from "@/hooks/useProjects";
 import { useTemplatesSummary } from "@/hooks/useTemplatesSummary";
 import { api } from "@/services/api";
 import ManagerHome from "@/components/ManagerHome";
+import { DescriptionModal } from "@/components/modals/DescriptionModal";
 
 const STAGE_IMAGES = [
   "https://images.unsplash.com/photo-1695668543969-ea7dec95047c?w=400&h=300&fit=crop",
@@ -18,13 +19,91 @@ const STAGE_IMAGES = [
   "https://images.unsplash.com/photo-1690192203795-ca12d9bb3227?w=400&h=300&fit=crop",
 ];
 
-const COLORS = [
-  "from-[#8B5CF6] to-[#A78BFA]",
-  "from-[#6366F1] to-[#818CF8]",
+const INDIGO_COLORS = [
+  "from-[#6366F1] to-[#4F46E5]",
+  "from-[#7C3AED] to-[#6D28D9]",
+  "from-[#4F46E5] to-[#4338CA]",
+  "from-[#6366F1] to-[#7C3AED]",
 ];
 
 function dispatchEditProject(projectId) {
   window.dispatchEvent(new CustomEvent("neurox:edit-project", { detail: { projectId } }));
+}
+
+function HomeProjectCard({ project, onView, onEdit, onDelete, deleteLoading, openMenuId, setOpenMenuId, onReadMore }) {
+  const desc = String(project.description || "").replace(/\s+/g, " ").trim();
+  const isLong = desc.length > 80;
+
+  return (
+    <div className="rounded-2xl overflow-hidden shadow-md hover:shadow-xl hover:-translate-y-1.5 hover:scale-[1.02] transition-all duration-300 bg-white border border-gray-100 flex flex-col">
+      {/* Top indigo section */}
+      <div className={`bg-gradient-to-br ${project.color} px-6 py-4 flex flex-col items-center justify-center text-center relative min-h-[100px]`}>
+        <div className="absolute top-3 right-3" onClick={(e) => e.stopPropagation()}>
+          <button
+            className="w-7 h-7 rounded-lg bg-white/15 hover:bg-white/30 text-white flex items-center justify-center transition"
+            onClick={() => setOpenMenuId((prev) => (prev === project.projectId ? null : project.projectId))}
+          >
+            <MoreVertical className="w-4 h-4" />
+          </button>
+          {openMenuId === project.projectId && (
+            <div className="absolute top-9 right-0 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-20 min-w-[140px]">
+              <button
+                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                onClick={() => { onEdit(project.projectId); setOpenMenuId(null); }}
+              >
+                <Pencil className="w-4 h-4 text-gray-400" />Edit
+              </button>
+              <button
+                className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:opacity-60"
+                onClick={() => onDelete(project.projectId)}
+                disabled={deleteLoading}
+              >
+                <Trash2 className="w-4 h-4" />Delete
+              </button>
+            </div>
+          )}
+        </div>
+
+        <h3 className="font-bold text-white text-lg leading-tight mb-1.5 px-6">{project.title}</h3>
+        <p className="text-white/80 text-sm">{project.company}</p>
+        {project.domain && (
+          <span className="mt-2 inline-flex text-xs px-2.5 py-0.5 rounded-full bg-white/20 text-white font-medium">
+            {project.domain}
+          </span>
+        )}
+      </div>
+
+      {/* Bottom white section */}
+      <div className="bg-white px-5 py-4 flex flex-col flex-1">
+        <div className="flex items-center gap-2 mb-3">
+          <span className={`inline-flex text-xs px-2.5 py-0.5 rounded-full font-medium ${project.status === "Completed" ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : "bg-amber-100 text-amber-700 border border-amber-200"}`}>
+            {project.status}
+          </span>
+        </div>
+
+        <p className="text-sm text-gray-600 leading-relaxed line-clamp-2">
+          {desc || "No description"}
+        </p>
+        {isLong && (
+          <button
+            className="text-xs text-indigo-500 hover:text-indigo-700 font-medium self-start mt-1 mb-2 transition"
+            onClick={() => onReadMore(project)}
+          >
+            Read More
+          </button>
+        )}
+
+        <div className="mt-auto pt-3">
+          <button
+            onClick={() => onView(project.projectId)}
+            className="w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-all duration-200 hover:shadow-md"
+          >
+            View
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function HomePage() {
@@ -34,7 +113,7 @@ export default function HomePage() {
   const [designStages, setDesignStages] = useState([]);
   const [isLoadingStages, setIsLoadingStages] = useState(false);
   const [openMenuIndex, setOpenMenuIndex] = useState(null);
-  const [descriptionModal, setDescriptionModal] = useState(null);
+  const [descModal, setDescModal] = useState(null);
 
   const menuRef = useRef(null);
 
@@ -44,7 +123,7 @@ export default function HomePage() {
     error: projectsError,
     deleteProject,
     deleteLoading,
-  } = useProjects(userId, { requireUserId: false, recentOnly: true, limit: 6 });
+  } = useProjects(userId, { requireUserId: false, recentOnly: true, limit: 3 });
 
   const { summary: templatesSummary } = useTemplatesSummary();
 
@@ -64,7 +143,6 @@ export default function HomePage() {
     hydrate();
   }, []);
 
-  // Close dropdown on outside click
   useEffect(() => {
     if (openMenuIndex === null) return;
     const handler = (e) => {
@@ -101,10 +179,9 @@ export default function HomePage() {
     description: p.projectDescription || "No description",
     status: p.status || "In Progress",
     startDate: p.startDate,
-    color: COLORS[i % COLORS.length],
+    domain: p.domain || "",
+    color: INDIGO_COLORS[i % INDIGO_COLORS.length],
   }));
-
-  const normalizeDescription = (text) => String(text || "").replace(/\s+/g, " ").trim();
 
   const handleDeleteProject = async (projectId) => {
     if (!window.confirm("Delete this project?")) return;
@@ -112,16 +189,6 @@ export default function HomePage() {
     if (!result.success) alert(`Failed to delete: ${result.error}`);
     setOpenMenuIndex(null);
   };
-
-  const handleEditProject = (projectId) => {
-    setOpenMenuIndex(null);
-    dispatchEditProject(projectId);
-  };
-
-  const statusBadge = (status) =>
-    status === "Completed"
-      ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
-      : "bg-amber-100 text-amber-700 border border-amber-200";
 
   if (userPersona === "manager") {
     return (
@@ -143,6 +210,9 @@ export default function HomePage() {
             <h2 className="text-2xl font-semibold text-[#1f2937]">Recent Projects</h2>
             {isLoadingProjects && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#702dff]" />}
           </div>
+          <button onClick={() => router.push("/projects")} className="flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-800 transition">
+            View All Projects <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
 
         {projectsError && (
@@ -152,98 +222,41 @@ export default function HomePage() {
         )}
 
         {isLoadingProjects && mappedProjects.length === 0 ? (
-          <div className="flex justify-center items-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#702dff]" />
-          </div>
-        ) : (
-          /* ── CARD VIEW ── */
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" ref={menuRef}>
-            {mappedProjects.map((project, index) => (
-              <div
-                key={project.projectId || index}
-                onClick={() => router.push(`/projects/${project.projectId}`)}
-                className={`h-[248px] bg-gradient-to-br ${project.color} rounded-2xl shadow-md ring-1 ring-white/20 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden cursor-pointer`}
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-black/10" />
-                <div className="p-5 relative h-full flex flex-col">
-                  <div className="flex items-start justify-between mb-5 gap-3">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-white mb-2 truncate text-lg">{project.title}</h3>
-                      <p className="text-sm text-white/90 truncate">{project.company}</p>
-                    </div>
-
-                    {/* Card 3-dot menu */}
-                    <div className="relative" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        className="w-8 h-8 rounded-lg bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white flex items-center justify-center transition-colors duration-200"
-                        onClick={() => setOpenMenuIndex((prev) => (prev === project.projectId ? null : project.projectId))}
-                      >
-                        <MoreVertical className="w-4 h-4" />
-                      </button>
-
-                      {openMenuIndex === project.projectId && (
-                        <div className="absolute top-10 right-0 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-20 min-w-[140px]">
-                          <button
-                            className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors duration-150"
-                            onClick={() => handleEditProject(project.projectId)}
-                          >
-                            <Pencil className="w-4 h-4 text-gray-400" />
-                            Edit
-                          </button>
-                          <button
-                            className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:opacity-60 transition-colors duration-150"
-                            onClick={() => handleDeleteProject(project.projectId)}
-                            disabled={deleteLoading}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                            Delete
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <span className={`inline-flex w-fit self-start text-xs px-3 py-1.5 rounded-full font-medium mb-4 ${project.status === "Completed" ? "bg-emerald-500 text-white" : "bg-amber-500 text-white"}`}>
-                    {project.status}
-                  </span>
-                  <p className="text-sm text-white/95 line-clamp-1">{normalizeDescription(project.description)}</p>
-                  {normalizeDescription(project.description).length > 0 && (
-                    <button
-                      className="mt-2 self-start text-xs font-semibold text-white/95 underline underline-offset-4 decoration-white/60 hover:decoration-white transition-all duration-150"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDescriptionModal({ title: project.title, company: project.company, description: String(project.description || "").trim() });
-                      }}
-                    >
-                      Read more
-                    </button>
-                  )}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {Array.from({ length: 3 }).map((_, idx) => (
+              <div key={idx} className="rounded-2xl overflow-hidden shadow-sm border border-gray-200">
+                <div className="h-[130px] skeleton-shimmer" />
+                <div className="bg-white p-5 space-y-3">
+                  <div className="h-3 w-1/3 rounded skeleton-shimmer" />
+                  <div className="h-3 w-full rounded skeleton-shimmer" />
+                  <div className="h-3 w-4/5 rounded skeleton-shimmer" />
+                  <div className="h-9 w-full rounded-xl skeleton-shimmer mt-2" />
                 </div>
               </div>
             ))}
           </div>
+        ) : mappedProjects.length === 0 ? (
+          <div className="bg-white border border-[#e5e7eb] rounded-xl p-8 text-center">
+            <p className="text-sm text-[#6b7280]">No projects yet. Create one from the header.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" ref={menuRef}>
+            {mappedProjects.map((project) => (
+              <HomeProjectCard
+                key={project.projectId}
+                project={project}
+                onView={(id) => router.push(`/projects/${id}`)}
+                onEdit={dispatchEditProject}
+                onDelete={handleDeleteProject}
+                deleteLoading={deleteLoading}
+                openMenuId={openMenuIndex}
+                setOpenMenuId={setOpenMenuIndex}
+                onReadMore={setDescModal}
+              />
+            ))}
+          </div>
         )}
       </div>
-
-      {/* Description modal */}
-      {descriptionModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setDescriptionModal(null)}>
-          <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">{descriptionModal.title}</h3>
-                <p className="mt-1 text-sm text-gray-500">{descriptionModal.company}</p>
-              </div>
-              <button className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50" onClick={() => setDescriptionModal(null)}>
-                Close
-              </button>
-            </div>
-            <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
-              <p className="whitespace-pre-wrap text-sm leading-6 text-gray-700">{descriptionModal.description}</p>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Design Thinking Stages */}
       <div className="mb-12">
@@ -309,6 +322,7 @@ export default function HomePage() {
         </div>
       </div>
 
+      <DescriptionModal project={descModal} onClose={() => setDescModal(null)} />
     </div>
   );
 }

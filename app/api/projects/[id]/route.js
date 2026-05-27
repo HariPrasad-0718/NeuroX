@@ -20,7 +20,7 @@ export async function GET(request, { params }) {
       .input("projectId", sql.Int, projectId)
       .input("userId", sql.Int, Number(sessionUser.userId))
       .query(`
-        SELECT project_id, project_name, description, client_name, start_date, end_date
+        SELECT project_id, project_name, description, client_name, start_date, end_date, domain
         FROM projectss
         WHERE project_id = @projectId AND created_by = @userId
       `);
@@ -51,6 +51,7 @@ export async function GET(request, { params }) {
         description: p.description,
         startDate: p.start_date,
         targetDate: p.end_date,
+        domain: p.domain || "",
         status: "In Progress",
         personas: personasResult.recordset.map((r) => ({
           personaId: r.persona_id,
@@ -92,13 +93,15 @@ export async function PUT(request, { params }) {
       .input("clientName", sql.NVarChar, body.company || body.clientName || body.client || "")
       .input("startDate", sql.Date, body.startDate ? new Date(body.startDate) : null)
       .input("endDate", sql.Date, (body.targetDate || body.endDate) ? new Date(body.targetDate || body.endDate) : null)
+      .input("domain", sql.NVarChar, body.domain || "")
       .query(`
         UPDATE projectss
         SET project_name = @projectName,
             description  = @description,
             client_name  = @clientName,
             start_date   = @startDate,
-            end_date     = @endDate
+            end_date     = @endDate,
+            domain       = @domain
         WHERE project_id = @projectId AND created_by = @userId
       `);
 

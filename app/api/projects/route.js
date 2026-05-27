@@ -38,6 +38,7 @@ export async function GET(request) {
             client_name,
             start_date,
             end_date,
+            domain,
             created_at,
             created_by
           FROM projectss
@@ -65,6 +66,7 @@ export async function GET(request) {
           createdAt: p.created_at,
           updatedAt: p.created_at,
           createdBy: p.created_by,
+          domain: p.domain || "",
         },
       });
     }
@@ -83,6 +85,7 @@ export async function GET(request) {
               client_name,
               start_date,
               end_date,
+              domain,
               created_at,
               created_by
             FROM projectss
@@ -100,6 +103,7 @@ export async function GET(request) {
               client_name,
               start_date,
               end_date,
+              domain,
               created_at,
               created_by
             FROM projectss
@@ -118,6 +122,7 @@ export async function GET(request) {
       createdAt: p.created_at,
       updatedAt: p.created_at,
       createdBy: p.created_by,
+      domain: p.domain || "",
     }));
 
     return NextResponse.json({ success: true, data: projects });
@@ -153,7 +158,8 @@ export async function POST(request) {
   startDate,
   endDate,
   targetCompletionDate,
-  personas   // ✅ NEW
+  personas,
+  domain
 } = body;
 
       console.log("PERSONAS RECEIVED:", personas);
@@ -182,12 +188,13 @@ export async function POST(request) {
           : null
       )
       .input("createdBy", sql.Int, Number(sessionUser.userId))
+      .input("domain", sql.NVarChar, domain || "")
       .query(
         `INSERT INTO projectss
-           (project_name, client_name, description, start_date, end_date, created_by)
+           (project_name, client_name, description, start_date, end_date, domain, created_by)
          OUTPUT INSERTED.project_id
          VALUES
-           (@projectName, @clientName, @description, @startDate, @endDate, @createdBy)`
+           (@projectName, @clientName, @description, @startDate, @endDate, @domain, @createdBy)`
       );
 
     const createdId = created.recordset[0]?.project_id;
@@ -229,6 +236,7 @@ export async function POST(request) {
         projectDescription: projectDescription || "",
         status: "In Progress",
         client: clientName || client || "",
+        domain: domain || "",
         startDate: startDate || null,
         targetCompletionDate: endDate || targetCompletionDate || null,
         createdBy: Number(sessionUser.userId),
@@ -270,6 +278,7 @@ export async function PUT(request) {
     const normalizedClient = body.client || body.clientName || body.company || "";
     const normalizedStartDate = body.startDate || null;
     const normalizedEndDate = body.endDate || body.targetCompletionDate || body.targetDate || null;
+    const normalizedDomain = body.domain || "";
 
     if (!normalizedProjectName) {
       return NextResponse.json(
@@ -297,13 +306,15 @@ export async function PUT(request) {
         sql.Date,
         normalizedEndDate ? new Date(normalizedEndDate) : null
       )
+      .input("domain", sql.NVarChar, normalizedDomain)
       .query(
         `UPDATE projectss
          SET project_name = @projectName,
              description = @description,
              client_name = @clientName,
              start_date = @startDate,
-             end_date = @endDate
+             end_date = @endDate,
+             domain = @domain
          WHERE project_id = @projectId AND created_by = @userId`
       );
 
