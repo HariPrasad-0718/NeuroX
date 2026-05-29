@@ -185,37 +185,65 @@ export const POST = withAuth(async (req, _ctx, user) => {
       try { personaCard = JSON.parse(gpResult.recordset[0].generated_output); } catch { }
     }
 
-    const pfInput = {
-      project_description: projResult.recordset[0]?.description || "",
-      problem_statement: psResult.recordset[0]?.problem_statement || "",
-      persona_name: personaCard.name || personaCard.personaName || "User Persona",
-      background: personaCard.background || "",
-      demographics: typeof personaCard.demographics === "object"
-        ? JSON.stringify(personaCard.demographics)
-        : personaCard.demographics || "",
-      scenario: personaCard.scenario || "",
-      personality: Array.isArray(personaCard.personality)
-        ? personaCard.personality.join(", ")
-        : personaCard.personality || "",
-      goals: Array.isArray(personaCard.goals)
-        ? personaCard.goals.join(", ")
-        : personaCard.goals || "",
-      frustrations: Array.isArray(personaCard.frustrations)
-        ? personaCard.frustrations.join(", ")
-        : personaCard.frustrations || "",
-      motivations: Array.isArray(personaCard.motivations)
-        ? personaCard.motivations.join(", ")
-        : personaCard.motivations || "",
-      needs: Array.isArray(personaCard.needs)
-        ? personaCard.needs.join(", ")
-        : personaCard.needs || "",
-      behaviours_habits: Array.isArray(personaCard.behaviours)
-        ? personaCard.behaviours.join(", ")
-        : personaCard.behaviours || "",
-      previous_experience: Array.isArray(personaCard.previousExperience)
-        ? personaCard.previousExperience.join(", ")
-        : personaCard.previousExperience || "",
-    };
+   const pfInput = {
+  project_description:
+    projResult.recordset[0]?.description || "",
+
+  problem_statement:
+    psResult.recordset[0]?.problem_statement || "",
+
+  persona_name:
+    personaCard.persona_name ||
+    personaCard.personaName ||
+    personaCard.name ||
+    "User Persona",
+
+  background:
+    personaCard.background || "",
+
+  demographics:
+    typeof personaCard.demographics === "object"
+      ? JSON.stringify(personaCard.demographics)
+      : personaCard.demographics || "",
+
+  scenario:
+    personaCard.scenario || "",
+
+  personality:
+    Array.isArray(personaCard.personality)
+      ? personaCard.personality.join(", ")
+      : personaCard.personality || "",
+
+  goals:
+    Array.isArray(personaCard.goals)
+      ? personaCard.goals.join(", ")
+      : personaCard.goals || "",
+
+  frustrations:
+    Array.isArray(personaCard.frustrations)
+      ? personaCard.frustrations.join(", ")
+      : personaCard.frustrations || "",
+
+  motivations:
+    Array.isArray(personaCard.motivations)
+      ? personaCard.motivations.join(", ")
+      : personaCard.motivations || "",
+
+  needs:
+    Array.isArray(personaCard.needs)
+      ? personaCard.needs.join(", ")
+      : personaCard.needs || "",
+
+  behaviours_habits:
+    Array.isArray(personaCard.behaviours)
+      ? personaCard.behaviours.join(", ")
+      : personaCard.behaviours || "",
+
+  previous_experience:
+    Array.isArray(personaCard.previousExperience)
+      ? personaCard.previousExperience.join(", ")
+      : personaCard.previousExperience || "",
+};
 
     // ── CALL AGENT ──────────────────────────────────────────
     const flow = await callAgent(pfInput);
@@ -239,9 +267,21 @@ export const POST = withAuth(async (req, _ctx, user) => {
 
     return NextResponse.json({ success: true, process_flow: flow });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: error?.name === "AbortError" ? "Request timeout" : error?.message || "Internal server error" },
-      { status: 500 }
-    );
-  }
+  logger.error("generate-process-flow failed", {
+    message: error?.message,
+    stack: error?.stack,
+  });
+
+  return NextResponse.json(
+    {
+      success: false,
+      error:
+        error?.name === "AbortError"
+          ? "Request timeout"
+          : error?.message || "Internal server error",
+    },
+    { status: 500 }
+  );
+}
+      
 });

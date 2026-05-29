@@ -114,15 +114,26 @@ export default function AppShell({ children }) {
       }
     } else {
       try {
-        const apiData = {
-          projectName:        projectData.title,
-          projectDescription: projectData.description,
-          clientName:         projectData.company,
-          startDate:          projectData.startDate,
-          endDate:            projectData.targetDate,
-          domain:             projectData.domain || "",
-          personas:           projectData.personas,
-        };
+       const apiData = {
+  projectName: projectData.title,
+  projectDescription: projectData.description,
+  clientName: projectData.company,
+  startDate: projectData.startDate,
+  endDate: projectData.targetDate,
+  domain: projectData.domain || "",
+
+  personas: projectData.personas.map((persona) => ({
+    persona_name: persona.name,
+    persona_description: persona.description,
+  })),
+};
+
+console.log("Project payload:", apiData);
+console.log(
+  "Personas formatted:",
+  JSON.stringify(apiData.personas, null, 2)
+);
+        
         const response = await api.createProject(apiData, userId);
         if (response.success) {
           refetchProjects();

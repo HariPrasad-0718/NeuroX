@@ -1,87 +1,12 @@
 ﻿import { NextResponse } from "next/server";
-import { withAuth } from "@/lib/withAuth";
-import logger from "@/lib/logger";
-import { aiLightLimiter, rateLimitedResponse } from "@/lib/rateLimit";
 
 const WEBHOOK_URL =
-  process.env.AGENT5I_WEBHOOK_URL || "https://agent5i.c5ailabs.com/api/recipes/webhook/agent/";
+  "https://agent5idev.c5ailabs.com/api/recipes/webhook/agent/";
 
-const toPythonModuleName = (value) =>
-  String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-
-const CONFIGURED_WIREFRAME_AGENT_NAME =
-  process.env.AGENT5I_WIREFRAME_AGENT_MODULE ||
-  process.env.AGENT5I_WIREFRAME_AGENT_NAME ||
-  "wireframe_analyzer_agent";
-
-const WIREFRAME_AGENT_NAME =
-  toPythonModuleName(CONFIGURED_WIREFRAME_AGENT_NAME) || "wireframe_analyzer_agent";
-
-const FALLBACK_RESULT =
-  "WIREFRAME SUMMARY\n" +
-  "The wireframe agent is temporarily unavailable. " +
-  "The analysis below is a placeholder — upload your image again once the agent service is restored.\n\n" +
-  "UI/UX ENHANCEMENTS\n" +
-  "1. Layout Clarity\n" +
-  "Ensure primary actions are placed above the fold and visually distinct from secondary controls.\n\n" +
-  "2. Visual Hierarchy\n" +
-  "Use consistent heading sizes and spacing to guide the user's eye through the screen flow.\n\n" +
-  "3. Navigation Consistency\n" +
-  "Keep navigation elements in the same position across all screens to reduce cognitive load.\n\n" +
-  "4. Touch Target Sizing\n" +
-  "Interactive elements should meet a minimum 44×44 px tap area for accessibility compliance.\n\n" +
-  "5. Whitespace Usage\n" +
-  "Add breathing room between card sections to improve readability and reduce visual clutter.";
-
-const parseUpstreamError = async (response) => {
-  const contentType = response.headers.get("content-type") || "";
-  const raw = await response.text();
-  const text = String(raw || "").trim();
-
-  if (!text) {
-    return `Upstream wireframe agent failed with status ${response.status}`;
-  }
-
-  if (contentType.includes("application/json")) {
-    try {
-      const parsed = JSON.parse(text);
-      return (
-        parsed?.error ||
-        parsed?.message ||
-        `Upstream wireframe agent failed with status ${response.status}`
-      );
-    } catch (_) {
-      // Fall through to plain text parsing.
-    }
-  }
-
-  if (contentType.includes("text/html") || /<!doctype html>|<html/i.test(text)) {
-    return "Wireframe agent returned an HTML error page. Please verify the configured agent module name and server logs.";
-  }
-
-  return text.slice(0, 600);
-};
-
-export const POST = withAuth(async (request, _ctx, user) => {
-  const { limited, retryAfterSec } = aiLightLimiter.check(String(user.userId));
-  if (limited) return rateLimitedResponse(retryAfterSec);
-
+export async function POST(request) {
   try {
-    const username = process.env.AGENT5I_USERNAME || process.env.AGENT_USERNAME || "";
-    const password = process.env.AGENT5I_PASSWORD || process.env.AGENT_PASSWORD || "";
-
-    if (!username || !password) {
-      return NextResponse.json(
-        { success: false, error: "Agent credentials are not configured" },
-        { status: 500 }
-      );
-    }
-
     const formData = await request.formData();
+
     const image = formData.get("image");
 
     if (!image) {
@@ -91,7 +16,7 @@ export const POST = withAuth(async (request, _ctx, user) => {
       });
     }
 
-    // Convert image → buffer
+    // Convert image â†’ buffer
     const bytes = await image.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
@@ -101,9 +26,20 @@ export const POST = withAuth(async (request, _ctx, user) => {
     // Multipart form data for agent
     const agentFormData = new FormData();
 
-    agentFormData.append("name", WIREFRAME_AGENT_NAME);
-    agentFormData.append("username", username);
-    agentFormData.append("password", password);
+    agentFormData.append(
+      "name",
+      "Wireframe Analyzer Agent"
+    );
+
+    agentFormData.append(
+      "username",
+      "yarramachu.sunaini@c5i.ai"
+    );
+
+    agentFormData.append(
+      "password",
+      "Subbareddy@9014"
+    );
 
     agentFormData.append(
       "user_input",
@@ -127,42 +63,23 @@ export const POST = withAuth(async (request, _ctx, user) => {
     });
 
     if (!response.ok) {
-      const upstreamError = await parseUpstreamError(response);
-      logger.error("POST /api/analyze-wireframe upstream failure — using fallback", {
-        agentName: WIREFRAME_AGENT_NAME,
-        upstreamError,
+      const text = await response.text();
+
+      return NextResponse.json({
+        success: false,
+        error: text,
       });
-      return NextResponse.json({ success: true, result: FALLBACK_RESULT, _fallback: true });
     }
 
-    const contentType = response.headers.get("content-type") || "";
-    if (!contentType.includes("application/json")) {
-      const raw = await response.text();
-      logger.error("POST /api/analyze-wireframe unexpected upstream content type — using fallback", {
-        agentName: WIREFRAME_AGENT_NAME,
-        contentType,
-        preview: String(raw || "").slice(0, 300),
-      });
-      return NextResponse.json({ success: true, result: FALLBACK_RESULT, _fallback: true });
-    }
+    const data = await response.json();
 
-    let data;
-    try {
-      data = await response.json();
-    } catch (_) {
-      logger.error("POST /api/analyze-wireframe invalid JSON from upstream — using fallback", {
-        agentName: WIREFRAME_AGENT_NAME,
-      });
-      return NextResponse.json({ success: true, result: FALLBACK_RESULT, _fallback: true });
-    }
-
-    const rawMessage = String(data?.message || data?.result || "");
+    const rawMessage = data.message || "";
 
     if (!rawMessage) {
-      logger.error("POST /api/analyze-wireframe empty agent response — using fallback", {
-        agentName: WIREFRAME_AGENT_NAME,
+      return NextResponse.json({
+        success: false,
+        error: "No response from agent",
       });
-      return NextResponse.json({ success: true, result: FALLBACK_RESULT, _fallback: true });
     }
 
     // Agent returns {"WIREFRAME SUMMARY": "...", "UI/UX ENHANCEMENTS": "1.\n2...."}
@@ -195,11 +112,11 @@ export const POST = withAuth(async (request, _ctx, user) => {
     });
    
   } catch (error) {
-    logger.error("POST /api/analyze-wireframe error", { error });
+    console.error(error);
 
     return NextResponse.json({
       success: false,
       error: error.message,
     });
   }
-});
+}
