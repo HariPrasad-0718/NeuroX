@@ -55,6 +55,7 @@ export default function WireframeResultPage() {
   const router = useRouter();
   const { id } = useParams();
   const [raw, setRaw] = useState("");
+  const [isFallback, setIsFallback] = useState(false);
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
   const [promptLoading, setPromptLoading] = useState(false);
   const [promptError, setPromptError] = useState("");
@@ -62,9 +63,12 @@ export default function WireframeResultPage() {
 
   useEffect(() => {
     const stored = sessionStorage.getItem("wireframeResult");
+    const fallback = sessionStorage.getItem("wireframeResultFallback") === "1";
     if (stored) {
       setRaw(stored);
+      setIsFallback(fallback);
       sessionStorage.removeItem("wireframeResult");
+      sessionStorage.removeItem("wireframeResultFallback");
     }
   }, []);
 
@@ -138,6 +142,13 @@ export default function WireframeResultPage() {
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-10 space-y-8">
+        {isFallback && (
+          <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            <span>The wireframe agent is temporarily unavailable. This is a placeholder analysis — re-upload your image once the agent service is restored.</span>
+          </div>
+        )}
+
         {!hasContent ? (
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-16 text-center">
             <p className="text-sm text-gray-400">No analysis result found.</p>

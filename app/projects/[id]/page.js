@@ -722,6 +722,15 @@ const WireframeReviewerCard = () => {
   const [wireframeError, setWireframeError] = useState("");
   const inputRef = useRef(null);
 
+  const normalizeWireframeError = (value) => {
+    const text = String(value || "").trim();
+    if (!text) return "Analysis failed. Please try again.";
+    if (/<\/?[a-z][\s\S]*>/i.test(text)) {
+      return "Wireframe service returned an unexpected error page. Please try again.";
+    }
+    return text;
+  };
+
   const handleFile = async (file) => {
     if (!file || isGenerating) return;
 
@@ -734,19 +743,29 @@ const WireframeReviewerCard = () => {
       formData.append("image", file);
 
       const response = await fetch("/api/analyze-wireframe", { method: "POST", body: formData });
+      const contentType = response.headers.get("content-type") || "";
+
+      if (!contentType.includes("application/json")) {
+        const text = await response.text();
+        throw new Error(normalizeWireframeError(text));
+      }
+
       const data = await response.json();
 
-      if (!data.success) {
-        setWireframeError(data.error || "Analysis failed. Please try again.");
-        setIsGenerating(false);
-        return;
+      if (!response.ok || !data?.success) {
+        throw new Error(normalizeWireframeError(data?.error));
       }
 
       sessionStorage.setItem("wireframeResult", data.result);
+      if (data._fallback) {
+        sessionStorage.setItem("wireframeResultFallback", "1");
+      } else {
+        sessionStorage.removeItem("wireframeResultFallback");
+      }
       router.push(`/projects/${projectId}/wireframe-result`);
     } catch (error) {
-      console.error(error);
-      setWireframeError("Something went wrong. Please try again.");
+      console.warn("[WireframeReviewer]", error?.message || error);
+      setWireframeError(normalizeWireframeError(error?.message));
       setIsGenerating(false);
     }
   };
