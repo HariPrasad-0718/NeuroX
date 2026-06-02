@@ -235,7 +235,10 @@ export default function WireframeResultPage() {
   const [brdError, setBrdError] = useState("");
   const [brdData, setBrdData] = useState(null);
   const [isDownloadingBrd, setIsDownloadingBrd] = useState(false);
-
+  const [isPrdModalOpen, setIsPrdModalOpen] = useState(false);
+const [prdLoading, setPrdLoading] = useState(false);
+const [prdError, setPrdError] = useState("");
+const [prdData, setPrdData] = useState("");
   useEffect(() => {
     const stored = sessionStorage.getItem("wireframeResult");
     const fallback = sessionStorage.getItem("wireframeResultFallback") === "1";
@@ -333,6 +336,49 @@ export default function WireframeResultPage() {
       setBrdLoading(false);
     }
   };
+
+  const handleOpenPrdModal = async () => {
+  setIsPrdModalOpen(true);
+
+  if (!id) {
+    setPrdError("Project id is missing.");
+    return;
+  }
+
+  if (prdData && !prdError) return;
+
+  setPrdLoading(true);
+  setPrdError("");
+
+  try {
+    const res = await fetch("/api/generate-prd", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        projectId: Number(id),
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || !data?.success) {
+      throw new Error(
+        data?.error || "Failed to generate PRD document"
+      );
+    }
+
+    setPrdData(data?.data?.prd || null);
+  } catch (err) {
+    setPrdError(
+      err.message || "Failed to generate PRD document"
+    );
+    setPrdData("");
+  } finally {
+    setPrdLoading(false);
+  }
+};
 
   const renderBrdValue = (value, depth = 0) => {
     if (value === null || value === undefined) {
@@ -554,6 +600,13 @@ export default function WireframeResultPage() {
                       className="inline-flex h-9 items-center justify-center rounded-lg border border-white/30 bg-white/10 px-3 text-sm font-semibold text-white transition hover:bg-white/20"
                     >
                       Generate BRD Document
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleOpenPrdModal}
+                      className="inline-flex h-9 items-center justify-center rounded-lg border border-white/30 bg-white/10 px-3 text-sm font-semibold text-white transition hover:bg-white/20"
+                    >
+                      Generate PRD Document
                     </button>
                   </div>
                 </div>
