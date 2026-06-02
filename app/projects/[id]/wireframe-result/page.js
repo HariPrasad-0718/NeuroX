@@ -3,7 +3,18 @@
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Download, LayoutDashboard, Sparkles, X } from "lucide-react";
-import { AlignmentType, Document, HeadingLevel, Packer, Paragraph, TextRun } from "docx";
+import {
+  AlignmentType,
+  Document,
+  HeadingLevel,
+  Packer,
+  Paragraph,
+  Table,
+  TableCell,
+  TableRow,
+  TextRun,
+  WidthType,
+} from "docx";
 import { saveAs } from "file-saver";
 
 function decodeUnicode(str) {
@@ -221,6 +232,23 @@ function appendWordValue(paragraphs, value, depth = 0) {
   paragraphs.push(new Paragraph({ text: String(value), spacing: { after: 120 } }));
 }
 
+function cleanPrdHtml(value) {
+  const text = String(value || "")
+    .trim()
+    .replace(/^```html/i, "")
+    .replace(/^```json/i, "")
+    .replace(/^```/, "")
+    .replace(/```$/, "")
+    .trim();
+
+  // basic sanitization for display safety
+  return text
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
+    .replace(/\son\w+\s*=\s*"[^"]*"/gi, "")
+    .replace(/\son\w+\s*=\s*'[^']*'/gi, "")
+    .replace(/\sjavascript:/gi, " ");
+}
+
 export default function WireframeResultPage() {
   const router = useRouter();
   const { id } = useParams();
@@ -235,6 +263,12 @@ export default function WireframeResultPage() {
   const [brdError, setBrdError] = useState("");
   const [brdData, setBrdData] = useState(null);
   const [isDownloadingBrd, setIsDownloadingBrd] = useState(false);
+  const [isPrdModalOpen, setIsPrdModalOpen] = useState(false);
+  const [prdLoading, setPrdLoading] = useState(false);
+  const [prdError, setPrdError] = useState("");
+  const [prdHtml, setPrdHtml] = useState("");
+  const [prdRawResponse, setPrdRawResponse] = useState("");
+  const [isDownloadingPrd, setIsDownloadingPrd] = useState(false);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("wireframeResult");
@@ -248,18 +282,19 @@ export default function WireframeResultPage() {
   }, []);
 
   useEffect(() => {
-    if (!isPromptModalOpen && !isBrdModalOpen) return undefined;
+    if (!isPromptModalOpen && !isBrdModalOpen && !isPrdModalOpen) return undefined;
 
     const onKeyDown = (event) => {
       if (event.key === "Escape") {
         setIsPromptModalOpen(false);
         setIsBrdModalOpen(false);
+        setIsPrdModalOpen(false);
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isPromptModalOpen, isBrdModalOpen]);
+  }, [isPromptModalOpen, isBrdModalOpen, isPrdModalOpen]);
 
   const handleOpenPromptModal = async () => {
     setIsPromptModalOpen(true);
@@ -331,6 +366,180 @@ export default function WireframeResultPage() {
       setBrdData(null);
     } finally {
       setBrdLoading(false);
+    }
+  };
+
+  const handleOpenPrdModal = async () => {
+    setIsPrdModalOpen(true);
+
+    if (!id) {
+      setPrdError("Project id is missing.");
+      return;
+    }
+
+    if (prdHtml && !prdError) {
+      return;
+    }
+
+    setPrdLoading(true);
+    setPrdError("");
+    setPrdRawResponse("");
+
+    try {
+      const res = await fetch("/api/generate-prd", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: Number(id) }),
+      });
+
+      const data = await res.json();
+
+      if (data?.raw_response !== undefined) {
+        const raw =
+          typeof data.raw_response === "string"
+            ? data.raw_response
+            : JSON.stringify(data.raw_response, null, 2);
+        setPrdRawResponse(String(raw || ""));
+      }
+
+      if (!res.ok || !data?.success) {
+        setPrdError(data?.error?.message || data?.error || "Failed to generate PRD document");
+        setPrdHtml("");
+        return;
+      }
+
+      const nextHtml = cleanPrdHtml(String(data?.data?.prd_output || ""));
+      if (!nextHtml) {
+        setPrdError("PRD output is empty.");
+        setPrdHtml("");
+        return;
+      }
+
+      setPrdHtml(nextHtml);
+    } catch (err) {
+      setPrdError(err.message || "Failed to generate PRD document");
+      setPrdHtml("");
+    } finally {
+      setPrdLoading(false);
+    }
+  };
+
+  const handleDownloadPrdDoc = async () => {
+    if (!prdHtml || isDownloadingPrd) return;
+
+    setIsDownloadingPrd(true);
+    try {
+      const parser = new DOMParser();
+      const dom = parser.parseFromString(prdHtml, "text/html");
+
+      const children = [];
+      let titleAdded = false;
+      const elements = dom.body.querySelectorAll("h1, h2, h3, p, li, table");
+
+      elements.forEach((element) => {
+        const tag = element.tagName.toLowerCase();
+        const text = (element.textContent || "").trim();
+
+        if (tag === "h1") {
+          titleAdded = true;
+          children.push(
+            new Paragraph({
+              text,
+              heading: HeadingLevel.HEADING_1,
+              spacing: { after: 220 },
+            })
+          );
+          return;
+        }
+
+        if (tag === "h2") {
+          children.push(
+            new Paragraph({
+              text,
+              heading: HeadingLevel.HEADING_2,
+              spacing: { before: 180, after: 120 },
+            })
+          );
+          return;
+        }
+
+        if (tag === "h3") {
+          children.push(
+            new Paragraph({
+              text,
+              heading: HeadingLevel.HEADING_3,
+              spacing: { before: 140, after: 100 },
+            })
+          );
+          return;
+        }
+
+        if (tag === "p") {
+          if (text) {
+            children.push(new Paragraph({ text, spacing: { after: 120 } }));
+          }
+          return;
+        }
+
+        if (tag === "li") {
+          if (text) {
+            children.push(new Paragraph({ text, bullet: { level: 0 }, spacing: { after: 80 } }));
+          }
+          return;
+        }
+
+        if (tag === "table") {
+          const rows = Array.from(element.querySelectorAll("tr"));
+          if (!rows.length) return;
+
+          const maxCols = rows.reduce(
+            (max, row) => Math.max(max, row.querySelectorAll("td,th").length),
+            0
+          );
+          if (!maxCols) return;
+
+          const tableRows = rows.map((row) => {
+            const cells = Array.from(row.querySelectorAll("td,th"));
+            const tableCells = [];
+
+            for (let i = 0; i < maxCols; i += 1) {
+              const cellText = (cells[i]?.textContent || "").trim();
+              tableCells.push(
+                new TableCell({
+                  children: [new Paragraph({ text: cellText || " " })],
+                })
+              );
+            }
+
+            return new TableRow({ children: tableCells });
+          });
+
+          children.push(
+            new Table({
+              width: { size: 100, type: WidthType.PERCENTAGE },
+              rows: tableRows,
+            })
+          );
+          children.push(new Paragraph({ text: "", spacing: { after: 120 } }));
+        }
+      });
+
+      if (!titleAdded) {
+        children.unshift(
+          new Paragraph({
+            text: "Product Requirements Document",
+            heading: HeadingLevel.TITLE,
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 300 },
+          })
+        );
+      }
+
+      const doc = new Document({ sections: [{ children }] });
+      const blob = await Packer.toBlob(doc);
+      saveAs(blob, "product-requirements-document.docx");
+    } finally {
+      setIsDownloadingPrd(false);
     }
   };
 
@@ -555,6 +764,13 @@ export default function WireframeResultPage() {
                     >
                       Generate BRD Document
                     </button>
+                    <button
+                      type="button"
+                      onClick={handleOpenPrdModal}
+                      className="inline-flex h-9 items-center justify-center rounded-lg border border-white/30 bg-white/10 px-3 text-sm font-semibold text-white transition hover:bg-white/20"
+                    >
+                      Generate PRD Document
+                    </button>
                   </div>
                 </div>
                 {/* Body */}
@@ -743,6 +959,76 @@ export default function WireframeResultPage() {
                     ) : (
                       <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
                         BRD data not available.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {isPrdModalOpen && (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"
+                onClick={() => setIsPrdModalOpen(false)}
+              >
+                <div
+                  className="w-full max-w-6xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between border-b border-slate-200 bg-slate-900 px-5 py-4">
+                    <h3 className="text-base font-semibold text-white">Generated PRD Document</h3>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleDownloadPrdDoc}
+                        disabled={!prdHtml || isDownloadingPrd}
+                        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-white/20 bg-white/10 px-3 text-xs font-semibold text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Download className="h-4 w-4" />
+                        {isDownloadingPrd ? "Preparing..." : "Download Word"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsPrdModalOpen(false)}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/20 bg-white/10 text-white transition hover:bg-white/20"
+                        aria-label="Close PRD modal"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="max-h-[76vh] overflow-auto bg-slate-50 p-5">
+                    {prdLoading ? (
+                      <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+                        Generating PRD document from project data...
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {prdError && (
+                          <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                            {prdError}
+                          </div>
+                        )}
+
+                        {prdHtml ? (
+                          <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm [&_h1]:mb-6 [&_h1]:border-b-2 [&_h1]:border-violet-600 [&_h1]:pb-3 [&_h1]:text-center [&_h1]:text-3xl [&_h1]:font-bold [&_h1]:text-slate-900 [&_h2]:mt-8 [&_h2]:mb-3 [&_h2]:rounded-md [&_h2]:border-l-4 [&_h2]:border-violet-600 [&_h2]:bg-violet-50 [&_h2]:px-3 [&_h2]:py-2 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:text-violet-900 [&_h3]:mt-5 [&_h3]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-slate-800 [&_p]:my-2 [&_p]:text-sm [&_p]:leading-7 [&_p]:text-slate-700 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-6 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-6 [&_li]:text-sm [&_li]:leading-7 [&_li]:text-slate-700 [&_table]:my-5 [&_table]:w-full [&_table]:border-collapse [&_table]:overflow-hidden [&_table]:rounded-lg [&_table]:border [&_table]:border-slate-300 [&_th]:bg-violet-700 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:text-xs [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-wide [&_th]:text-white [&_td]:border-t [&_td]:border-slate-200 [&_td]:px-3 [&_td]:py-2 [&_td]:text-sm [&_td]:text-slate-700">
+                            <div dangerouslySetInnerHTML={{ __html: prdHtml }} />
+                          </div>
+                        ) : (
+                          <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+                            PRD data not available.
+                          </div>
+                        )}
+
+                        <div className="rounded-xl border border-slate-200 bg-white p-4">
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                            Raw Agent Response
+                          </p>
+                          <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-words rounded-md bg-slate-900 p-3 text-xs leading-6 text-emerald-200">
+                            {prdRawResponse || "No raw response available."}
+                          </pre>
+                        </div>
                       </div>
                     )}
                   </div>
