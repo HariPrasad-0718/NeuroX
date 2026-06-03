@@ -233,20 +233,44 @@ function appendWordValue(paragraphs, value, depth = 0) {
 }
 
 function cleanPrdHtml(value) {
-  const text = String(value || "")
-    .trim()
+  let text = String(value || "").trim();
+
+  // Try parsing JSON response
+  try {
+    const parsed = JSON.parse(text);
+
+    // If response is { prd_output: "..." }
+    if (parsed?.prd_output) {
+      text = parsed.prd_output;
+    }
+  } catch {
+    // not json -> continue
+  }
+
+  return text
     .replace(/^```html/i, "")
     .replace(/^```json/i, "")
     .replace(/^```/, "")
     .replace(/```$/, "")
-    .trim();
 
-  // basic sanitization for display safety
-  return text
+    // remove escaped slashes
+    .replace(/\\\\/g, "")
+    .replace(/\\+/g, "")
+
+    // remove unwanted JSON key text
+    .replace(/^\s*\{\s*"prd_output"\s*:\s*"/i, "")
+    .replace(/"\s*\}\s*$/i, "")
+
+    // clean escaped newlines/tabs
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "")
+    .replace(/\\t/g, " ")
+
+    // sanitize scripts
     .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
     .replace(/\son\w+\s*=\s*"[^"]*"/gi, "")
     .replace(/\son\w+\s*=\s*'[^']*'/gi, "")
-    .replace(/\sjavascript:/gi, " ");
+    .trim();
 }
 
 export default function WireframeResultPage() {
@@ -408,14 +432,37 @@ export default function WireframeResultPage() {
         return;
       }
 
-      const nextHtml = cleanPrdHtml(String(data?.data?.prd_output || ""));
-      if (!nextHtml) {
-        setPrdError("PRD output is empty.");
-        setPrdHtml("");
-        return;
-      }
+      let prdContent = data?.data?.prd_output || "";
 
-      setPrdHtml(nextHtml);
+try {
+  // Handle nested JSON string
+  if (typeof prdContent === "string") {
+    const parsed = JSON.parse(prdContent);
+
+    if (parsed?.prd_output) {
+      prdContent = parsed.prd_output;
+    }
+  }
+} catch {
+  // ignore if not json
+}
+
+const nextHtml = String(prdContent)
+  .replace(/\\\\/g, "")
+  .replace(/\\n/g, "\n")
+  .replace(/\\r/g, "")
+  .replace(/\\t/g, " ")
+  .replace(/^\s*\{\s*"prd_output"\s*:\s*"/i, "")
+  .replace(/"\s*\}\s*$/i, "")
+  .trim();
+
+if (!nextHtml) {
+  setPrdError("PRD output is empty.");
+  setPrdHtml("");
+  return;
+}
+
+setPrdHtml(nextHtml);
     } catch (err) {
       setPrdError(err.message || "Failed to generate PRD document");
       setPrdHtml("");
