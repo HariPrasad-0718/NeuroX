@@ -388,6 +388,10 @@ export const POST = withAuth(async (request, _ctx, user) => {
     });
 
     const text = await response.text();
+    logger.info("POST /api/generate-brd raw upstream response", {
+      status: response.status,
+      raw_response: text,
+    });
     const data = tryParseJson(text);
 
     if (!response.ok) {

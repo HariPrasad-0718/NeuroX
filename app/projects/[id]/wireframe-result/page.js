@@ -640,6 +640,10 @@ export default function WireframeResultPage() {
     ? Object.entries(effectiveBrd).filter(([key]) => key !== "document_meta")
     : [];
 
+  const showBrdRawNote = Boolean(
+    normalizedBrd?.note && effectiveBrd && typeof effectiveBrd === "object" && effectiveBrd.full_brd_document
+  );
+
   const handleDownloadBrdDoc = async () => {
     if (!effectiveBrd || isDownloadingBrd) return;
 
@@ -914,7 +918,7 @@ export default function WireframeResultPage() {
                       </div>
                     ) : effectiveBrd ? (
                       <div className="space-y-5">
-                        {normalizedBrd?.note && (
+                        {showBrdRawNote && (
                           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                             {normalizedBrd.note}
                           </div>
