@@ -51,11 +51,46 @@ function parseJsonWithFallback(value) {
     if (extracted) return extracted;
   }
 
+  const relaxed = cleaned
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
+    .replace(/\\"/g, '"');
+
+  if (relaxed !== cleaned) {
+    const relaxedParsed = tryParseJson(relaxed);
+    if (relaxedParsed) return relaxedParsed;
+
+    const relaxedObjText = extractJsonObjectString(relaxed);
+    if (relaxedObjText) {
+      const relaxedExtracted = tryParseJson(relaxedObjText);
+      if (relaxedExtracted) return relaxedExtracted;
+    }
+  }
+
   // Some agents return quoted JSON strings; unquote once and retry.
   const unquoted = tryParseJson(`"${cleaned.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`);
   if (typeof unquoted === "string") {
     const retry = tryParseJson(unquoted);
     if (retry) return retry;
+  }
+
+  return null;
+}
+
+function tryExtractFromMessageString(value) {
+  if (typeof value !== "string") return null;
+
+  const singleQuoted = value.match(/content='([\s\S]*?)'\s+additional_kwargs=/);
+  if (singleQuoted) {
+    const parsed = parseJsonWithFallback(singleQuoted[1]);
+    if (parsed) return parsed;
+  }
+
+  const doubleQuoted = value.match(/content="([\s\S]*?)"\s+additional_kwargs=/);
+  if (doubleQuoted) {
+    const parsed = parseJsonWithFallback(doubleQuoted[1]);
+    if (parsed) return parsed;
   }
 
   return null;
@@ -71,6 +106,9 @@ function extractBrd(rawMessage) {
   }
 
   if (typeof rawMessage === "string") {
+    const fromMsgString = tryExtractFromMessageString(rawMessage);
+    if (fromMsgString) return fromMsgString;
+
     const parsed = parseJsonWithFallback(rawMessage);
     if (parsed) return parsed;
   }
@@ -82,6 +120,9 @@ function parseBrdDocument(brdDocRaw) {
   if (brdDocRaw && typeof brdDocRaw === "object") return brdDocRaw;
 
   if (typeof brdDocRaw === "string") {
+    const fromMsgString = tryExtractFromMessageString(brdDocRaw);
+    if (fromMsgString && typeof fromMsgString === "object") return fromMsgString;
+
     const parsed = parseJsonWithFallback(brdDocRaw);
     if (parsed && typeof parsed === "object") return parsed;
   }
@@ -99,12 +140,6 @@ function pickBrdDocument(parsed) {
     parsed.result ||
     null
   );
-}
-
-function toRawBrdFallback(value) {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "string") return stripMarkdownFence(value);
-  return JSON.stringify(value, null, 2);
 }
 
 function normalizeText(value) {
@@ -449,15 +484,9 @@ export const POST = withAuth(async (request, _ctx, user) => {
       logger.error("POST /api/generate-brd non-JSON brd_document fallback", {
         brdDocRawType: typeof brdDocRaw,
       });
-      return NextResponse.json({
-        success: true,
-        data: {
-          brd: {
-            raw_brd_document: toRawBrdFallback(brdDocRaw),
-            note: "Unable to parse brd_document as strict JSON; showing raw content.",
-          },
-        },
-      });
+      // Keep backward-compatible behavior: return parsed payload even when brd_document
+      // is not strict JSON, instead of forcing a warning-oriented fallback shape.
+      return NextResponse.json({ success: true, data: { brd: parsed } });
     }
 
     return NextResponse.json({ success: true, data: { brd: brdData } });
