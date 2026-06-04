@@ -2,8 +2,21 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, ChevronDown, Upload, Download, Share2, Trash2, FileText, Link as LinkIcon, Loader2, AlertTriangle, HandHeart, Lightbulb } from "lucide-react";
+import { ArrowLeft, ChevronDown, Upload, Download, Share2, Trash2, FileText, Link as LinkIcon, Loader2, AlertTriangle, HandHeart, Lightbulb, X } from "lucide-react";
 import { api } from "@/services/api";
+import {
+  AlignmentType,
+  Document,
+  HeadingLevel,
+  Packer,
+  Paragraph,
+  Table,
+  TableCell,
+  TableRow,
+  TextRun,
+  WidthType,
+} from "docx";
+import { saveAs } from "file-saver";
 
 const STAGES = [
   { id: "empathize", name: "Empathize", description: "Understand your users through observation and engagement." },
@@ -87,6 +100,413 @@ const IMPLEMENT_CARD_MEDIA = {
 };
 const STAGE_MEDIA_MAP = { prototype: PROTOTYPE_CARD_MEDIA, test: TEST_CARD_MEDIA, implement: IMPLEMENT_CARD_MEDIA };
 
+function formatKeyLabel(key) {
+  return String(key || "")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function appendWordValue(paragraphs, value, depth = 0) {
+  if (value === null || value === undefined) {
+    paragraphs.push(new Paragraph({ text: "-", spacing: { after: 120 } }));
+    return;
+  }
+
+  if (typeof value === "string") {
+    const lines = value
+      .split(/\n+/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    if (!lines.length) {
+      paragraphs.push(new Paragraph({ text: "-", spacing: { after: 120 } }));
+      return;
+    }
+
+    lines.forEach((line) => {
+      paragraphs.push(new Paragraph({ text: line, spacing: { after: 120 } }));
+    });
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    if (!value.length) {
+      paragraphs.push(new Paragraph({ text: "-", spacing: { after: 120 } }));
+      return;
+    }
+
+    value.forEach((item, index) => {
+      if (item && typeof item === "object") {
+        paragraphs.push(
+          new Paragraph({
+            text: `Item ${index + 1}`,
+            bullet: { level: Math.min(depth, 2) },
+            spacing: { after: 80 },
+          })
+        );
+        appendWordValue(paragraphs, item, depth + 1);
+      } else {
+        paragraphs.push(
+          new Paragraph({
+            text: String(item),
+            bullet: { level: Math.min(depth, 2) },
+            spacing: { after: 120 },
+          })
+        );
+      }
+    });
+    return;
+  }
+
+  if (typeof value === "object") {
+    Object.entries(value).forEach(([key, nested]) => {
+      paragraphs.push(
+        new Paragraph({
+          children: [new TextRun({ text: `${formatKeyLabel(key)}:`, bold: true })],
+          spacing: { after: 80 },
+        })
+      );
+      appendWordValue(paragraphs, nested, depth + 1);
+    });
+    return;
+  }
+
+  paragraphs.push(new Paragraph({ text: String(value), spacing: { after: 120 } }));
+}
+
+function cleanPrdHtml(value) {
+  const text = String(value || "").trim();
+
+  return text
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
+    .replace(/\son\w+\s*=\s*"[^"]*"/gi, "")
+    .replace(/\son\w+\s*=\s*'[^']*'/gi, "")
+    .replace(/\sjavascript:/gi, " ");
+}
+
+function decodeEscapedText(value) {
+  return String(value || "")
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
+    .replace(/\\\//g, "/")
+    .replace(/\\"/g, '"');
+}
+
+function extractPrdMarkup(value, depth = 0) {
+  if (depth > 8 || value === null || value === undefined) return "";
+
+  if (typeof value === "object") {
+    const directKeys = ["prd_output", "message", "final_response", "content", "output", "result"];
+    for (const key of directKeys) {
+      if (Object.prototype.hasOwnProperty.call(value, key)) {
+        const found = extractPrdMarkup(value[key], depth + 1);
+        if (found) return found;
+      }
+    }
+
+    if (Array.isArray(value.messages)) {
+      for (let i = value.messages.length - 1; i >= 0; i -= 1) {
+        const found = extractPrdMarkup(value.messages[i], depth + 1);
+        if (found) return found;
+      }
+    }
+
+    for (const nested of Object.values(value)) {
+      const found = extractPrdMarkup(nested, depth + 1);
+      if (found) return found;
+    }
+
+    return "";
+  }
+
+  const raw = decodeEscapedText(value).trim();
+  if (!raw) return "";
+
+  const stripped = stripFence(raw)
+    .replace(/^```html/i, "")
+    .replace(/^```/, "")
+    .replace(/```$/, "")
+    .trim();
+
+  if (stripped.includes("<h1") && stripped.includes("<h2")) {
+    return stripped;
+  }
+
+  const prdOutputAssignment = stripped.match(/prd_output\s*[:=]\s*['"]([\s\S]*)['"]$/i);
+  if (prdOutputAssignment) {
+    const found = extractPrdMarkup(prdOutputAssignment[1], depth + 1);
+    if (found) return found;
+  }
+
+  const parsed = parseLooseJson(stripped);
+  if (parsed) {
+    const found = extractPrdMarkup(parsed, depth + 1);
+    if (found) return found;
+  }
+
+  return "";
+}
+
+function formatApiResponse(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  return JSON.stringify(value, null, 2);
+}
+
+function isHtmlLike(value) {
+  return typeof value === "string" && /<[^>]+>/.test(value);
+}
+
+function extractDocumentFromAgentResponse(value, depth = 0) {
+  if (depth > 6 || value === null || value === undefined) return null;
+
+  const parsed = typeof value === "string" ? parseApiJson(value) || toObjectIfPossible(value) : value;
+  if (!parsed || typeof parsed !== "object") return null;
+
+  const nestedKeys = ["data", "message", "final_response", "content", "output", "result", "body"];
+  for (const key of nestedKeys) {
+    const nested = parsed[key];
+    if (!nested) continue;
+
+    const extracted = extractDocumentFromAgentResponse(nested, depth + 1);
+    if (extracted) return extracted;
+  }
+
+  if (parsed.brd_document) {
+    const brdDocument = typeof parsed.brd_document === "string" ? parseApiJson(parsed.brd_document) || toObjectIfPossible(parsed.brd_document) : parsed.brd_document;
+    if (brdDocument && typeof brdDocument === "object") return brdDocument;
+  }
+
+  return parsed;
+}
+
+function renderDocumentValue(value, depth = 0) {
+  if (value === null || value === undefined) {
+    return <p className="text-sm text-slate-500">-</p>;
+  }
+
+  if (typeof value === "string") {
+    if (isHtmlLike(value)) {
+      return (
+        <div
+          className="rounded-[18px] border border-[#dacfff] bg-white p-5 prose prose-slate max-w-none shadow-[0_10px_35px_rgba(108,61,255,0.08)]"
+          dangerouslySetInnerHTML={{ __html: value }}
+        />
+      );
+    }
+
+    const lines = value
+      .split(/(?:\r?\n|\\n)+/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    if (!lines.length) {
+      return <p className="text-sm text-slate-500">-</p>;
+    }
+
+    return (
+      <div className="space-y-2">
+        {lines.map((line, idx) => (
+          <p key={`${depth}-line-${idx}`} className="text-[16px] leading-8 text-[#4d466d]">
+            {line}
+          </p>
+        ))}
+      </div>
+    );
+  }
+
+  if (Array.isArray(value)) {
+    if (!value.length) {
+      return <p className="text-sm text-slate-500">-</p>;
+    }
+
+    return (
+      <ol className="space-y-3 pl-5 list-decimal marker:text-[#6c3dff]">
+        {value.map((item, idx) => (
+          <li key={`${depth}-arr-${idx}`} className="text-[16px] text-[#4d466d]">
+            {item && typeof item === "object" ? renderDocumentValue(item, depth + 1) : String(item)}
+          </li>
+        ))}
+      </ol>
+    );
+  }
+
+  if (typeof value === "object") {
+    const entries = Object.entries(value);
+    if (!entries.length) {
+      return <p className="text-sm text-slate-500">-</p>;
+    }
+
+    return (
+      <div className="grid gap-4 sm:grid-cols-2">
+        {entries.map(([key, nested]) => (
+          <div key={`${depth}-obj-${key}`} className="rounded-[18px] border border-[#dacfff] bg-[#faf7ff] p-4 shadow-[0_8px_24px_rgba(108,61,255,0.06)]">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6c3dff]">
+              {formatKeyLabel(key)}
+            </p>
+            <div>{renderDocumentValue(nested, depth + 1)}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return <p className="text-[16px] text-[#4d466d]">{String(value)}</p>;
+}
+
+function renderAgentResponseDocument(rawResponse, title) {
+  const responseDocument = extractDocumentFromAgentResponse(rawResponse);
+  if (!responseDocument) return null;
+
+  const entries = Object.entries(responseDocument);
+  const heading = String(
+    responseDocument?.document_meta?.project_name ||
+    responseDocument?.project_name ||
+    responseDocument?.name ||
+    title ||
+    "Agent Response Document"
+  );
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-[30px] border border-[#dacfff] bg-white p-7 shadow-[0_10px_35px_rgba(108,61,255,0.08)]">
+        <div className="inline-flex rounded-full border border-[#dacfff] bg-[#f8f4ff] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6c3dff]">
+          Agent Response Document
+        </div>
+        <h4 className="mt-4 text-[38px] font-extrabold leading-none text-[#6c3dff]" style={{ fontFamily: "Syne, sans-serif" }}>{heading}</h4>
+        <p className="mt-3 max-w-3xl text-[17px] leading-8 text-[#6b6390]">
+          Structured JSON response received from the agent, rendered as a document for easier review.
+        </p>
+      </div>
+
+      {entries.map(([key, value]) => (
+        <section key={key} className="rounded-[30px] border border-[#dacfff] bg-white p-7 shadow-[0_10px_35px_rgba(108,61,255,0.08)]">
+          <div className="mb-5 border-b border-[#e8deff] pb-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6c3dff]">{formatKeyLabel(key)}</p>
+          </div>
+          <div className="prose prose-slate max-w-none">{renderDocumentValue(value)}</div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function parseApiJson(text) {
+  if (typeof text !== "string" || !text.trim()) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function buildApiResponseSnapshot(response, bodyText, body) {
+  return {
+    url: response.url,
+    ok: response.ok,
+    status: response.status,
+    statusText: response.statusText,
+    headers: Object.fromEntries(response.headers.entries()),
+    bodyText,
+    body,
+  };
+}
+
+function toObjectIfPossible(value) {
+  if (value && typeof value === "object") return value;
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function stripFence(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^```json/i, "")
+    .replace(/^```/, "")
+    .replace(/```$/, "")
+    .trim();
+}
+
+function extractJsonObjectString(value) {
+  const text = String(value || "");
+  const match = text.match(/\{[\s\S]*\}/);
+  return match ? match[0] : null;
+}
+
+function parseLooseJson(value) {
+  if (value && typeof value === "object") return value;
+  if (typeof value !== "string") return null;
+
+  const cleaned = stripFence(value);
+
+  try {
+    const direct = JSON.parse(cleaned);
+    if (direct && typeof direct === "object") return direct;
+    if (typeof direct === "string") {
+      const nested = parseLooseJson(direct);
+      if (nested) return nested;
+    }
+  } catch {
+    // continue
+  }
+
+  const extracted = extractJsonObjectString(cleaned);
+  if (extracted) {
+    try {
+      const parsed = JSON.parse(extracted);
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch {
+      // continue
+    }
+  }
+
+  const relaxed = cleaned
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
+    .replace(/\\"/g, '"');
+  if (relaxed !== cleaned) {
+    try {
+      const parsed = JSON.parse(relaxed);
+      if (parsed && typeof parsed === "object") return parsed;
+      if (typeof parsed === "string") {
+        const nested = parseLooseJson(parsed);
+        if (nested) return nested;
+      }
+    } catch {
+      // continue
+    }
+
+    const extractedRelaxed = extractJsonObjectString(relaxed);
+    if (extractedRelaxed) {
+      try {
+        const parsed = JSON.parse(extractedRelaxed);
+        if (parsed && typeof parsed === "object") return parsed;
+      } catch {
+        // continue
+      }
+    }
+  }
+
+  return null;
+}
+
+function normalizeLooseText(value) {
+  return stripFence(String(value || ""))
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t");
+}
+
 export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -120,6 +540,19 @@ const [processFlowError, setProcessFlowError] = useState("");
 const [informationArchitectureData, setInformationArchitectureData] = useState(null);
 const [isGeneratingIA, setIsGeneratingIA] = useState(false);
 const [informationArchitectureError, setInformationArchitectureError] = useState("");
+const [isBrdModalOpen, setIsBrdModalOpen] = useState(false);
+const [brdLoading, setBrdLoading] = useState(false);
+const [brdError, setBrdError] = useState("");
+const [brdData, setBrdData] = useState(null);
+const [isDownloadingBrd, setIsDownloadingBrd] = useState(false);
+const [brdShowRaw, setBrdShowRaw] = useState(false);
+const [brdCollapsed, setBrdCollapsed] = useState({});
+const [isPrdModalOpen, setIsPrdModalOpen] = useState(false);
+const [prdLoading, setPrdLoading] = useState(false);
+const [prdError, setPrdError] = useState("");
+const [prdHtml, setPrdHtml] = useState("");
+const [prdRawResponse, setPrdRawResponse] = useState("");
+const [isDownloadingPrd, setIsDownloadingPrd] = useState(false);
 
   useEffect(() => {
     fetchProject();
@@ -131,6 +564,20 @@ const [informationArchitectureError, setInformationArchitectureError] = useState
       })
       .catch(() => {});
   }, [projectId]);
+
+  useEffect(() => {
+    if (!isBrdModalOpen && !isPrdModalOpen) return undefined;
+
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setIsBrdModalOpen(false);
+        setIsPrdModalOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isBrdModalOpen, isPrdModalOpen]);
 
   const fetchProject = async () => {
     setIsLoading(true);
@@ -884,6 +1331,489 @@ const renderIdeateTemplateCard = (template, isCompleted) => {
   );
 };
 
+const handleOpenBrdModal = async () => {
+  setIsBrdModalOpen(true);
+
+  if (!projectId) {
+    setBrdError("Project id is missing.");
+    return;
+  }
+
+  setBrdLoading(true);
+  setBrdError("");
+  setBrdShowRaw(false);
+  setBrdCollapsed({});
+
+  try {
+    const res = await fetch("/api/generate-brd", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId: Number(projectId) }),
+    });
+
+    const bodyText = await res.text();
+    const data = parseApiJson(bodyText);
+
+    if (!data) {
+      throw new Error("API returned invalid JSON.");
+    }
+
+    if (!res.ok || !data?.success) {
+      throw new Error(data?.error?.message || data?.error || "Failed to generate BRD document");
+    }
+
+    setBrdData(data?.data?.brd || data?.brd || null);
+  } catch (err) {
+    setBrdError(err.message || "Failed to generate BRD document");
+    setBrdData(null);
+  } finally {
+    setBrdLoading(false);
+  }
+};
+
+const handleOpenPrdModal = async () => {
+  setIsPrdModalOpen(true);
+
+  if (!projectId) {
+    setPrdError("Project id is missing.");
+    return;
+  }
+
+  setPrdLoading(true);
+  setPrdError("");
+  setPrdRawResponse("");
+
+  try {
+    const res = await fetch("/api/generate-prd", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId: Number(projectId) }),
+    });
+
+    const bodyText = await res.text();
+    const data = parseApiJson(bodyText);
+
+    setPrdRawResponse(formatApiResponse(data?.agent_response || ""));
+
+    if (!data) {
+      setPrdError("API returned invalid JSON.");
+      setPrdHtml("");
+      return;
+    }
+
+    if (!res.ok || !data?.success) {
+      setPrdError(data?.error?.message || data?.error || "Failed to generate PRD document");
+      setPrdHtml("");
+      return;
+    }
+
+      const nextHtml = cleanPrdHtml(
+        data?.data?.prd_output ||
+          data?.prd_output ||
+          extractPrdMarkup(data?.raw_response || "")
+      );
+    if (!nextHtml) {
+      setPrdError("PRD output is empty.");
+      setPrdHtml("");
+      return;
+    }
+
+    setPrdHtml(nextHtml);
+  } catch (err) {
+    setPrdError(err.message || "Failed to generate PRD document");
+    setPrdHtml("");
+  } finally {
+    setPrdLoading(false);
+  }
+};
+
+const handleDownloadPrdDoc = async () => {
+  if (!prdHtml || isDownloadingPrd) return;
+
+  setIsDownloadingPrd(true);
+  try {
+    const parser = new DOMParser();
+    const dom = parser.parseFromString(prdHtml, "text/html");
+    const children = [];
+    let titleAdded = false;
+
+    const elements = dom.body.querySelectorAll("h1, h2, h3, p, li, table");
+    elements.forEach((element) => {
+      const tag = element.tagName.toLowerCase();
+      const text = (element.textContent || "").trim();
+
+      if (tag === "h1") {
+        titleAdded = true;
+        children.push(
+          new Paragraph({ text, heading: HeadingLevel.HEADING_1, spacing: { after: 220 } })
+        );
+        return;
+      }
+
+      if (tag === "h2") {
+        children.push(
+          new Paragraph({ text, heading: HeadingLevel.HEADING_2, spacing: { before: 180, after: 120 } })
+        );
+        return;
+      }
+
+      if (tag === "h3") {
+        children.push(
+          new Paragraph({ text, heading: HeadingLevel.HEADING_3, spacing: { before: 140, after: 100 } })
+        );
+        return;
+      }
+
+      if (tag === "p" && text) {
+        children.push(new Paragraph({ text, spacing: { after: 120 } }));
+        return;
+      }
+
+      if (tag === "li" && text) {
+        children.push(new Paragraph({ text, bullet: { level: 0 }, spacing: { after: 80 } }));
+        return;
+      }
+
+      if (tag === "table") {
+        const rows = Array.from(element.querySelectorAll("tr"));
+        if (!rows.length) return;
+
+        const maxCols = rows.reduce(
+          (max, row) => Math.max(max, row.querySelectorAll("td,th").length),
+          0
+        );
+        if (!maxCols) return;
+
+        const tableRows = rows.map((row) => {
+          const cells = Array.from(row.querySelectorAll("td,th"));
+          const tableCells = [];
+
+          for (let i = 0; i < maxCols; i += 1) {
+            const cellText = (cells[i]?.textContent || "").trim();
+            tableCells.push(
+              new TableCell({
+                children: [new Paragraph({ text: cellText || " " })],
+              })
+            );
+          }
+
+          return new TableRow({ children: tableCells });
+        });
+
+        children.push(
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: tableRows,
+          })
+        );
+      }
+    });
+
+    if (!titleAdded) {
+      children.unshift(
+        new Paragraph({
+          text: "Product Requirements Document",
+          heading: HeadingLevel.TITLE,
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 300 },
+        })
+      );
+    }
+
+    const doc = new Document({ sections: [{ children }] });
+    const blob = await Packer.toBlob(doc);
+    saveAs(blob, "product-requirements-document.docx");
+  } finally {
+    setIsDownloadingPrd(false);
+  }
+};
+
+const BRD_SECTIONS = [
+  { key: "business_problem", num: "01", title: "Business Problem", type: "prose" },
+  { key: "objectives_and_outcomes", num: "02", title: "Objectives & Outcomes", type: "prose" },
+  { key: "users_and_personas", num: "03", title: "Users & Personas", type: "tags" },
+  { key: "business_requirements", num: "04", title: "Business Requirements", type: "requirements" },
+  { key: "functional_scope", num: "05", title: "Functional Scope", type: "prose" },
+  { key: "non_functional_expectations", num: "06", title: "Non Functional Expectations", type: "prose" },
+  { key: "integrations", num: "07", title: "Integrations", type: "tags" },
+  { key: "compliance_and_security", num: "08", title: "Compliance & Security", type: "prose" },
+  { key: "success_metrics", num: "09", title: "Success Metrics", type: "metrics_table" },
+  { key: "key_stakeholders", num: "10", title: "Key Stakeholders", type: "editable" },
+  { key: "project_constraints", num: "11", title: "Project Constraints", type: "constraints_table" },
+  { key: "cost_benefit_analysis", num: "12", title: "Cost Benefit Analysis", type: "costtable" },
+  { key: "document_approval", num: "13", title: "Document Approval", type: "editable" },
+  { key: "draft_assumptions", num: "14", title: "Draft Assumptions", type: "tags" },
+];
+
+const brdDoc = (() => {
+  if (!brdData) return null;
+  if (typeof brdData === "object") return brdData;
+  try {
+    return JSON.parse(brdData);
+  } catch {
+    return null;
+  }
+})();
+
+const brdMeta =
+  brdDoc?.document_meta && typeof brdDoc.document_meta === "object"
+    ? brdDoc.document_meta
+    : null;
+
+const brdActiveSections = BRD_SECTIONS.filter((section) => {
+  if (!brdDoc) return false;
+  const value = brdDoc[section.key];
+  return value !== undefined && value !== null && value !== "" && !(Array.isArray(value) && value.length === 0);
+});
+
+const toggleBrdSection = (key) =>
+  setBrdCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
+
+const getLabelVal = (text, label) => {
+  const match = String(text || "").match(new RegExp(`${label}:\\s*([^.]+)`, "i"));
+  return match ? match[1].trim() : "";
+};
+
+const getConstraintVal = (text, label) => {
+  const match = String(text || "").match(
+    new RegExp(`${label}:\\s*(.*?)(?=(?:Constraint|Description|Impact|Mitigation):|$)`, "i")
+  );
+  return match ? match[1].trim() : "";
+};
+
+const renderBrdContent = (value, type) => {
+  if (type === "prose") {
+    return (
+      <p className="text-[13px] leading-[1.9] text-gray-700 whitespace-pre-wrap">
+        {String(value || "")}
+      </p>
+    );
+  }
+
+  if (type === "tags") {
+    if (!Array.isArray(value)) return null;
+    return (
+      <div className="flex flex-wrap gap-2">
+        {value.map((item, index) => (
+          <span
+            key={index}
+            className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700"
+          >
+            {String(item)}
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  if (type === "requirements") {
+    if (!Array.isArray(value)) return null;
+    return (
+      <div className="space-y-2">
+        {value.map((line, index) => {
+          const parts = String(line || "").split("|").map((part) => part.trim());
+          const id = parts[0] || `BR-${String(index + 1).padStart(3, "0")}`;
+          const desc = parts[1] || "";
+          const pri = (parts[2] || "").replace(/priority:/i, "").trim();
+          const priColor =
+            pri.toLowerCase() === "high"
+              ? "border-red-300 bg-red-50 text-red-700"
+              : pri.toLowerCase() === "medium"
+                ? "border-amber-300 bg-amber-50 text-amber-700"
+                : "border-green-300 bg-green-50 text-green-700";
+
+          return (
+            <div
+              key={index}
+              className="flex flex-wrap items-start gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5"
+            >
+              <code className="shrink-0 rounded bg-gray-900 px-2 py-0.5 text-[10px] font-bold text-white">
+                {id}
+              </code>
+              <span className="flex-1 text-[13px] text-gray-700">{desc || "-"}</span>
+              {pri && (
+                <span
+                  className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${priColor}`}
+                >
+                  {pri}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (type === "metrics_table") {
+    if (!Array.isArray(value)) return null;
+    const cols = ["Metric", "Baseline", "Target", "Measurement", "Review"];
+    return (
+      <div className="overflow-x-auto rounded-lg border border-gray-200">
+        <table className="w-full text-left text-[12px] text-gray-700">
+          <thead className="bg-gray-50 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+            <tr>
+              {cols.map((head) => (
+                <th key={head} className="border-b border-gray-200 px-4 py-2">{head}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {value.map((item, rowIndex) => (
+              <tr key={rowIndex} className={rowIndex % 2 === 0 ? "bg-white" : "bg-gray-50/60"}>
+                {cols.map((label) => (
+                  <td key={label} className="border-b border-gray-100 px-4 py-2">
+                    {getLabelVal(item, label)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  if (type === "constraints_table") {
+    if (!Array.isArray(value)) return null;
+    const cols = ["Constraint", "Description", "Impact", "Mitigation"];
+    return (
+      <div className="overflow-x-auto rounded-lg border border-gray-200">
+        <table className="w-full text-left text-[12px] text-gray-700">
+          <thead className="bg-gray-50 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+            <tr>
+              {cols.map((head) => (
+                <th key={head} className="border-b border-gray-200 px-4 py-2">{head}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {value.map((item, rowIndex) => (
+              <tr key={rowIndex} className={rowIndex % 2 === 0 ? "bg-white" : "bg-gray-50/60"}>
+                {cols.map((label) => (
+                  <td key={label} className="border-b border-gray-100 px-4 py-2">
+                    {getConstraintVal(item, label)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  if (type === "editable") {
+    if (!Array.isArray(value)) return null;
+    return (
+      <div className="space-y-2">
+        {value.map((item, index) => (
+          <input
+            key={index}
+            defaultValue={String(item || "")}
+            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-[13px] text-gray-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
+          />
+        ))}
+      </div>
+    );
+  }
+
+  if (type === "costtable") {
+    return (
+      <div className="overflow-x-auto rounded-lg border border-gray-200">
+        <table className="w-full text-left text-[12px] text-gray-700">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="border-b border-gray-200 px-4 py-2 font-semibold">Cost</th>
+              <th className="border-b border-gray-200 px-4 py-2 font-semibold">Benefit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[0, 1, 2].map((row) => (
+              <tr key={row} className={row % 2 === 0 ? "bg-white" : "bg-gray-50/60"}>
+                <td className="border-b border-gray-100 px-4 py-3" contentEditable suppressContentEditableWarning />
+                <td className="border-b border-gray-100 px-4 py-3" contentEditable suppressContentEditableWarning />
+              </tr>
+            ))}
+            <tr className="bg-gray-100">
+              <td className="px-4 py-2 font-semibold">Total Cost:</td>
+              <td className="px-4 py-2 font-semibold">Expected ROI:</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  return (
+    <p className="text-[13px] leading-[1.9] text-gray-700 whitespace-pre-wrap">
+      {String(value || "")}
+    </p>
+  );
+};
+
+const handleDownloadBrdDoc = async () => {
+  if (!brdDoc || isDownloadingBrd) return;
+
+  setIsDownloadingBrd(true);
+  try {
+    const title = String(brdMeta?.project_name || "Business Requirements Document");
+    const paragraphs = [
+      new Paragraph({
+        children: [new TextRun({ text: "Business Requirements Document", bold: true, size: 36 })],
+        heading: HeadingLevel.TITLE,
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 240 },
+      }),
+      new Paragraph({
+        children: [new TextRun({ text: title, italics: true, size: 24 })],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 360 },
+      }),
+    ];
+
+    if (brdMeta) {
+      paragraphs.push(
+        new Paragraph({ text: "Document Meta", heading: HeadingLevel.HEADING_1, spacing: { after: 160 } })
+      );
+      Object.entries(brdMeta).forEach(([key, value]) => {
+        paragraphs.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: `${formatKeyLabel(key)}: `, bold: true }),
+              new TextRun({ text: String(value ?? "") }),
+            ],
+            spacing: { after: 120 },
+          })
+        );
+      });
+    }
+
+    brdActiveSections.forEach((section) => {
+      paragraphs.push(
+        new Paragraph({
+          text: section.title,
+          heading: HeadingLevel.HEADING_1,
+          spacing: { before: 220, after: 140 },
+        })
+      );
+      appendWordValue(paragraphs, brdDoc[section.key], 0);
+    });
+
+    const doc = new Document({ sections: [{ children: paragraphs }] });
+    const blob = await Packer.toBlob(doc);
+
+    const safeName = title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+
+    saveAs(blob, `${safeName || "brd-document"}.docx`);
+  } finally {
+    setIsDownloadingBrd(false);
+  }
+};
+
   if (isLoading) {
     return (
       <div className="bg-[#fafafa]">
@@ -936,10 +1866,12 @@ const renderIdeateTemplateCard = (template, isCompleted) => {
               <div className="flex items-center gap-2"><span className="text-xs uppercase tracking-wide text-gray-500 font-medium">Target Date</span><span className="text-sm text-gray-900 font-medium">{project.targetCompletionDate ? new Date(project.targetCompletionDate).toLocaleDateString() : "N/A"}</span></div>
             </div>
           </div>
-          <label className="flex items-center gap-2.5 cursor-pointer px-4 py-2.5 rounded-lg border border-gray-200 hover:bg-gray-50">
-            <input type="checkbox" checked={projectCompleted} onChange={(e) => setProjectCompleted(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-[#702dff] focus:ring-[#702dff]" />
-            <span className="text-sm text-gray-700 font-medium whitespace-nowrap">Mark as Complete</span>
-          </label>
+          <div className="flex flex-col items-end gap-2">
+            <label className="flex items-center gap-2.5 cursor-pointer px-4 py-2.5 rounded-lg border border-gray-200 hover:bg-gray-50">
+              <input type="checkbox" checked={projectCompleted} onChange={(e) => setProjectCompleted(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-[#702dff] focus:ring-[#702dff]" />
+              <span className="text-sm text-gray-700 font-medium whitespace-nowrap">Mark as Complete</span>
+            </label>
+          </div>
         </div>
       </div>
 
@@ -1005,6 +1937,35 @@ const renderIdeateTemplateCard = (template, isCompleted) => {
 </div>
                   {isExpanded && (
                     <div className="px-6 pb-6 border-t border-gray-200 pt-6">
+                      {stage.id === "ideate" && (
+                        <div className="mb-5 rounded-2xl border border-violet-100 bg-gradient-to-r from-slate-900 via-indigo-950 to-violet-900 p-5 text-white shadow-sm">
+                          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                            <div>
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-200">Documentation</p>
+                              <h4 className="mt-2 text-xl font-semibold">Generate BRD and PRD from current project context</h4>
+                              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-200">
+                                Create polished requirement documents using the same project, persona, interview, insight, information architecture, and process-flow data already stored in NeuroX.
+                              </p>
+                            </div>
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                              <button
+                                type="button"
+                                onClick={handleOpenBrdModal}
+                                className="inline-flex h-11 items-center justify-center rounded-xl bg-white px-4 text-sm font-semibold text-slate-900 transition hover:bg-slate-100"
+                              >
+                                Generate BRD Document
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleOpenPrdModal}
+                                className="inline-flex h-11 items-center justify-center rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-semibold text-white transition hover:bg-white/20"
+                              >
+                                Generate PRD Document
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {(STAGE_TEMPLATES[stage.id] || []).map((template) => {
                           const TemplateIcon = template.icon;
@@ -1429,6 +2390,237 @@ const renderIdeateTemplateCard = (template, isCompleted) => {
           </div>
         </div>
       )} */}
+
+      {isBrdModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 px-4 pb-10 pt-8"
+          onClick={() => setIsBrdModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-4xl overflow-hidden rounded-xl border border-gray-300 bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between bg-gray-900 px-5 py-3">
+              <div className="flex items-center gap-2.5">
+                <span className="text-lg leading-none">📋</span>
+                <span className="text-sm font-semibold text-white">BRD Generator</span>
+                <span className="rounded border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-gray-300">
+                  Agent5i Powered
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleDownloadBrdDoc}
+                  disabled={!brdDoc || isDownloadingBrd}
+                  className="inline-flex h-8 items-center gap-1.5 rounded border border-white/20 bg-white/10 px-3 text-xs font-semibold text-white hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40 transition"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  {isDownloadingBrd ? "Preparing..." : "Download Word"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsBrdModalOpen(false)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded border border-white/20 bg-white/10 text-white hover:bg-white/20 transition"
+                  aria-label="Close BRD modal"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="max-h-[84vh] overflow-y-auto bg-gray-100 px-6 py-6">
+              {brdLoading ? (
+                <div className="flex flex-col items-center gap-3 rounded-xl border border-gray-200 bg-white py-16 text-center shadow-sm">
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-200 border-t-indigo-600" />
+                  <p className="text-sm text-gray-500">Generating BRD document...</p>
+                </div>
+              ) : brdError ? (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
+                  {brdError}
+                </div>
+              ) : brdDoc ? (
+                <div className="mx-auto max-w-[760px] rounded-lg border border-gray-300 bg-white shadow-[0_6px_28px_rgba(0,0,0,0.10)]">
+                  <div className="rounded-t-lg border-b border-gray-200 bg-gray-900 px-10 py-10 text-center">
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-gray-400">
+                      Business Requirements Document
+                    </p>
+                    <h2 className="text-[22px] font-bold leading-snug text-white">
+                      {brdMeta?.project_name || "Untitled Project"}
+                    </h2>
+                    {brdMeta && (
+                      <div className="mt-4 flex flex-wrap justify-center gap-3 text-[11px] text-gray-400">
+                        {brdMeta.version && <span>v{brdMeta.version}</span>}
+                        {brdMeta.date_submitted && (
+                          <>
+                            <span>·</span>
+                            <span>{brdMeta.date_submitted}</span>
+                          </>
+                        )}
+                        {brdMeta.status && (
+                          <>
+                            <span>·</span>
+                            <span className="rounded-full bg-emerald-900/40 px-2.5 py-0.5 text-emerald-400">
+                              {brdMeta.status}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {brdMeta && (
+                    <div className="border-b border-gray-200 bg-gray-50 px-10 py-5">
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+                        {[
+                          { key: "project_name", label: "📁 Project" },
+                          { key: "project_manager", label: "👤 PM" },
+                          { key: "date_submitted", label: "📅 Date" },
+                          { key: "version", label: "🏷 Version" },
+                          { key: "status", label: "📌 Status" },
+                          { key: "department", label: "🏢 Dept" },
+                        ].map((field) => (
+                          <div key={field.key}>
+                            <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.13em] text-gray-400">
+                              {field.label}
+                            </p>
+                            <input
+                              type="text"
+                              defaultValue={String(brdMeta[field.key] || "")}
+                              placeholder="[TBC]"
+                              className="w-full rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="divide-y divide-gray-100">
+                    {brdActiveSections.length === 0 ? (
+                      <p className="px-10 py-10 text-center text-sm text-gray-400">
+                        No BRD sections found in the agent response.
+                      </p>
+                    ) : (
+                      brdActiveSections.map((section) => {
+                        const collapsed = Boolean(brdCollapsed[section.key]);
+                        return (
+                          <div key={section.key}>
+                            <button
+                              type="button"
+                              onClick={() => toggleBrdSection(section.key)}
+                              className="flex w-full items-center gap-4 px-10 py-4 text-left transition-colors hover:bg-gray-50"
+                            >
+                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-900 text-[11px] font-bold text-white">
+                                {section.num}
+                              </span>
+                              <span className="flex-1 text-[14px] font-semibold text-gray-800">
+                                {section.title}
+                              </span>
+                              <span className="shrink-0 text-xs text-gray-400">
+                                {collapsed ? "▶" : "▼"}
+                              </span>
+                            </button>
+                            {!collapsed && (
+                              <div className="border-t border-gray-100 bg-white px-10 pb-7 pt-5">
+                                {renderBrdContent(brdDoc[section.key], section.type)}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div className="rounded-b-lg border-t border-gray-200 bg-gray-50 px-10 py-4">
+                    <button
+                      type="button"
+                      onClick={() => setBrdShowRaw((prev) => !prev)}
+                      className="inline-flex items-center gap-2 rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-100 transition"
+                    >
+                      <span>{"{ }"}</span>
+                      {brdShowRaw ? "Hide Raw JSON" : "View Raw JSON"}
+                    </button>
+                    {brdShowRaw && (
+                      <pre className="mt-3 overflow-auto rounded-lg bg-gray-950 p-4 text-[11px] leading-5 text-gray-200">
+                        {JSON.stringify(brdDoc, null, 2)}
+                      </pre>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-gray-200 bg-white px-6 py-10 text-center text-sm text-gray-400 shadow-sm">
+                  No BRD data available.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isPrdModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"
+          onClick={() => setIsPrdModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-6xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-900 px-5 py-4">
+              <h3 className="text-base font-semibold text-white">Generated PRD Document</h3>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleDownloadPrdDoc}
+                  disabled={!prdHtml || isDownloadingPrd}
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-white/20 bg-white/10 px-3 text-xs font-semibold text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Download className="h-4 w-4" />
+                  {isDownloadingPrd ? "Preparing..." : "Download Word"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPrdModalOpen(false)}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/20 bg-white/10 text-white transition hover:bg-white/20"
+                  aria-label="Close PRD modal"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="max-h-[76vh] overflow-auto bg-slate-50 p-5">
+              {prdLoading ? (
+                <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+                  Generating PRD document from project data...
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {prdError && (
+                    <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                      {prdError}
+                    </div>
+                  )}
+
+                  {prdHtml ? (
+                    <div className="mx-auto max-w-[1100px] rounded-[18px] border border-[#dbe1ea] bg-white p-8 shadow-[0_8px_30px_rgba(15,23,42,0.08)]">
+                      <div
+                        className="prose prose-slate max-w-none prose-h1:text-center prose-h1:border-b prose-h1:border-violet-600 prose-h1:pb-4 prose-h1:text-[30px] prose-h2:rounded-lg prose-h2:border-l-[6px] prose-h2:border-violet-600 prose-h2:bg-violet-50 prose-h2:px-4 prose-h2:py-3 prose-h2:text-violet-900 prose-table:border prose-table:border-gray-300 prose-th:bg-violet-700 prose-th:text-white prose-th:text-[12px] prose-th:uppercase prose-th:tracking-wide prose-td:align-top"
+                        dangerouslySetInnerHTML={{ __html: prdHtml }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+                      No PRD output available.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <style jsx>{`
         .persona-container {

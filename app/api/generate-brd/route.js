@@ -37,80 +37,28 @@ function extractJsonObjectString(value) {
   return match ? match[0] : null;
 }
 
-function parseJsonWithFallback(value) {
-  if (value && typeof value === "object") return value;
-  if (typeof value !== "string") return null;
+function tryParseJsonString(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
 
   const cleaned = stripMarkdownFence(value);
   const direct = tryParseJson(cleaned);
   if (direct) return direct;
 
-  const objText = extractJsonObjectString(cleaned);
-  if (objText) {
-    const extracted = tryParseJson(objText);
-    if (extracted) return extracted;
-  }
-
-  const relaxed = cleaned
+  // Mirrors Flask unicode_escape pass.
+  const unicodeExpanded = cleaned
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
     .replace(/\\n/g, "\n")
     .replace(/\\r/g, "\r")
-    .replace(/\\t/g, "\t")
-    .replace(/\\"/g, '"');
-
-  if (relaxed !== cleaned) {
-    const relaxedParsed = tryParseJson(relaxed);
-    if (relaxedParsed) return relaxedParsed;
-
-    const relaxedObjText = extractJsonObjectString(relaxed);
-    if (relaxedObjText) {
-      const relaxedExtracted = tryParseJson(relaxedObjText);
-      if (relaxedExtracted) return relaxedExtracted;
-    }
+    .replace(/\\t/g, "\t");
+  if (unicodeExpanded !== cleaned) {
+    const parsedUnicode = tryParseJson(unicodeExpanded);
+    if (parsedUnicode) return parsedUnicode;
   }
 
-  // Some agents return quoted JSON strings; unquote once and retry.
-  const unquoted = tryParseJson(`"${cleaned.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`);
-  if (typeof unquoted === "string") {
-    const retry = tryParseJson(unquoted);
-    if (retry) return retry;
-  }
-
-  return null;
-}
-
-function tryExtractFromMessageString(value) {
-  if (typeof value !== "string") return null;
-
-  const singleQuoted = value.match(/content='([\s\S]*?)'\s+additional_kwargs=/);
-  if (singleQuoted) {
-    const parsed = parseJsonWithFallback(singleQuoted[1]);
-    if (parsed) return parsed;
-  }
-
-  const doubleQuoted = value.match(/content="([\s\S]*?)"\s+additional_kwargs=/);
-  if (doubleQuoted) {
-    const parsed = parseJsonWithFallback(doubleQuoted[1]);
-    if (parsed) return parsed;
-  }
-
-  return null;
-}
-
-function extractBrd(rawMessage) {
-  if (rawMessage && typeof rawMessage === "object") {
-    if (rawMessage.message) {
-      const nested = extractBrd(rawMessage.message);
-      if (nested) return nested;
-    }
-    return rawMessage;
-  }
-
-  if (typeof rawMessage === "string") {
-    const fromMsgString = tryExtractFromMessageString(rawMessage);
-    if (fromMsgString) return fromMsgString;
-
-    const parsed = parseJsonWithFallback(rawMessage);
-    if (parsed) return parsed;
+  const extracted = extractJsonObjectString(cleaned);
+  if (extracted) {
+    const parsedExtracted = tryParseJson(extracted);
+    if (parsedExtracted) return parsedExtracted;
   }
 
   return null;
@@ -118,28 +66,49 @@ function extractBrd(rawMessage) {
 
 function parseBrdDocument(brdDocRaw) {
   if (brdDocRaw && typeof brdDocRaw === "object") return brdDocRaw;
-
-  if (typeof brdDocRaw === "string") {
-    const fromMsgString = tryExtractFromMessageString(brdDocRaw);
-    if (fromMsgString && typeof fromMsgString === "object") return fromMsgString;
-
-    const parsed = parseJsonWithFallback(brdDocRaw);
-    if (parsed && typeof parsed === "object") return parsed;
-  }
-
+  const parsed = tryParseJsonString(brdDocRaw);
+  if (parsed && typeof parsed === "object") return parsed;
   return null;
 }
 
-function pickBrdDocument(parsed) {
-  if (!parsed || typeof parsed !== "object") return null;
-  return (
-    parsed.brd_document ||
-    parsed.brdDocument ||
-    parsed.BRD_DOCUMENT ||
-    parsed.brd ||
-    parsed.result ||
-    null
-  );
+function tryExtractBrdPayloadFromMessageString(message) {
+  if (typeof message !== "string") return null;
+
+  const patterns = [
+    /content='([\s\S]*?)'\s+additional_kwargs=/,
+    /content="([\s\S]*?)"\s+additional_kwargs=/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+    if (!match) continue;
+
+    const parsed = tryParseJsonString(match[1]);
+    if (parsed && typeof parsed === "object") return parsed;
+  }
+
+  return tryParseJsonString(message);
+}
+
+function extractBrdDocument(result) {
+  const messages = result?.response?.messages || [];
+  if (Array.isArray(messages)) {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const parsed = tryExtractBrdPayloadFromMessageString(messages[i]);
+      if (parsed && typeof parsed === "object" && parsed.brd_document) {
+        const brdData = parseBrdDocument(parsed.brd_document);
+        if (brdData) return brdData;
+      }
+    }
+  }
+
+  const topMessage = result?.message;
+  const parsedTop = topMessage ? tryParseJsonString(topMessage) : null;
+  if (parsedTop && typeof parsedTop === "object" && parsedTop.brd_document) {
+    return parseBrdDocument(parsedTop.brd_document);
+  }
+
+  return null;
 }
 
 function normalizeText(value) {
@@ -147,6 +116,19 @@ function normalizeText(value) {
   if (typeof value === "string") return value.trim();
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   return JSON.stringify(value, null, 2);
+}
+
+function sanitizeAgentInput(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  return {
+    ...payload,
+    username: payload.username ? "[REDACTED]" : "",
+    password: payload.password ? "[REDACTED]" : "",
+  };
+}
+
+function sanitizeAgentResponse(payload) {
+  return payload;
 }
 
 function formatList(items, mapper) {
@@ -258,6 +240,8 @@ export const POST = withAuth(async (request, _ctx, user) => {
 
   const { limited, retryAfterSec } = aiHeavyLimiter.check(String(user.userId));
   if (limited) return rateLimitedResponse(retryAfterSec);
+
+  let agentInput = null;
 
   try {
     const projectId = Number(input.projectId);
@@ -408,9 +392,12 @@ export const POST = withAuth(async (request, _ctx, user) => {
     const payload = {
       name: BRD_AGENT_NAME,
       project_brief: projectBrief,
+      user_input: projectBrief,
+      rules: [],
       username: USERNAME,
       password: PASSWORD,
     };
+    agentInput = sanitizeAgentInput(payload);
 
     const response = await fetch(WEBHOOK_URL, {
       method: "POST",
@@ -419,15 +406,12 @@ export const POST = withAuth(async (request, _ctx, user) => {
         Accept: "application/json",
       },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(180_000),
     });
 
     const text = await response.text();
-    logger.info("POST /api/generate-brd raw upstream response", {
-      status: response.status,
-      raw_response: text,
-    });
     const data = tryParseJson(text);
+    const agentResponse = sanitizeAgentResponse(data);
 
     if (!response.ok) {
       logger.error("POST /api/generate-brd upstream error", {
@@ -438,6 +422,8 @@ export const POST = withAuth(async (request, _ctx, user) => {
         {
           success: false,
           error: { message: `Agent request failed (${response.status})` },
+          agent_input: agentInput,
+          agent_response: agentResponse,
         },
         { status: response.status }
       );
@@ -448,45 +434,32 @@ export const POST = withAuth(async (request, _ctx, user) => {
         preview: text.slice(0, 500),
       });
       return NextResponse.json(
-        { success: false, error: { message: "Agent returned invalid JSON." } },
+        {
+          success: false,
+          error: { message: "Agent returned invalid JSON." },
+          agent_input: agentInput,
+          agent_response: sanitizeAgentResponse(text),
+        },
         { status: 502 }
       );
     }
 
-    const rawMessage = data?.message;
-
-    if (!rawMessage) {
-      return NextResponse.json(
-        { success: false, error: { message: "No response from agent." } },
-        { status: 502 }
-      );
-    }
-
-    const parsed = extractBrd(rawMessage);
-    if (!parsed) {
-      logger.error("POST /api/generate-brd failed to parse agent message", {
-        rawMessageType: typeof rawMessage,
-      });
-      return NextResponse.json(
-        { success: false, error: { message: "Failed to parse agent response." } },
-        { status: 502 }
-      );
-    }
-
-    const brdDocRaw = pickBrdDocument(parsed);
-    if (!brdDocRaw) {
-      // Some agents may already return BRD fields at top level.
-      return NextResponse.json({ success: true, data: { brd: parsed } });
-    }
-
-    const brdData = parseBrdDocument(brdDocRaw);
+    const brdData = extractBrdDocument(data);
     if (!brdData) {
-      logger.error("POST /api/generate-brd non-JSON brd_document fallback", {
-        brdDocRawType: typeof brdDocRaw,
+      logger.error("POST /api/generate-brd failed to extract brd_document", {
+        hasTopMessage: Boolean(data?.message),
+        hasMessages: Array.isArray(data?.response?.messages),
       });
-      // Keep backward-compatible behavior: return parsed payload even when brd_document
-      // is not strict JSON, instead of forcing a warning-oriented fallback shape.
-      return NextResponse.json({ success: true, data: { brd: parsed } });
+      return NextResponse.json(
+        {
+          success: false,
+          error: { message: "Could not extract brd_document from agent response." },
+          raw_response: data,
+          agent_input: agentInput,
+          agent_response: agentResponse,
+        },
+        { status: 502 }
+      );
     }
 
     return NextResponse.json({ success: true, data: { brd: brdData } });
@@ -497,6 +470,8 @@ export const POST = withAuth(async (request, _ctx, user) => {
         {
           success: false,
           error: { message: "Request timed out. The agent took too long to respond." },
+          agent_input: agentInput,
+          agent_response: null,
         },
         { status: 504 }
       );
@@ -505,7 +480,7 @@ export const POST = withAuth(async (request, _ctx, user) => {
     logger.error("POST /api/generate-brd error", { error });
 
     return NextResponse.json(
-      { success: false, error: { message: error?.message || "Internal server error" } },
+      { success: false, error: { message: error?.message || "Internal server error" }, agent_input: agentInput, agent_response: null },
       { status: 500 }
     );
   }

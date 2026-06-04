@@ -233,44 +233,232 @@ function appendWordValue(paragraphs, value, depth = 0) {
 }
 
 function cleanPrdHtml(value) {
-  let text = String(value || "").trim();
+  const text = String(value || "").trim();
 
-  // Try parsing JSON response
-  try {
-    const parsed = JSON.parse(text);
-
-    // If response is { prd_output: "..." }
-    if (parsed?.prd_output) {
-      text = parsed.prd_output;
-    }
-  } catch {
-    // not json -> continue
-  }
-
+  // basic sanitization for display safety
   return text
-    .replace(/^```html/i, "")
-    .replace(/^```json/i, "")
-    .replace(/^```/, "")
-    .replace(/```$/, "")
-
-    // remove escaped slashes
-    .replace(/\\\\/g, "")
-    .replace(/\\+/g, "")
-
-    // remove unwanted JSON key text
-    .replace(/^\s*\{\s*"prd_output"\s*:\s*"/i, "")
-    .replace(/"\s*\}\s*$/i, "")
-
-    // clean escaped newlines/tabs
-    .replace(/\\n/g, "\n")
-    .replace(/\\r/g, "")
-    .replace(/\\t/g, " ")
-
-    // sanitize scripts
     .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
     .replace(/\son\w+\s*=\s*"[^"]*"/gi, "")
     .replace(/\son\w+\s*=\s*'[^']*'/gi, "")
+    .replace(/\sjavascript:/gi, " ");
+}
+
+function decodeEscapedText(value) {
+  return String(value || "")
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
+    .replace(/\\\//g, "/")
+    .replace(/\\"/g, '"');
+}
+
+function extractPrdMarkup(value, depth = 0) {
+  if (depth > 8 || value === null || value === undefined) return "";
+
+  if (typeof value === "object") {
+    const directKeys = ["prd_output", "message", "final_response", "content", "output", "result"];
+    for (const key of directKeys) {
+      if (Object.prototype.hasOwnProperty.call(value, key)) {
+        const found = extractPrdMarkup(value[key], depth + 1);
+        if (found) return found;
+      }
+    }
+
+    if (Array.isArray(value.messages)) {
+      for (let i = value.messages.length - 1; i >= 0; i -= 1) {
+        const found = extractPrdMarkup(value.messages[i], depth + 1);
+        if (found) return found;
+      }
+    }
+
+    for (const nested of Object.values(value)) {
+      const found = extractPrdMarkup(nested, depth + 1);
+      if (found) return found;
+    }
+
+    return "";
+  }
+
+  const raw = decodeEscapedText(value).trim();
+  if (!raw) return "";
+
+  const stripped = stripFence(raw)
+    .replace(/^```html/i, "")
+    .replace(/^```/, "")
+    .replace(/```$/, "")
     .trim();
+
+  if (stripped.includes("<h1") && stripped.includes("<h2")) {
+    return stripped;
+  }
+
+  const prdOutputAssignment = stripped.match(/prd_output\s*[:=]\s*['"]([\s\S]*)['"]$/i);
+  if (prdOutputAssignment) {
+    const found = extractPrdMarkup(prdOutputAssignment[1], depth + 1);
+    if (found) return found;
+  }
+
+  const parsed = parseLooseJson(stripped);
+  if (parsed) {
+    const found = extractPrdMarkup(parsed, depth + 1);
+    if (found) return found;
+  }
+
+  return "";
+}
+
+function formatApiResponse(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  return JSON.stringify(value, null, 2);
+}
+
+function isHtmlLike(value) {
+  return typeof value === "string" && /<[^>]+>/.test(value);
+}
+
+function extractDocumentFromAgentResponse(value, depth = 0) {
+  if (depth > 6 || value === null || value === undefined) return null;
+
+  const parsed = typeof value === "string" ? parseApiJson(value) || toObjectIfPossible(value) : value;
+  if (!parsed || typeof parsed !== "object") return null;
+
+  const nestedKeys = ["data", "message", "final_response", "content", "output", "result", "body"];
+  for (const key of nestedKeys) {
+    const nested = parsed[key];
+    if (!nested) continue;
+
+    const extracted = extractDocumentFromAgentResponse(nested, depth + 1);
+    if (extracted) return extracted;
+  }
+
+  if (parsed.brd_document) {
+    const brdDocument = typeof parsed.brd_document === "string" ? parseApiJson(parsed.brd_document) || toObjectIfPossible(parsed.brd_document) : parsed.brd_document;
+    if (brdDocument && typeof brdDocument === "object") return brdDocument;
+  }
+
+  return parsed;
+}
+
+function renderDocumentValue(value, depth = 0) {
+  if (value === null || value === undefined) {
+    return <p className="text-sm text-slate-500">-</p>;
+  }
+
+  if (typeof value === "string") {
+    if (isHtmlLike(value)) {
+      return (
+        <div
+          className="rounded-[18px] border border-[#dacfff] bg-white p-5 prose prose-slate max-w-none shadow-[0_10px_35px_rgba(108,61,255,0.08)]"
+          dangerouslySetInnerHTML={{ __html: value }}
+        />
+      );
+    }
+
+    const lines = value
+      .split(/(?:\r?\n|\\n)+/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    if (!lines.length) {
+      return <p className="text-sm text-slate-500">-</p>;
+    }
+
+    return (
+      <div className="space-y-2">
+        {lines.map((line, idx) => (
+          <p key={`${depth}-line-${idx}`} className="text-[16px] leading-8 text-[#4d466d]">
+            {line}
+          </p>
+        ))}
+      </div>
+    );
+  }
+
+  if (Array.isArray(value)) {
+    if (!value.length) {
+      return <p className="text-sm text-slate-500">-</p>;
+    }
+
+    return (
+      <ol className="space-y-3 pl-5 list-decimal marker:text-[#6c3dff]">
+        {value.map((item, idx) => (
+          <li key={`${depth}-arr-${idx}`} className="text-[16px] text-[#4d466d]">
+            {item && typeof item === "object" ? renderDocumentValue(item, depth + 1) : String(item)}
+          </li>
+        ))}
+      </ol>
+    );
+  }
+
+  if (typeof value === "object") {
+    const entries = Object.entries(value);
+    if (!entries.length) {
+      return <p className="text-sm text-slate-500">-</p>;
+    }
+
+    return (
+      <div className="grid gap-4 sm:grid-cols-2">
+        {entries.map(([key, nested]) => (
+          <div key={`${depth}-obj-${key}`} className="rounded-[18px] border border-[#dacfff] bg-[#faf7ff] p-4 shadow-[0_8px_24px_rgba(108,61,255,0.06)]">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6c3dff]">
+              {formatKeyLabel(key)}
+            </p>
+            <div>{renderDocumentValue(nested, depth + 1)}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return <p className="text-[16px] text-[#4d466d]">{String(value)}</p>;
+}
+
+function renderAgentResponseDocument(rawResponse, title) {
+  const responseDocument = extractDocumentFromAgentResponse(rawResponse);
+  if (!responseDocument) return null;
+
+  const entries = Object.entries(responseDocument);
+  const heading = String(
+    responseDocument?.document_meta?.project_name ||
+    responseDocument?.project_name ||
+    responseDocument?.name ||
+    title ||
+    "Agent Response Document"
+  );
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-[30px] border border-[#dacfff] bg-white p-7 shadow-[0_10px_35px_rgba(108,61,255,0.08)]">
+        <div className="inline-flex rounded-full border border-[#dacfff] bg-[#f8f4ff] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6c3dff]">
+          Agent Response Document
+        </div>
+        <h4 className="mt-4 text-[38px] font-extrabold leading-none text-[#6c3dff]" style={{ fontFamily: "Syne, sans-serif" }}>{heading}</h4>
+        <p className="mt-3 max-w-3xl text-[17px] leading-8 text-[#6b6390]">
+          Structured JSON response received from the agent, rendered as a document for easier review.
+        </p>
+      </div>
+
+      {entries.map(([key, value]) => (
+        <section key={key} className="rounded-[30px] border border-[#dacfff] bg-white p-7 shadow-[0_10px_35px_rgba(108,61,255,0.08)]">
+          <div className="mb-5 border-b border-[#e8deff] pb-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6c3dff]">{formatKeyLabel(key)}</p>
+          </div>
+          <div className="prose prose-slate max-w-none">{renderDocumentValue(value)}</div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function parseApiJson(text) {
+  if (typeof text !== "string" || !text.trim()) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
 export default function WireframeResultPage() {
@@ -287,6 +475,8 @@ export default function WireframeResultPage() {
   const [brdError, setBrdError] = useState("");
   const [brdData, setBrdData] = useState(null);
   const [isDownloadingBrd, setIsDownloadingBrd] = useState(false);
+  const [brdShowRaw, setBrdShowRaw] = useState(false);
+  const [brdCollapsed, setBrdCollapsed] = useState({});
   const [isPrdModalOpen, setIsPrdModalOpen] = useState(false);
   const [prdLoading, setPrdLoading] = useState(false);
   const [prdError, setPrdError] = useState("");
@@ -365,12 +555,10 @@ export default function WireframeResultPage() {
       return;
     }
 
-    if (brdData && !brdError) {
-      return;
-    }
-
     setBrdLoading(true);
     setBrdError("");
+    setBrdShowRaw(false);
+    setBrdCollapsed({});
 
     try {
       const res = await fetch("/api/generate-brd", {
@@ -379,7 +567,13 @@ export default function WireframeResultPage() {
         body: JSON.stringify({ projectId: Number(id) }),
       });
 
-      const data = await res.json();
+      const bodyText = await res.text();
+      const data = parseApiJson(bodyText);
+
+      if (!data) {
+        throw new Error("API returned invalid JSON.");
+      }
+
       if (!res.ok || !data?.success) {
         throw new Error(data?.error?.message || data?.error || "Failed to generate BRD document");
       }
@@ -401,10 +595,6 @@ export default function WireframeResultPage() {
       return;
     }
 
-    if (prdHtml && !prdError) {
-      return;
-    }
-
     setPrdLoading(true);
     setPrdError("");
     setPrdRawResponse("");
@@ -416,14 +606,15 @@ export default function WireframeResultPage() {
         body: JSON.stringify({ projectId: Number(id) }),
       });
 
-      const data = await res.json();
+      const bodyText = await res.text();
+      const data = parseApiJson(bodyText);
 
-      if (data?.raw_response !== undefined) {
-        const raw =
-          typeof data.raw_response === "string"
-            ? data.raw_response
-            : JSON.stringify(data.raw_response, null, 2);
-        setPrdRawResponse(String(raw || ""));
+      setPrdRawResponse(formatApiResponse(data?.agent_response || ""));
+
+      if (!data) {
+        setPrdError("API returned invalid JSON.");
+        setPrdHtml("");
+        return;
       }
 
       if (!res.ok || !data?.success) {
@@ -432,37 +623,18 @@ export default function WireframeResultPage() {
         return;
       }
 
-      let prdContent = data?.data?.prd_output || "";
+      const nextHtml = cleanPrdHtml(
+        data?.data?.prd_output ||
+          data?.prd_output ||
+          extractPrdMarkup(data?.raw_response || "")
+      );
+      if (!nextHtml) {
+        setPrdError("PRD output is empty.");
+        setPrdHtml("");
+        return;
+      }
 
-try {
-  // Handle nested JSON string
-  if (typeof prdContent === "string") {
-    const parsed = JSON.parse(prdContent);
-
-    if (parsed?.prd_output) {
-      prdContent = parsed.prd_output;
-    }
-  }
-} catch {
-  // ignore if not json
-}
-
-const nextHtml = String(prdContent)
-  .replace(/\\\\/g, "")
-  .replace(/\\n/g, "\n")
-  .replace(/\\r/g, "")
-  .replace(/\\t/g, " ")
-  .replace(/^\s*\{\s*"prd_output"\s*:\s*"/i, "")
-  .replace(/"\s*\}\s*$/i, "")
-  .trim();
-
-if (!nextHtml) {
-  setPrdError("PRD output is empty.");
-  setPrdHtml("");
-  return;
-}
-
-setPrdHtml(nextHtml);
+      setPrdHtml(nextHtml);
     } catch (err) {
       setPrdError(err.message || "Failed to generate PRD document");
       setPrdHtml("");
@@ -590,110 +762,219 @@ setPrdHtml(nextHtml);
     }
   };
 
-  const renderBrdValue = (value, depth = 0) => {
-    if (value === null || value === undefined) {
-      return <p className="text-sm text-slate-500">-</p>;
-    }
+  // ── BRD section definitions (mirrors Flask renderSections) ──────────────────
+  const BRD_SECTIONS = [
+    { key: "business_problem",          num: "01", title: "Business Problem",           type: "prose" },
+    { key: "objectives_and_outcomes",   num: "02", title: "Objectives & Outcomes",      type: "prose" },
+    { key: "users_and_personas",        num: "03", title: "Users & Personas",           type: "tags" },
+    { key: "business_requirements",     num: "04", title: "Business Requirements",      type: "requirements" },
+    { key: "functional_scope",          num: "05", title: "Functional Scope",           type: "prose" },
+    { key: "non_functional_expectations", num: "06", title: "Non Functional Expectations", type: "prose" },
+    { key: "integrations",              num: "07", title: "Integrations",               type: "tags" },
+    { key: "compliance_and_security",   num: "08", title: "Compliance & Security",      type: "prose" },
+    { key: "success_metrics",           num: "09", title: "Success Metrics",            type: "metrics_table" },
+    { key: "key_stakeholders",          num: "10", title: "Key Stakeholders",           type: "editable" },
+    { key: "project_constraints",       num: "11", title: "Project Constraints",        type: "constraints_table" },
+    { key: "cost_benefit_analysis",     num: "12", title: "Cost Benefit Analysis",      type: "costtable" },
+    { key: "document_approval",         num: "13", title: "Document Approval",          type: "editable" },
+    { key: "draft_assumptions",         num: "14", title: "Draft Assumptions",          type: "tags" },
+  ];
 
-    if (typeof value === "string") {
-      const lines = value
-        .split(/(?:\r?\n|\\n)+/)
-        .map((line) => line.trim())
-        .filter(Boolean);
-
-      if (!lines.length) {
-        return <p className="text-sm text-slate-500">-</p>;
-      }
-
-      return (
-        <div className="space-y-2">
-          {lines.map((line, idx) => (
-            <p key={`${depth}-line-${idx}`} className="text-sm leading-6 text-slate-700">
-              {line}
-            </p>
-          ))}
-        </div>
-      );
-    }
-
-    if (Array.isArray(value)) {
-      if (!value.length) {
-        return <p className="text-sm text-slate-500">-</p>;
-      }
-
-      return (
-        <ol className="space-y-3 pl-5 list-decimal marker:text-indigo-500">
-          {value.map((item, idx) => (
-            <li key={`${depth}-arr-${idx}`} className="text-sm text-slate-700">
-              {item && typeof item === "object" ? renderBrdValue(item, depth + 1) : String(item)}
-            </li>
-          ))}
-        </ol>
-      );
-    }
-
-    if (typeof value === "object") {
-      const entries = Object.entries(value);
-      if (!entries.length) {
-        return <p className="text-sm text-slate-500">-</p>;
-      }
-
-      return (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {entries.map(([key, nested]) => (
-            <div key={`${depth}-obj-${key}`} className="rounded-lg border border-slate-200 bg-white p-3">
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                {formatKeyLabel(key)}
-              </p>
-              <div>{renderBrdValue(nested, depth + 1)}</div>
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    return <p className="text-sm text-slate-700">{String(value)}</p>;
-  };
-
-  const normalizedBrd = (() => {
+  // Resolve brd object from API response
+  const brdDoc = (() => {
     if (!brdData) return null;
     if (typeof brdData === "object") return brdData;
-    return toObjectIfPossible(brdData) || { raw_output: String(brdData) };
-  })();
-
-  const effectiveBrd = (() => {
-    if (!normalizedBrd || typeof normalizedBrd !== "object") return normalizedBrd;
-
-    const rawFromFallback = normalizedBrd.raw_brd_document;
-    if (!rawFromFallback) return normalizedBrd;
-
-    const parsed = parseLooseJson(rawFromFallback);
-    if (parsed && typeof parsed === "object") {
-      return parsed;
-    }
-
-    return {
-      ...normalizedBrd,
-      full_brd_document: normalizeLooseText(rawFromFallback),
-    };
+    try { return JSON.parse(brdData); } catch { return null; }
   })();
 
   const brdMeta =
-    effectiveBrd && effectiveBrd.document_meta && typeof effectiveBrd.document_meta === "object"
-      ? effectiveBrd.document_meta
+    brdDoc?.document_meta && typeof brdDoc.document_meta === "object"
+      ? brdDoc.document_meta
       : null;
 
-  const brdSections = effectiveBrd
-    ? Object.entries(effectiveBrd).filter(([key]) => key !== "document_meta")
-    : [];
+  const brdActiveSections = BRD_SECTIONS.filter((s) => {
+    if (!brdDoc) return false;
+    const v = brdDoc[s.key];
+    return v !== undefined && v !== null && v !== "" && !(Array.isArray(v) && v.length === 0);
+  });
 
-  const showBrdRawNote = Boolean(
-    normalizedBrd?.note && effectiveBrd && typeof effectiveBrd === "object" && effectiveBrd.full_brd_document
-  );
+  const toggleBrdSection = (key) =>
+    setBrdCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  // Helper: extract label:value from a labeled string (mirrors Flask get())
+  const getLabelVal = (text, label) => {
+    const m = String(text || "").match(new RegExp(`${label}:\\s*([^.]+)`, "i"));
+    return m ? m[1].trim() : "";
+  };
+
+  const getConstraintVal = (text, label) => {
+    const m = String(text || "").match(
+      new RegExp(`${label}:\\s*(.*?)(?=(?:Constraint|Description|Impact|Mitigation):|$)`, "i")
+    );
+    return m ? m[1].trim() : "";
+  };
+
+  // ── Section content renderer (mirrors Flask renderContent) ──────────────────
+  const renderBrdContent = (value, type) => {
+    if (type === "prose") {
+      return (
+        <p className="text-[13px] leading-[1.9] text-gray-700 whitespace-pre-wrap">
+          {String(value || "")}
+        </p>
+      );
+    }
+
+    if (type === "tags") {
+      if (!Array.isArray(value)) return null;
+      return (
+        <div className="flex flex-wrap gap-2">
+          {value.map((item, i) => (
+            <span
+              key={i}
+              className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700"
+            >
+              {String(item)}
+            </span>
+          ))}
+        </div>
+      );
+    }
+
+    if (type === "requirements") {
+      if (!Array.isArray(value)) return null;
+      return (
+        <div className="space-y-2">
+          {value.map((line, i) => {
+            const parts = String(line || "").split("|").map((p) => p.trim());
+            const id   = parts[0] || `BR-${String(i + 1).padStart(3, "0")}`;
+            const desc = parts[1] || "";
+            const pri  = (parts[2] || "").replace(/priority:/i, "").trim();
+            const priColor =
+              pri.toLowerCase() === "high"   ? "border-red-300 bg-red-50 text-red-700" :
+              pri.toLowerCase() === "medium" ? "border-amber-300 bg-amber-50 text-amber-700" :
+                                               "border-green-300 bg-green-50 text-green-700";
+            return (
+              <div
+                key={i}
+                className="flex flex-wrap items-start gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5"
+              >
+                <code className="shrink-0 rounded bg-gray-900 px-2 py-0.5 text-[10px] font-bold text-white">
+                  {id}
+                </code>
+                <span className="flex-1 text-[13px] text-gray-700">{desc || "—"}</span>
+                {pri && (
+                  <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${priColor}`}>
+                    {pri}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    if (type === "metrics_table") {
+      if (!Array.isArray(value)) return null;
+      const cols = ["Metric", "Baseline", "Target", "Measurement", "Review"];
+      return (
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <table className="w-full text-left text-[12px] text-gray-700">
+            <thead className="bg-gray-50 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+              <tr>{cols.map((h) => <th key={h} className="border-b border-gray-200 px-4 py-2">{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {value.map((item, i) => (
+                <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50/60"}>
+                  {cols.map((lbl) => (
+                    <td key={lbl} className="border-b border-gray-100 px-4 py-2">
+                      {getLabelVal(item, lbl)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    if (type === "constraints_table") {
+      if (!Array.isArray(value)) return null;
+      const cols = ["Constraint", "Description", "Impact", "Mitigation"];
+      return (
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <table className="w-full text-left text-[12px] text-gray-700">
+            <thead className="bg-gray-50 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+              <tr>{cols.map((h) => <th key={h} className="border-b border-gray-200 px-4 py-2">{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {value.map((item, i) => (
+                <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50/60"}>
+                  {cols.map((lbl) => (
+                    <td key={lbl} className="border-b border-gray-100 px-4 py-2">
+                      {getConstraintVal(item, lbl)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    if (type === "editable") {
+      if (!Array.isArray(value)) return null;
+      return (
+        <div className="space-y-2">
+          {value.map((item, i) => (
+            <input
+              key={i}
+              defaultValue={String(item || "")}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-[13px] text-gray-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
+            />
+          ))}
+        </div>
+      );
+    }
+
+    if (type === "costtable") {
+      return (
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <table className="w-full text-left text-[12px] text-gray-700">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="border-b border-gray-200 px-4 py-2 font-semibold">Cost</th>
+                <th className="border-b border-gray-200 px-4 py-2 font-semibold">Benefit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[0, 1, 2].map((row) => (
+                <tr key={row} className={row % 2 === 0 ? "bg-white" : "bg-gray-50/60"}>
+                  <td className="border-b border-gray-100 px-4 py-3" contentEditable suppressContentEditableWarning />
+                  <td className="border-b border-gray-100 px-4 py-3" contentEditable suppressContentEditableWarning />
+                </tr>
+              ))}
+              <tr className="bg-gray-100">
+                <td className="px-4 py-2 font-semibold">Total Cost:</td>
+                <td className="px-4 py-2 font-semibold">Expected ROI:</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    return (
+      <p className="text-[13px] leading-[1.9] text-gray-700 whitespace-pre-wrap">
+        {String(value || "")}
+      </p>
+    );
+  };
 
   const handleDownloadBrdDoc = async () => {
-    if (!effectiveBrd || isDownloadingBrd) return;
-
+    if (!brdDoc || isDownloadingBrd) return;
     setIsDownloadingBrd(true);
     try {
       const title = String(brdMeta?.project_name || "Business Requirements Document");
@@ -710,7 +991,6 @@ setPrdHtml(nextHtml);
           spacing: { after: 360 },
         }),
       ];
-
       if (brdMeta) {
         paragraphs.push(
           new Paragraph({ text: "Document Meta", heading: HeadingLevel.HEADING_1, spacing: { after: 160 } })
@@ -727,26 +1007,19 @@ setPrdHtml(nextHtml);
           );
         });
       }
-
-      brdSections.forEach(([key, value]) => {
+      brdActiveSections.forEach((section) => {
         paragraphs.push(
           new Paragraph({
-            text: formatKeyLabel(key),
+            text: section.title,
             heading: HeadingLevel.HEADING_1,
             spacing: { before: 220, after: 140 },
           })
         );
-        appendWordValue(paragraphs, value, 0);
+        appendWordValue(paragraphs, brdDoc[section.key], 0);
       });
-
       const doc = new Document({ sections: [{ children: paragraphs }] });
       const blob = await Packer.toBlob(doc);
-
-      const safeName = title
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "");
-
+      const safeName = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
       saveAs(blob, `${safeName || "brd-document"}.docx`);
     } finally {
       setIsDownloadingBrd(false);
@@ -924,29 +1197,37 @@ setPrdHtml(nextHtml);
 
             {isBrdModalOpen && (
               <div
-                className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"
+                className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 px-4 pb-10 pt-8"
                 onClick={() => setIsBrdModalOpen(false)}
               >
+                {/* Modal shell — max-w-4xl gives A4-ish width */}
                 <div
-                  className="w-full max-w-5xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
-                  onClick={(event) => event.stopPropagation()}
+                  className="w-full max-w-4xl overflow-hidden rounded-xl border border-gray-300 bg-white shadow-2xl"
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="flex items-center justify-between border-b border-slate-200 bg-slate-900 px-5 py-4">
-                    <h3 className="text-base font-semibold text-white">Generated BRD Document</h3>
+                  {/* ── Title bar ── */}
+                  <div className="flex items-center justify-between bg-gray-900 px-5 py-3">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-lg leading-none">📋</span>
+                      <span className="text-sm font-semibold text-white">BRD Generator</span>
+                      <span className="rounded border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-gray-300">
+                        Agent5i Powered
+                      </span>
+                    </div>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={handleDownloadBrdDoc}
-                        disabled={!effectiveBrd || isDownloadingBrd}
-                        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-white/20 bg-white/10 px-3 text-xs font-semibold text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={!brdDoc || isDownloadingBrd}
+                        className="inline-flex h-8 items-center gap-1.5 rounded border border-white/20 bg-white/10 px-3 text-xs font-semibold text-white hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40 transition"
                       >
-                        <Download className="h-4 w-4" />
-                        {isDownloadingBrd ? "Preparing..." : "Download Word"}
+                        <Download className="h-3.5 w-3.5" />
+                        {isDownloadingBrd ? "Preparing…" : "Download Word"}
                       </button>
                       <button
                         type="button"
                         onClick={() => setIsBrdModalOpen(false)}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/20 bg-white/10 text-white transition hover:bg-white/20"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded border border-white/20 bg-white/10 text-white hover:bg-white/20 transition"
                         aria-label="Close BRD modal"
                       >
                         <X className="h-4 w-4" />
@@ -954,62 +1235,133 @@ setPrdHtml(nextHtml);
                     </div>
                   </div>
 
-                  <div className="max-h-[70vh] overflow-auto bg-slate-50 p-5">
+                  {/* ── Document body ── */}
+                  <div className="max-h-[84vh] overflow-y-auto bg-gray-100 px-6 py-6">
                     {brdLoading ? (
-                      <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
-                        Generating BRD document from project data...
+                      /* Loading state */
+                      <div className="flex flex-col items-center gap-3 rounded-xl border border-gray-200 bg-white py-16 text-center shadow-sm">
+                        <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-200 border-t-indigo-600" />
+                        <p className="text-sm text-gray-500">Generating BRD document…</p>
                       </div>
                     ) : brdError ? (
-                      <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                      /* Error state */
+                      <div className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
                         {brdError}
                       </div>
-                    ) : effectiveBrd ? (
-                      <div className="space-y-5">
-                        {showBrdRawNote && (
-                          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                            {normalizedBrd.note}
-                          </div>
-                        )}
-                        <div className="rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50 to-cyan-50 p-5">
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-500">Business Requirements Document</p>
-                          <h4 className="mt-2 text-lg font-bold text-slate-900">
-                            {String(brdMeta?.project_name || "Project BRD")}
-                          </h4>
-                          <p className="mt-1 text-sm text-slate-600">
-                            Structured output generated from project data, personas, interviews, insights, IA, and process flow.
+                    ) : brdDoc ? (
+                      /* ── Paper document ── */
+                      <div className="mx-auto max-w-[760px] rounded-lg border border-gray-300 bg-white shadow-[0_6px_28px_rgba(0,0,0,0.10)]">
+
+                        {/* Document cover */}
+                        <div className="rounded-t-lg border-b border-gray-200 bg-gray-900 px-10 py-10 text-center">
+                          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-gray-400">
+                            Business Requirements Document
                           </p>
+                          <h2 className="text-[22px] font-bold leading-snug text-white">
+                            {brdMeta?.project_name || "Untitled Project"}
+                          </h2>
+                          {brdMeta && (
+                            <div className="mt-4 flex flex-wrap justify-center gap-3 text-[11px] text-gray-400">
+                              {brdMeta.version     && <span>v{brdMeta.version}</span>}
+                              {brdMeta.date_submitted && <><span>·</span><span>{brdMeta.date_submitted}</span></>}
+                              {brdMeta.status && (
+                                <><span>·</span>
+                                <span className="rounded-full bg-emerald-900/40 px-2.5 py-0.5 text-emerald-400">
+                                  {brdMeta.status}
+                                </span></>
+                              )}
+                            </div>
+                          )}
                         </div>
 
+                        {/* Meta strip */}
                         {brdMeta && (
-                          <div className="rounded-xl border border-slate-200 bg-white p-5">
-                            <h5 className="mb-3 text-sm font-bold uppercase tracking-[0.12em] text-slate-600">Document Meta</h5>
-                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                              {Object.entries(brdMeta).map(([key, value]) => (
-                                <div key={`meta-${key}`} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                                    {formatKeyLabel(key)}
+                          <div className="border-b border-gray-200 bg-gray-50 px-10 py-5">
+                            <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+                              {[
+                                { key: "project_name",    label: "📁 Project" },
+                                { key: "project_manager", label: "👤 PM" },
+                                { key: "date_submitted",  label: "📅 Date" },
+                                { key: "version",         label: "🏷 Version" },
+                                { key: "status",          label: "📌 Status" },
+                                { key: "department",      label: "🏢 Dept" },
+                              ].map((f) => (
+                                <div key={f.key}>
+                                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.13em] text-gray-400">
+                                    {f.label}
                                   </p>
-                                  <p className="mt-1 text-sm font-medium text-slate-800">
-                                    {String(value ?? "-")}
-                                  </p>
+                                  <input
+                                    type="text"
+                                    defaultValue={String(brdMeta[f.key] || "")}
+                                    placeholder="[TBC]"
+                                    className="w-full rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
+                                  />
                                 </div>
                               ))}
                             </div>
                           </div>
                         )}
 
-                        {brdSections.map(([key, value]) => (
-                          <section key={`section-${key}`} className="rounded-xl border border-slate-200 bg-white p-5">
-                            <h5 className="mb-3 text-sm font-bold uppercase tracking-[0.12em] text-slate-600">
-                              {formatKeyLabel(key)}
-                            </h5>
-                            <div>{renderBrdValue(value, 0)}</div>
-                          </section>
-                        ))}
+                        {/* Section cards */}
+                        <div className="divide-y divide-gray-100">
+                          {brdActiveSections.length === 0 ? (
+                            <p className="px-10 py-10 text-center text-sm text-gray-400">
+                              No BRD sections found in the agent response.
+                            </p>
+                          ) : (
+                            brdActiveSections.map((section) => {
+                              const collapsed = Boolean(brdCollapsed[section.key]);
+                              return (
+                                <div key={section.key}>
+                                  {/* Section header row — clickable to collapse */}
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleBrdSection(section.key)}
+                                    className="flex w-full items-center gap-4 px-10 py-4 text-left transition-colors hover:bg-gray-50"
+                                  >
+                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-900 text-[11px] font-bold text-white">
+                                      {section.num}
+                                    </span>
+                                    <span className="flex-1 text-[14px] font-semibold text-gray-800">
+                                      {section.title}
+                                    </span>
+                                    <span className="shrink-0 text-xs text-gray-400">
+                                      {collapsed ? "▶" : "▼"}
+                                    </span>
+                                  </button>
+
+                                  {/* Section body */}
+                                  {!collapsed && (
+                                    <div className="border-t border-gray-100 bg-white px-10 pb-7 pt-5">
+                                      {renderBrdContent(brdDoc[section.key], section.type)}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        {/* Raw JSON toggle */}
+                        <div className="rounded-b-lg border-t border-gray-200 bg-gray-50 px-10 py-4">
+                          <button
+                            type="button"
+                            onClick={() => setBrdShowRaw((prev) => !prev)}
+                            className="inline-flex items-center gap-2 rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-100 transition"
+                          >
+                            <span>{"{ }"}</span>
+                            {brdShowRaw ? "Hide Raw JSON" : "View Raw JSON"}
+                          </button>
+                          {brdShowRaw && (
+                            <pre className="mt-3 overflow-auto rounded-lg bg-gray-950 p-4 text-[11px] leading-5 text-gray-200">
+                              {JSON.stringify(brdDoc, null, 2)}
+                            </pre>
+                          )}
+                        </div>
                       </div>
                     ) : (
-                      <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
-                        BRD data not available.
+                      <div className="rounded-xl border border-gray-200 bg-white px-6 py-10 text-center text-sm text-gray-400 shadow-sm">
+                        No BRD data available.
                       </div>
                     )}
                   </div>
@@ -1063,23 +1415,17 @@ setPrdHtml(nextHtml);
                         )}
 
                         {prdHtml ? (
-                          <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm [&_h1]:mb-6 [&_h1]:border-b-2 [&_h1]:border-violet-600 [&_h1]:pb-3 [&_h1]:text-center [&_h1]:text-3xl [&_h1]:font-bold [&_h1]:text-slate-900 [&_h2]:mt-8 [&_h2]:mb-3 [&_h2]:rounded-md [&_h2]:border-l-4 [&_h2]:border-violet-600 [&_h2]:bg-violet-50 [&_h2]:px-3 [&_h2]:py-2 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:text-violet-900 [&_h3]:mt-5 [&_h3]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-slate-800 [&_p]:my-2 [&_p]:text-sm [&_p]:leading-7 [&_p]:text-slate-700 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-6 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-6 [&_li]:text-sm [&_li]:leading-7 [&_li]:text-slate-700 [&_table]:my-5 [&_table]:w-full [&_table]:border-collapse [&_table]:overflow-hidden [&_table]:rounded-lg [&_table]:border [&_table]:border-slate-300 [&_th]:bg-violet-700 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:text-xs [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-wide [&_th]:text-white [&_td]:border-t [&_td]:border-slate-200 [&_td]:px-3 [&_td]:py-2 [&_td]:text-sm [&_td]:text-slate-700">
-                            <div dangerouslySetInnerHTML={{ __html: prdHtml }} />
+                          <div className="mx-auto max-w-[1100px] rounded-[18px] border border-[#dbe1ea] bg-white p-8 shadow-[0_8px_30px_rgba(15,23,42,0.08)]">
+                            <div
+                              className="prose prose-slate max-w-none prose-h1:text-center prose-h1:border-b prose-h1:border-violet-600 prose-h1:pb-4 prose-h1:text-[30px] prose-h2:rounded-lg prose-h2:border-l-[6px] prose-h2:border-violet-600 prose-h2:bg-violet-50 prose-h2:px-4 prose-h2:py-3 prose-h2:text-violet-900 prose-table:border prose-table:border-gray-300 prose-th:bg-violet-700 prose-th:text-white prose-th:text-[12px] prose-th:uppercase prose-th:tracking-wide prose-td:align-top"
+                              dangerouslySetInnerHTML={{ __html: prdHtml }}
+                            />
                           </div>
                         ) : (
                           <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
-                            PRD data not available.
+                            No PRD output available.
                           </div>
                         )}
-
-                        <div className="rounded-xl border border-slate-200 bg-white p-4">
-                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                            Raw Agent Response
-                          </p>
-                          <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-words rounded-md bg-slate-900 p-3 text-xs leading-6 text-emerald-200">
-                            {prdRawResponse || "No raw response available."}
-                          </pre>
-                        </div>
                       </div>
                     )}
                   </div>

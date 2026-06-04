@@ -43,18 +43,19 @@ function normalizeText(text) {
   if (!text) return "";
 
   const replacements = {
-    "\\u2013": "-",
-    "\\u2014": "-",
+    "\\u2013": "–",
+    "\\u2014": "—",
     "\\u2018": "'",
     "\\u2019": "'",
     "\\u201c": '"',
     "\\u201d": '"',
-    "\\u2192": "->",
-    "\\u2265": ">=",
-    "\\u2264": "<=",
-    "\\u2022": "*",
+    "\\u2192": "→",
+    "\\u2265": "≥",
+    "\\u2264": "≤",
+    "\\u2022": "•",
     "\\n": "\n",
     "\\t": " ",
+    '\\"': '"',
   };
 
   let output = String(text).trim();
@@ -69,22 +70,40 @@ function cleanPrdOutput(text) {
   return normalizeText(stripMarkdownFence(text));
 }
 
+function sanitizeAgentInput(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  return {
+    ...payload,
+    username: payload.username ? "[REDACTED]" : "",
+    password: payload.password ? "[REDACTED]" : "",
+  };
+}
+
+function sanitizeAgentResponse(payload) {
+  return payload;
+}
+
 function tryParseJsonString(value) {
-  if (!value || typeof value !== "string") return null;
+  if (typeof value !== "string" || !value.trim()) return null;
 
   const cleaned = stripMarkdownFence(value);
+
   const direct = tryParseJson(cleaned);
   if (direct) return direct;
 
-  // Retry with an unescape pass.
-  try {
-    const unescaped = JSON.parse(`"${cleaned.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`);
-    if (typeof unescaped === "string") {
-      const parsed = tryParseJson(unescaped);
-      if (parsed) return parsed;
-    }
-  } catch {
-    // no-op
+  // Mirrors Flask unicode_escape retry.
+  const unicodeExpanded = cleaned
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t");
+  const unicodeParsed = tryParseJson(unicodeExpanded);
+  if (unicodeParsed) return unicodeParsed;
+
+  const objectMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (objectMatch) {
+    const extractedParsed = tryParseJson(objectMatch[0]);
+    if (extractedParsed) return extractedParsed;
   }
 
   return null;
@@ -175,66 +194,51 @@ function isCompletePrdHtml(text) {
 }
 
 function extractPrdOutput(result, rawText = "") {
-  const messages = result?.response?.messages;
+  const messages = result?.response?.messages || [];
 
-  if (Array.isArray(messages)) {
-    let longestHtml = "";
+  // 1) Prefer full assistant HTML output from messages.
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const msg = messages[i];
+    if (typeof msg !== "string") continue;
 
-    for (let i = messages.length - 1; i >= 0; i -= 1) {
-      const msg = messages[i];
-      if (typeof msg !== "string") continue;
+    const singleQuoted = msg.match(/content='([\s\S]*?)'\s+additional_kwargs=/);
+    if (!singleQuoted) continue;
 
-      const extracted = tryExtractFromMessageString(msg);
-      if (!extracted) continue;
-
-      const prd = extracted?.prd_output;
-      if (typeof prd === "string" && prd.trim()) {
-        const cleaned = cleanPrdOutput(prd);
-        if (isCompletePrdHtml(cleaned)) return cleaned;
-        if (isLikelyPrdHtml(cleaned) && cleaned.length > longestHtml.length) longestHtml = cleaned;
+    const content = singleQuoted[1];
+    if (content.includes("<h1>") && content.includes("<h2>")) {
+      const cleaned = cleanPrdOutput(content);
+      if (!cleaned.slice(0, 200).includes("...") && cleaned.length > 1000) {
+        return cleaned;
       }
-
-      if (typeof extracted === "string" && extracted.trim()) {
-        const cleaned = cleanPrdOutput(extracted);
-        if (isCompletePrdHtml(cleaned)) return cleaned;
-        if (isLikelyPrdHtml(cleaned) && cleaned.length > longestHtml.length) longestHtml = cleaned;
+      if (cleaned.length > 1000) {
+        return cleaned;
       }
-    }
-
-    if (longestHtml.length > 1000) {
-      return longestHtml;
     }
   }
 
-  const topMessage = result?.message;
-  if (typeof topMessage === "string" && topMessage.trim()) {
+  // 2) Fallback to top-level message prd_output.
+  const topMessage = result?.message || "";
+  if (topMessage) {
     const parsed = tryParseJsonString(topMessage);
     if (parsed && typeof parsed === "object") {
-      const prd = parsed.prd_output || parsed.output || parsed.result || parsed.message;
-      if (typeof prd === "string" && prd.trim()) {
-        const cleaned = cleanPrdOutput(prd);
-        if (isCompletePrdHtml(cleaned)) return cleaned;
+      const prd = parsed.prd_output || "";
+      if (
+        typeof prd === "string" &&
+        prd.includes("<h1>") &&
+        prd.includes("<h2>") &&
+        !prd.includes("...") &&
+        prd.length > 1000
+      ) {
+        return cleanPrdOutput(prd);
       }
     }
-
-    if (topMessage.includes("<h1") && topMessage.includes("<h2")) {
-      const cleaned = cleanPrdOutput(topMessage);
-      if (isCompletePrdHtml(cleaned)) return cleaned;
-    }
   }
 
-  const candidates = collectPossiblePrdStrings(result, []);
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-    if (isLikelyPrdHtml(candidate)) return candidate;
-  }
-
-  for (const candidate of candidates) {
-    if (candidate && candidate.length > 80) return candidate;
-  }
-
+  // Final fallback: if upstream returned strong HTML directly, use it.
   const cleanedRaw = cleanPrdOutput(rawText);
-  if (isLikelyPrdHtml(cleanedRaw)) return cleanedRaw;
+  if (cleanedRaw.includes("<h1>") && cleanedRaw.includes("<h2>")) {
+    return cleanedRaw;
+  }
 
   return "";
 }
@@ -355,6 +359,8 @@ export const POST = withAuth(async (request, _ctx, user) => {
 
   const { limited, retryAfterSec } = aiHeavyLimiter.check(String(user.userId));
   if (limited) return rateLimitedResponse(retryAfterSec);
+
+  let agentInput = null;
 
   try {
     const projectId = Number(input.projectId);
@@ -510,6 +516,7 @@ export const POST = withAuth(async (request, _ctx, user) => {
       user_input: projectBrief,
       rules: [],
     };
+    agentInput = sanitizeAgentInput(payload);
 
     const response = await fetch(WEBHOOK_URL, {
       method: "POST",
@@ -524,6 +531,7 @@ export const POST = withAuth(async (request, _ctx, user) => {
     const text = await response.text();
     const contentType = (response.headers.get("content-type") || "").toLowerCase();
     const result = contentType.includes("application/json") ? tryParseJson(text) : tryParseJson(text);
+    const agentResponse = sanitizeAgentResponse(result || parseRawResponse(text));
 
     if (!response.ok) {
       const rawResponse = parseRawResponse(text);
@@ -536,6 +544,8 @@ export const POST = withAuth(async (request, _ctx, user) => {
           success: false,
           error: { message: `Agent request failed (${response.status})` },
           raw_response: rawResponse,
+          agent_input: agentInput,
+          agent_response: agentResponse,
         },
         { status: response.status }
       );
@@ -553,6 +563,8 @@ export const POST = withAuth(async (request, _ctx, user) => {
           success: false,
           error: { message: "Could not extract prd_output from agent response." },
           raw_response: result || parseRawResponse(text),
+          agent_input: agentInput,
+          agent_response: agentResponse,
         },
         { status: 502 }
       );
@@ -560,8 +572,11 @@ export const POST = withAuth(async (request, _ctx, user) => {
 
     return NextResponse.json({
       success: true,
+      prd_output: prdOutput,
       data: { prd_output: prdOutput },
       raw_response: result || parseRawResponse(text),
+      agent_input: agentInput,
+      agent_response: agentResponse,
     });
   } catch (error) {
     if (error?.name === "AbortError") {
@@ -570,6 +585,8 @@ export const POST = withAuth(async (request, _ctx, user) => {
         {
           success: false,
           error: { message: "Request timed out. The agent took too long to respond." },
+          agent_input: agentInput,
+          agent_response: null,
         },
         { status: 504 }
       );
@@ -577,7 +594,7 @@ export const POST = withAuth(async (request, _ctx, user) => {
 
     logger.error("POST /api/generate-prd error", { error });
     return NextResponse.json(
-      { success: false, error: { message: error?.message || "Internal server error" } },
+      { success: false, error: { message: error?.message || "Internal server error" }, agent_input: agentInput, agent_response: null },
       { status: 500 }
     );
   }
