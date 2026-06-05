@@ -42,6 +42,12 @@ const STAGE_TEMPLATES = {
  ideate: [
   { id: "information-architecture", name: "Information Architecture", icon: FileText, type: "agent" },
   { id: "wireframe-reviewer", name: "Wireframe Reviewer", icon: FileText, type: "upload" },
+  {
+  id: "brd-prd-generator",
+  name: "BRD & PRD Generator",
+  description: "Generate BRD and PRD from project context",
+  icon: FileText
+},
 ],
   prototype: [
     { id: "low-fidelity", name: "Low Fidelity Prototype", icon: LinkIcon, type: "link" },
@@ -1937,35 +1943,7 @@ const handleDownloadBrdDoc = async () => {
 </div>
                   {isExpanded && (
                     <div className="px-6 pb-6 border-t border-gray-200 pt-6">
-                      {stage.id === "ideate" && (
-                        <div className="mb-5 rounded-2xl border border-violet-100 bg-gradient-to-r from-slate-900 via-indigo-950 to-violet-900 p-5 text-white shadow-sm">
-                          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                            <div>
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-200">Documentation</p>
-                              <h4 className="mt-2 text-xl font-semibold">Generate BRD and PRD from current project context</h4>
-                              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-200">
-                                Create polished requirement documents using the same project, persona, interview, insight, information architecture, and process-flow data already stored in NeuroX.
-                              </p>
-                            </div>
-                            <div className="flex flex-col gap-2 sm:flex-row">
-                              <button
-                                type="button"
-                                onClick={handleOpenBrdModal}
-                                className="inline-flex h-11 items-center justify-center rounded-xl bg-white px-4 text-sm font-semibold text-slate-900 transition hover:bg-slate-100"
-                              >
-                                Generate BRD Document
-                              </button>
-                              <button
-                                type="button"
-                                onClick={handleOpenPrdModal}
-                                className="inline-flex h-11 items-center justify-center rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-semibold text-white transition hover:bg-white/20"
-                              >
-                                Generate PRD Document
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                      
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {(STAGE_TEMPLATES[stage.id] || []).map((template) => {
                           const TemplateIcon = template.icon;
@@ -2021,6 +1999,55 @@ const handleDownloadBrdDoc = async () => {
                           </div>
                         );
                       }
+                      if (template.id === "brd-prd-generator") {
+  return (
+    <div key={template.id} className="space-y-3">
+      
+      {/* reuse SAME style system */}
+      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm hover:shadow-md transition">
+
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
+            <FileText className="w-5 h-5 text-indigo-600" />
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold tracking-widest text-indigo-500 uppercase">
+              Document Generation
+            </p>
+            <h3 className="text-base font-semibold text-gray-900">
+              {template.name}
+            </h3>
+          </div>
+        </div>
+
+        <p className="text-sm text-gray-600 mb-4">
+          {template.description}
+        </p>
+
+        {/* SAME BUTTON STYLE AS IA CARD */}
+        <div className="space-y-2">
+          
+          <button
+            onClick={handleOpenBrdModal}
+            className="w-full py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition"
+          >
+            Generate BRD
+          </button>
+
+          <button
+            onClick={handleOpenPrdModal}
+            className="w-full py-2.5 rounded-lg border border-gray-300 text-gray-700 text-sm hover:bg-gray-50 transition"
+          >
+            Generate PRD
+          </button>
+
+        </div>
+
+      </div>
+    </div>
+  );
+}
 
                           return renderGenericCard(template, stage.id, downloadableTemplateId, link, completedStages.includes(stage.id));
                         })}

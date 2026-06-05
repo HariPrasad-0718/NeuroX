@@ -410,6 +410,8 @@ export const POST = withAuth(async (request, _ctx, user) => {
     });
 
     const text = await response.text();
+    console.log("🔥 RAW BRD AGENT RESPONSE:");
+console.log(text);
     const data = tryParseJson(text);
     const agentResponse = sanitizeAgentResponse(data);
 

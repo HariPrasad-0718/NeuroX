@@ -527,8 +527,11 @@ export const POST = withAuth(async (request, _ctx, user) => {
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(AGENT_TIMEOUT_MS),
     });
+    
 
     const text = await response.text();
+    console.log("🔥 RAW AGENT RESPONSE TEXT:");
+    console.log(text);
     const contentType = (response.headers.get("content-type") || "").toLowerCase();
     const result = contentType.includes("application/json") ? tryParseJson(text) : tryParseJson(text);
     const agentResponse = sanitizeAgentResponse(result || parseRawResponse(text));

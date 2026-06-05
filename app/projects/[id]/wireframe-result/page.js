@@ -349,10 +349,61 @@ function renderDocumentValue(value, depth = 0) {
   if (typeof value === "string") {
     if (isHtmlLike(value)) {
       return (
+        <div className="space-y-6">
         <div
-          className="rounded-[18px] border border-[#dacfff] bg-white p-5 prose prose-slate max-w-none shadow-[0_10px_35px_rgba(108,61,255,0.08)]"
-          dangerouslySetInnerHTML={{ __html: value }}
-        />
+ className="
+mx-auto max-w-[1100px]
+rounded-[18px]
+border border-[#dbe1ea]
+bg-white
+p-10
+shadow-[0_8px_30px_rgba(15,23,42,0.08)]
+prose max-w-none
+prose-p:text-[15px] prose-p:leading-8 prose-p:text-slate-700
+prose-li:text-slate-700
+prose-strong:text-slate-900
+
+/* HEADINGS STYLE */
+prose-h1:bg-violet-100
+prose-h1:text-violet-900
+prose-h1:px-4
+prose-h1:py-3
+prose-h1:rounded-lg
+prose-h1:border-l-4
+prose-h1:border-violet-500
+prose-h1:mb-6
+
+prose-h2:bg-violet-50
+prose-h2:text-violet-800
+prose-h2:px-4
+prose-h2:py-2
+prose-h2:rounded-md
+prose-h2:border-l-4
+prose-h2:border-violet-400
+prose-h2:mt-8
+prose-h2:mb-4
+
+/* spacing between sections */
+prose-p:mb-4
+prose-li:mb-1
+
+/* TABLES */
+prose-table:border
+prose-table:border-gray-300
+prose-table:rounded-lg
+prose-th:bg-violet-600
+prose-th:text-white
+prose-th:text-xs
+prose-th:uppercase
+prose-th:tracking-wider
+prose-th:p-3
+
+prose-td:border
+prose-td:border-gray-200
+prose-td:p-3
+"
+  dangerouslySetInnerHTML={{ __html: prdHtml }}
+/></div>
       );
     }
 
