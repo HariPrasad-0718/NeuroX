@@ -874,13 +874,7 @@ await fetch("/api/save-generated-persona", {
     </div>
 
     <div className="mt-5 flex justify-end gap-3">
-      <button
-        onClick={handleGenerateInformationArchitecture}
-        disabled={isGeneratingIA || generating}
-        className="px-5 py-2.5 rounded-xl font-semibold transition border border-indigo-600 text-indigo-700 hover:bg-indigo-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {isGeneratingIA ? "Generating IA..." : "Generate Information Architecture"}
-      </button>
+      
       <button
         onClick={() => router.push(`/process-flow?projectId=${projectId}`)}
         className="px-5 py-2.5 rounded-xl font-semibold transition border border-[#702dff] text-[#702dff] hover:bg-[#702dff] hover:text-white"

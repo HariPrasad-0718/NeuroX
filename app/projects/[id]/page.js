@@ -1039,7 +1039,7 @@ const handleGenerateInformationArchitecture = async () => {
   const renderEmpathizeTemplateCard = (template, downloadableTemplateId, isCompleted) => {
     const media = EMPATHIZE_CARD_MEDIA[template.id] || EMPATHIZE_CARD_MEDIA["other-files"];
     const workspaceUrl = getWorkspaceUrl(template.name);
-    const topActionLabel = "Click here";
+    const topActionLabel = "Start";
     const primaryFooterLabel = template.id === "user-persona" ? "Use Basic Template" : "Use Standard Template";
     const uploadLabel = template.id === "empathy-map" ? "Upload Standard Template" : "Upload Templates";
     return (
