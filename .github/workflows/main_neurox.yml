@@ -21,22 +21,24 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build Next.js app
         run: npm run build
 
-      - name: Verify build output
-        run: ls -R .next
-
-      # ✅ IMPORTANT: keep full project (NO manual copying)
-      - name: Prepare deployment package
+      - name: Prepare deployment package (standalone)
         run: |
           mkdir -p deploy
-          cp -r .next deploy/
-          cp -r public deploy/
-          cp package.json deploy/
-          cp package-lock.json deploy/ || true
+
+          # Copy standalone server
+          cp -r .next/standalone/* deploy/
+
+          # Copy static assets
+          mkdir -p deploy/.next
+          cp -r .next/static deploy/.next/static
+
+          # Copy public assets
+          cp -r public deploy/public
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -54,11 +56,6 @@ jobs:
         with:
           name: node-app
           path: deploy
-
-      - name: Install production dependencies on Azure
-        run: |
-          cd deploy
-          npm install --production
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3

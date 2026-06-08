@@ -55,7 +55,7 @@ const securityHeaders = [
 
 const nextConfig = {
   devIndicators: false,
-
+output: "standalone",
 
   images: {
     remotePatterns: [
