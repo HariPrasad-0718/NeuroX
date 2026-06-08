@@ -55,7 +55,6 @@ const securityHeaders = [
 
 const nextConfig = {
   devIndicators: false,
-    output: "standalone",   // 👈 ADD ONLY THIS LINE
 
 
   images: {
