@@ -17,6 +17,46 @@ const IMAGES = [
   "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=400&h=400&fit=crop",
 ];
 
+const DEMO_EXPERTS = [
+  {
+    expertId: "demo-1",
+    name: "Sarah Johnson",
+    yearsOfExperience: 12,
+    skills: ["UX Research", "Service Design", "Journey Mapping"],
+  },
+  {
+    expertId: "demo-2",
+    name: "Michael Chen",
+    yearsOfExperience: 9,
+    skills: ["Product Strategy", "Design Thinking", "Workshop Facilitation"],
+  },
+  {
+    expertId: "demo-3",
+    name: "Emily Rodriguez",
+    yearsOfExperience: 11,
+    skills: ["Rapid Prototyping", "Usability Testing", "Interaction Design"],
+  },
+  {
+    expertId: "demo-4",
+    name: "Daniel Kim",
+    yearsOfExperience: 14,
+    skills: ["Enterprise UX", "Information Architecture", "Design Systems"],
+  },
+];
+
+function mapExperts(rawExperts, isDemoData = false) {
+  return rawExperts.map((expert, index) => ({
+    id: expert.expertId,
+    name: expert.name,
+    experience: `${expert.yearsOfExperience || 15} Years of Experience`,
+    skills: expert.skills?.length > 0 ? expert.skills : ["UX", "Design"],
+    image: IMAGES[index % IMAGES.length],
+    gradient: GRADIENTS[index % GRADIENTS.length],
+    apiData: isDemoData ? null : expert,
+    isRealData: !isDemoData,
+  }));
+}
+
 export function useExperts() {
   const [experts, setExperts] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -29,21 +69,18 @@ export function useExperts() {
     try {
       const response = await api.getExperts();
 
-      if (response.success && response.data) {
-        const mapped = response.data.map((expert, index) => ({
-          id: expert.expertId,
-          name: expert.name,
-          experience: `${expert.yearsOfExperience || 15} Years of Experience`,
-          skills: expert.skills?.length > 0 ? expert.skills : ["UX", "Design"],
-          image: IMAGES[index % IMAGES.length],
-          gradient: GRADIENTS[index % GRADIENTS.length],
-          apiData: expert,
-          isRealData: true,
-        }));
-        setExperts(mapped);
+      const apiExperts = response?.success && Array.isArray(response.data) ? response.data : [];
+
+      if (apiExperts.length > 0) {
+        setExperts(mapExperts(apiExperts));
+        return;
       }
+
+      // Keep the screen demo-friendly even when backend has no experts yet.
+      setExperts(mapExperts(DEMO_EXPERTS, true));
     } catch (err) {
-      setError(err.message);
+      setExperts(mapExperts(DEMO_EXPERTS, true));
+      setError(null);
     } finally {
       setIsLoading(false);
     }

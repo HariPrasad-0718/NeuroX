@@ -77,8 +77,12 @@ export default function ExpertsPage() {
                   <div className="flex flex-wrap gap-2 mb-5 justify-center">
                     {expert.skills.map((skill, i) => (<span key={i} className="px-3 py-1.5 bg-purple-50 text-purple-700 text-xs rounded-full border border-purple-100">{skill}</span>))}
                   </div>
-                  <button className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#702dff] text-white rounded-lg hover:bg-[#5a24cc] transition-colors" onClick={() => setBookingPopup({ isOpen: true, expert })}>
-                    <span className="text-sm">Book a Session</span><ArrowRight className="w-4 h-4" />
+                  <button
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#702dff] text-white rounded-lg hover:bg-[#5a24cc] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                    onClick={() => setBookingPopup({ isOpen: true, expert })}
+                    disabled={!expert.apiData?.expertId}
+                  >
+                    <span className="text-sm">{expert.apiData?.expertId ? "Book a Session" : "Demo Profile"}</span><ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
               </div>

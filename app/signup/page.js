@@ -69,93 +69,100 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-[#4a1a8f] via-[#6b2d9e] to-[#8b3faf] flex items-center justify-center p-4">
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-20 left-20 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-20 right-20 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />
+    <div className="relative min-h-screen overflow-hidden bg-slate-50 px-4 py-10 sm:px-6 lg:px-8">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-24 -left-20 h-72 w-72 rounded-full bg-indigo-200/40 blur-3xl" />
+        <div className="absolute top-1/3 -right-20 h-80 w-80 rounded-full bg-violet-200/30 blur-3xl" />
+        <div className="absolute -bottom-24 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-sky-100/60 blur-3xl" />
       </div>
 
-      <div className="relative z-10 w-full max-w-md">
-        <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-8">
-          <h2 className="text-2xl font-semibold text-gray-900 mb-2">Create your Neurox account</h2>
-          <p className="text-gray-600 mb-6">Sign up to access your workspace</p>
+      <div className="relative mx-auto grid w-full max-w-5xl items-stretch overflow-hidden rounded-3xl border border-indigo-100 bg-white shadow-[0_24px_64px_rgba(15,23,42,0.12)] lg:grid-cols-[1.05fr_1fr]">
+        <section className="hidden bg-gradient-to-br from-indigo-700 via-indigo-600 to-violet-600 p-10 text-white lg:flex lg:flex-col">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-100">Start With NeuroX</p>
+          <h1 className="mt-5 text-4xl font-bold leading-tight">Accelerate Innovation Through Agentic Design Thinking.</h1>
+        </section>
+
+        <section className="p-6 sm:p-8 md:p-10">
+          <div className="mb-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-500">Create Account</p>
+            <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">Get started with Neurox</h2>
+            <p className="mt-2 text-sm text-slate-600">Set up your profile to access your project workspace.</p>
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Name</label>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-slate-700">Name</label>
               <input
                 type="text"
                 value={formData.name}
                 onChange={(e) => onChange("name", e.target.value)}
-                className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#702dff]/30 focus:border-[#702dff]"
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
                 placeholder="Your full name"
                 autoComplete="name"
                 required
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-slate-700">Email</label>
               <input
                 type="email"
                 value={formData.email}
                 onChange={(e) => onChange("email", e.target.value)}
-                className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#702dff]/30 focus:border-[#702dff]"
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
                 placeholder="you@example.com"
                 autoComplete="email"
                 required
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-slate-700">Password</label>
               <input
                 type="password"
                 value={formData.password}
                 onChange={(e) => onChange("password", e.target.value)}
-                className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#702dff]/30 focus:border-[#702dff]"
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
                 placeholder="At least 8 characters"
                 autoComplete="new-password"
                 required
               />
-              <p className="text-xs text-gray-500 mt-1">Use uppercase, lowercase, and a number</p>
+              <p className="text-xs text-slate-500">Use uppercase, lowercase, and a number</p>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Role</label>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-slate-700">Role</label>
               <select
                 value={formData.role}
                 onChange={(e) => onChange("role", e.target.value)}
-                className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#702dff]/30 focus:border-[#702dff] bg-white"
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
               >
                 <option value="designer">Designer</option>
                 <option value="manager">Manager</option>
               </select>
             </div>
 
-            {error && (
-              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
-            )}
+            {error && <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3 bg-[#702dff] text-white rounded-lg font-medium hover:bg-[#5a24cc] transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-purple-500/30 disabled:opacity-70 disabled:cursor-not-allowed"
+              className="w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-70"
             >
               {isLoading ? "Creating account..." : "Create Account"}
             </button>
 
-            <p className="text-sm text-center text-gray-600">
+            <p className="text-center text-sm text-slate-600">
               Already have an account?{" "}
-              <Link href="/login" className="text-[#702dff] font-medium hover:underline">
+              <Link href="/login" className="font-semibold text-indigo-600 hover:text-indigo-700">
                 Sign in
               </Link>
             </p>
           </form>
-        </div>
-
-        <p className="text-center text-white/60 text-sm mt-6">© 2024 Neurox. All rights reserved.</p>
+        </section>
       </div>
+
+      <p className="relative mt-6 text-center text-xs text-slate-500">© 2024 Neurox. All rights reserved.</p>
     </div>
   );
 }

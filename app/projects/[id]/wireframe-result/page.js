@@ -526,7 +526,6 @@ export default function WireframeResultPage() {
   const [brdError, setBrdError] = useState("");
   const [brdData, setBrdData] = useState(null);
   const [isDownloadingBrd, setIsDownloadingBrd] = useState(false);
-  const [brdShowRaw, setBrdShowRaw] = useState(false);
   const [brdCollapsed, setBrdCollapsed] = useState({});
   const [isPrdModalOpen, setIsPrdModalOpen] = useState(false);
   const [prdLoading, setPrdLoading] = useState(false);
@@ -608,7 +607,6 @@ export default function WireframeResultPage() {
 
     setBrdLoading(true);
     setBrdError("");
-    setBrdShowRaw(false);
     setBrdCollapsed({});
 
     try {
@@ -831,6 +829,15 @@ export default function WireframeResultPage() {
     { key: "draft_assumptions",         num: "14", title: "Draft Assumptions",          type: "tags" },
   ];
 
+  const BRD_META_FIELDS = [
+    { key: "project_name", label: "Project" },
+    { key: "project_manager", label: "Project Manager" },
+    { key: "date_submitted", label: "Submitted" },
+    { key: "version", label: "Version" },
+    { key: "status", label: "Status" },
+    { key: "department", label: "Department" },
+  ];
+
   // Resolve brd object from API response
   const brdDoc = (() => {
     if (!brdData) return null;
@@ -869,7 +876,7 @@ export default function WireframeResultPage() {
   const renderBrdContent = (value, type) => {
     if (type === "prose") {
       return (
-        <p className="text-[13px] leading-[1.9] text-gray-700 whitespace-pre-wrap">
+        <p className="whitespace-pre-wrap text-[15px] leading-8 text-slate-700">
           {String(value || "")}
         </p>
       );
@@ -878,49 +885,63 @@ export default function WireframeResultPage() {
     if (type === "tags") {
       if (!Array.isArray(value)) return null;
       return (
-        <div className="flex flex-wrap gap-2">
+        <ul className="space-y-2">
           {value.map((item, i) => (
-            <span
+            <li
               key={i}
-              className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700"
+              className="flex items-start gap-3 rounded-md border border-slate-200 bg-slate-50 px-3.5 py-2.5"
             >
-              {String(item)}
-            </span>
+              <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-500" />
+              <span className="text-[14px] leading-7 text-slate-700">{String(item)}</span>
+            </li>
           ))}
-        </div>
+        </ul>
       );
     }
 
     if (type === "requirements") {
       if (!Array.isArray(value)) return null;
       return (
-        <div className="space-y-2">
+        <div className="overflow-x-auto rounded-md border border-slate-200">
+          <table className="w-full border-collapse text-left text-[13px] text-slate-700">
+            <thead>
+              <tr className="bg-slate-800 text-[11px] uppercase tracking-[0.14em] text-slate-100">
+                <th className="px-4 py-2.5">Requirement ID</th>
+                <th className="px-4 py-2.5">Requirement Statement</th>
+                <th className="px-4 py-2.5">Priority</th>
+              </tr>
+            </thead>
+            <tbody>
           {value.map((line, i) => {
             const parts = String(line || "").split("|").map((p) => p.trim());
             const id   = parts[0] || `BR-${String(i + 1).padStart(3, "0")}`;
             const desc = parts[1] || "";
             const pri  = (parts[2] || "").replace(/priority:/i, "").trim();
             const priColor =
-              pri.toLowerCase() === "high"   ? "border-red-300 bg-red-50 text-red-700" :
-              pri.toLowerCase() === "medium" ? "border-amber-300 bg-amber-50 text-amber-700" :
-                                               "border-green-300 bg-green-50 text-green-700";
+              pri.toLowerCase() === "high"   ? "bg-red-100 text-red-700" :
+              pri.toLowerCase() === "medium" ? "bg-amber-100 text-amber-700" :
+                                               "bg-emerald-100 text-emerald-700";
             return (
-              <div
+              <tr
                 key={i}
-                className="flex flex-wrap items-start gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5"
+                className={i % 2 === 0 ? "bg-white" : "bg-slate-50/60"}
               >
-                <code className="shrink-0 rounded bg-gray-900 px-2 py-0.5 text-[10px] font-bold text-white">
-                  {id}
-                </code>
-                <span className="flex-1 text-[13px] text-gray-700">{desc || "—"}</span>
-                {pri && (
-                  <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${priColor}`}>
-                    {pri}
-                  </span>
-                )}
-              </div>
+                <td className="border-t border-slate-200 px-4 py-3 font-semibold text-slate-800">{id}</td>
+                <td className="border-t border-slate-200 px-4 py-3 leading-7">{desc || "-"}</td>
+                <td className="border-t border-slate-200 px-4 py-3">
+                  {pri ? (
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase ${priColor}`}>
+                      {pri}
+                    </span>
+                  ) : (
+                    "-"
+                  )}
+                </td>
+              </tr>
             );
           })}
+            </tbody>
+          </table>
         </div>
       );
     }
@@ -929,16 +950,16 @@ export default function WireframeResultPage() {
       if (!Array.isArray(value)) return null;
       const cols = ["Metric", "Baseline", "Target", "Measurement", "Review"];
       return (
-        <div className="overflow-x-auto rounded-lg border border-gray-200">
-          <table className="w-full text-left text-[12px] text-gray-700">
-            <thead className="bg-gray-50 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-              <tr>{cols.map((h) => <th key={h} className="border-b border-gray-200 px-4 py-2">{h}</th>)}</tr>
+        <div className="overflow-x-auto rounded-md border border-slate-200">
+          <table className="w-full border-collapse text-left text-[13px] text-slate-700">
+            <thead className="bg-slate-800 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-100">
+              <tr>{cols.map((h) => <th key={h} className="px-4 py-2.5">{h}</th>)}</tr>
             </thead>
             <tbody>
               {value.map((item, i) => (
-                <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50/60"}>
+                <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-slate-50/60"}>
                   {cols.map((lbl) => (
-                    <td key={lbl} className="border-b border-gray-100 px-4 py-2">
+                    <td key={lbl} className="border-t border-slate-200 px-4 py-3">
                       {getLabelVal(item, lbl)}
                     </td>
                   ))}
@@ -954,16 +975,16 @@ export default function WireframeResultPage() {
       if (!Array.isArray(value)) return null;
       const cols = ["Constraint", "Description", "Impact", "Mitigation"];
       return (
-        <div className="overflow-x-auto rounded-lg border border-gray-200">
-          <table className="w-full text-left text-[12px] text-gray-700">
-            <thead className="bg-gray-50 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-              <tr>{cols.map((h) => <th key={h} className="border-b border-gray-200 px-4 py-2">{h}</th>)}</tr>
+        <div className="overflow-x-auto rounded-md border border-slate-200">
+          <table className="w-full border-collapse text-left text-[13px] text-slate-700">
+            <thead className="bg-slate-800 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-100">
+              <tr>{cols.map((h) => <th key={h} className="px-4 py-2.5">{h}</th>)}</tr>
             </thead>
             <tbody>
               {value.map((item, i) => (
-                <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50/60"}>
+                <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-slate-50/60"}>
                   {cols.map((lbl) => (
-                    <td key={lbl} className="border-b border-gray-100 px-4 py-2">
+                    <td key={lbl} className="border-t border-slate-200 px-4 py-3">
                       {getConstraintVal(item, lbl)}
                     </td>
                   ))}
@@ -978,13 +999,14 @@ export default function WireframeResultPage() {
     if (type === "editable") {
       if (!Array.isArray(value)) return null;
       return (
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {value.map((item, i) => (
-            <input
+            <p
               key={i}
-              defaultValue={String(item || "")}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-[13px] text-gray-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
-            />
+              className="rounded-md border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-[14px] leading-7 text-slate-700"
+            >
+              {String(item || "-")}
+            </p>
           ))}
         </div>
       );
@@ -992,24 +1014,24 @@ export default function WireframeResultPage() {
 
     if (type === "costtable") {
       return (
-        <div className="overflow-x-auto rounded-lg border border-gray-200">
-          <table className="w-full text-left text-[12px] text-gray-700">
-            <thead className="bg-gray-50">
+        <div className="overflow-x-auto rounded-md border border-slate-200">
+          <table className="w-full border-collapse text-left text-[13px] text-slate-700">
+            <thead className="bg-slate-800 text-[11px] uppercase tracking-[0.14em] text-slate-100">
               <tr>
-                <th className="border-b border-gray-200 px-4 py-2 font-semibold">Cost</th>
-                <th className="border-b border-gray-200 px-4 py-2 font-semibold">Benefit</th>
+                <th className="px-4 py-2.5 font-semibold">Cost</th>
+                <th className="px-4 py-2.5 font-semibold">Benefit</th>
               </tr>
             </thead>
             <tbody>
               {[0, 1, 2].map((row) => (
-                <tr key={row} className={row % 2 === 0 ? "bg-white" : "bg-gray-50/60"}>
-                  <td className="border-b border-gray-100 px-4 py-3" contentEditable suppressContentEditableWarning />
-                  <td className="border-b border-gray-100 px-4 py-3" contentEditable suppressContentEditableWarning />
+                <tr key={row} className={row % 2 === 0 ? "bg-white" : "bg-slate-50/60"}>
+                  <td className="border-t border-slate-200 px-4 py-3">-</td>
+                  <td className="border-t border-slate-200 px-4 py-3">-</td>
                 </tr>
               ))}
-              <tr className="bg-gray-100">
-                <td className="px-4 py-2 font-semibold">Total Cost:</td>
-                <td className="px-4 py-2 font-semibold">Expected ROI:</td>
+              <tr className="border-t border-slate-200 bg-slate-100">
+                <td className="px-4 py-2.5 font-semibold">Total Cost:</td>
+                <td className="px-4 py-2.5 font-semibold">Expected ROI:</td>
               </tr>
             </tbody>
           </table>
@@ -1018,7 +1040,7 @@ export default function WireframeResultPage() {
     }
 
     return (
-      <p className="text-[13px] leading-[1.9] text-gray-700 whitespace-pre-wrap">
+      <p className="whitespace-pre-wrap text-[15px] leading-8 text-slate-700">
         {String(value || "")}
       </p>
     );
@@ -1251,34 +1273,29 @@ export default function WireframeResultPage() {
                 className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 px-4 pb-10 pt-8"
                 onClick={() => setIsBrdModalOpen(false)}
               >
-                {/* Modal shell — max-w-4xl gives A4-ish width */}
                 <div
-                  className="w-full max-w-4xl overflow-hidden rounded-xl border border-gray-300 bg-white shadow-2xl"
+                  className="w-full max-w-6xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {/* ── Title bar ── */}
-                  <div className="flex items-center justify-between bg-gray-900 px-5 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-lg leading-none">📋</span>
-                      <span className="text-sm font-semibold text-white">BRD Generator</span>
-                      <span className="rounded border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-gray-300">
-                        Agent5i Powered
-                      </span>
+                  <div className="flex items-center justify-between border-b border-gray-200 bg-white px-5 py-4">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-indigo-500">Generated Document</p>
+                      <h3 className="text-sm font-semibold text-gray-900">Business Requirements Document</h3>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={handleDownloadBrdDoc}
                         disabled={!brdDoc || isDownloadingBrd}
-                        className="inline-flex h-8 items-center gap-1.5 rounded border border-white/20 bg-white/10 px-3 text-xs font-semibold text-white hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40 transition"
+                        className="inline-flex h-9 items-center gap-2 rounded-md border border-indigo-600 bg-indigo-600 px-3 text-xs font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
                       >
-                        <Download className="h-3.5 w-3.5" />
+                        <Download className="h-4 w-4" />
                         {isDownloadingBrd ? "Preparing…" : "Download Word"}
                       </button>
                       <button
                         type="button"
                         onClick={() => setIsBrdModalOpen(false)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded border border-white/20 bg-white/10 text-white hover:bg-white/20 transition"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-600 transition hover:bg-gray-50"
                         aria-label="Close BRD modal"
                       >
                         <X className="h-4 w-4" />
@@ -1286,77 +1303,62 @@ export default function WireframeResultPage() {
                     </div>
                   </div>
 
-                  {/* ── Document body ── */}
-                  <div className="max-h-[84vh] overflow-y-auto bg-gray-100 px-6 py-6">
+                  <div className="max-h-[84vh] overflow-y-auto bg-[#e8ebf0] px-6 py-6">
                     {brdLoading ? (
-                      /* Loading state */
-                      <div className="flex flex-col items-center gap-3 rounded-xl border border-gray-200 bg-white py-16 text-center shadow-sm">
-                        <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-200 border-t-indigo-600" />
-                        <p className="text-sm text-gray-500">Generating BRD document…</p>
+                      <div className="flex flex-col items-center gap-3 rounded-xl border border-slate-200 bg-white py-16 text-center shadow-sm">
+                        <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-slate-700" />
+                        <p className="text-sm text-slate-500">Generating BRD document…</p>
                       </div>
                     ) : brdError ? (
-                      /* Error state */
                       <div className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
                         {brdError}
                       </div>
                     ) : brdDoc ? (
-                      /* ── Paper document ── */
-                      <div className="mx-auto max-w-[760px] rounded-lg border border-gray-300 bg-white shadow-[0_6px_28px_rgba(0,0,0,0.10)]">
-
-                        {/* Document cover */}
-                        <div className="rounded-t-lg border-b border-gray-200 bg-gray-900 px-10 py-10 text-center">
-                          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-gray-400">
-                            Business Requirements Document
+                      <article className="formal-doc mx-auto max-w-[920px] overflow-hidden border border-slate-300 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.18)]">
+                        <header className="doc-cover border-b border-slate-200 px-12 py-12">
+                          <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                            Business Document
                           </p>
-                          <h2 className="text-[22px] font-bold leading-snug text-white">
-                            {brdMeta?.project_name || "Untitled Project"}
+                          <h2 className="text-[34px] font-bold leading-tight text-slate-900">
+                            Business Requirements Document
                           </h2>
+                          <p className="mt-3 text-[18px] text-slate-700">
+                            {brdMeta?.project_name || "Untitled Project"}
+                          </p>
                           {brdMeta && (
-                            <div className="mt-4 flex flex-wrap justify-center gap-3 text-[11px] text-gray-400">
-                              {brdMeta.version     && <span>v{brdMeta.version}</span>}
-                              {brdMeta.date_submitted && <><span>·</span><span>{brdMeta.date_submitted}</span></>}
+                            <div className="mt-4 flex flex-wrap gap-3 text-[12px] text-slate-500">
+                              {brdMeta.date_submitted && <span>Submitted: {brdMeta.date_submitted}</span>}
+                              {brdMeta.version && <span>Version: {brdMeta.version}</span>}
                               {brdMeta.status && (
-                                <><span>·</span>
-                                <span className="rounded-full bg-emerald-900/40 px-2.5 py-0.5 text-emerald-400">
-                                  {brdMeta.status}
-                                </span></>
+                                <span>Status: {brdMeta.status}</span>
                               )}
                             </div>
                           )}
-                        </div>
+                        </header>
 
-                        {/* Meta strip */}
                         {brdMeta && (
-                          <div className="border-b border-gray-200 bg-gray-50 px-10 py-5">
-                            <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
-                              {[
-                                { key: "project_name",    label: "📁 Project" },
-                                { key: "project_manager", label: "👤 PM" },
-                                { key: "date_submitted",  label: "📅 Date" },
-                                { key: "version",         label: "🏷 Version" },
-                                { key: "status",          label: "📌 Status" },
-                                { key: "department",      label: "🏢 Dept" },
-                              ].map((f) => (
-                                <div key={f.key}>
-                                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.13em] text-gray-400">
-                                    {f.label}
+                          <section className="border-b border-slate-200 bg-slate-50 px-12 py-7">
+                            <h4 className="mb-4 text-[12px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                              Document Metadata
+                            </h4>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                              {BRD_META_FIELDS.map((field) => (
+                                <div key={field.key} className="rounded-md border border-slate-200 bg-white px-3.5 py-3">
+                                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                                    {field.label}
                                   </p>
-                                  <input
-                                    type="text"
-                                    defaultValue={String(brdMeta[f.key] || "")}
-                                    placeholder="[TBC]"
-                                    className="w-full rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
-                                  />
+                                  <p className="mt-1 text-sm font-medium text-slate-700">
+                                    {String(brdMeta[field.key] || "Not specified")}
+                                  </p>
                                 </div>
                               ))}
                             </div>
-                          </div>
+                          </section>
                         )}
 
-                        {/* Section cards */}
-                        <div className="divide-y divide-gray-100">
+                        <div className="divide-y divide-slate-100 bg-white">
                           {brdActiveSections.length === 0 ? (
-                            <p className="px-10 py-10 text-center text-sm text-gray-400">
+                            <p className="px-12 py-10 text-center text-sm text-slate-400">
                               No BRD sections found in the agent response.
                             </p>
                           ) : (
@@ -1364,26 +1366,24 @@ export default function WireframeResultPage() {
                               const collapsed = Boolean(brdCollapsed[section.key]);
                               return (
                                 <div key={section.key}>
-                                  {/* Section header row — clickable to collapse */}
                                   <button
                                     type="button"
                                     onClick={() => toggleBrdSection(section.key)}
-                                    className="flex w-full items-center gap-4 px-10 py-4 text-left transition-colors hover:bg-gray-50"
+                                    className="flex w-full items-center gap-4 px-12 py-5 text-left transition-colors hover:bg-slate-50"
                                   >
-                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-900 text-[11px] font-bold text-white">
+                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-slate-100 text-[11px] font-bold text-slate-700">
                                       {section.num}
                                     </span>
-                                    <span className="flex-1 text-[14px] font-semibold text-gray-800">
+                                    <span className="flex-1 text-[17px] font-semibold tracking-tight text-slate-800">
                                       {section.title}
                                     </span>
-                                    <span className="shrink-0 text-xs text-gray-400">
-                                      {collapsed ? "▶" : "▼"}
+                                    <span className="shrink-0 text-xs text-slate-400">
+                                      {collapsed ? "+" : "−"}
                                     </span>
                                   </button>
 
-                                  {/* Section body */}
                                   {!collapsed && (
-                                    <div className="border-t border-gray-100 bg-white px-10 pb-7 pt-5">
+                                    <div className="border-t border-slate-100 bg-white px-12 pb-8 pt-5">
                                       {renderBrdContent(brdDoc[section.key], section.type)}
                                     </div>
                                   )}
@@ -1393,25 +1393,12 @@ export default function WireframeResultPage() {
                           )}
                         </div>
 
-                        {/* Raw JSON toggle */}
-                        <div className="rounded-b-lg border-t border-gray-200 bg-gray-50 px-10 py-4">
-                          <button
-                            type="button"
-                            onClick={() => setBrdShowRaw((prev) => !prev)}
-                            className="inline-flex items-center gap-2 rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-100 transition"
-                          >
-                            <span>{"{ }"}</span>
-                            {brdShowRaw ? "Hide Raw JSON" : "View Raw JSON"}
-                          </button>
-                          {brdShowRaw && (
-                            <pre className="mt-3 overflow-auto rounded-lg bg-gray-950 p-4 text-[11px] leading-5 text-gray-200">
-                              {JSON.stringify(brdDoc, null, 2)}
-                            </pre>
-                          )}
+                        <div className="border-t border-slate-200 bg-slate-50 px-12 py-4 text-xs text-slate-500">
+                          Document rendered in stakeholder review format.
                         </div>
-                      </div>
+                      </article>
                     ) : (
-                      <div className="rounded-xl border border-gray-200 bg-white px-6 py-10 text-center text-sm text-gray-400 shadow-sm">
+                      <div className="rounded-xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-400 shadow-sm">
                         No BRD data available.
                       </div>
                     )}
@@ -1422,21 +1409,24 @@ export default function WireframeResultPage() {
 
             {isPrdModalOpen && (
               <div
-                className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"
+                className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-8"
                 onClick={() => setIsPrdModalOpen(false)}
               >
                 <div
                   className="w-full max-w-6xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
                   onClick={(event) => event.stopPropagation()}
                 >
-                  <div className="flex items-center justify-between border-b border-slate-200 bg-slate-900 px-5 py-4">
-                    <h3 className="text-base font-semibold text-white">Generated PRD Document</h3>
+                  <div className="flex items-center justify-between border-b border-gray-200 bg-white px-5 py-4">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-indigo-500">Generated Document</p>
+                      <h3 className="text-base font-semibold text-gray-900">Product Requirements Document</h3>
+                    </div>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={handleDownloadPrdDoc}
                         disabled={!prdHtml || isDownloadingPrd}
-                        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-white/20 bg-white/10 px-3 text-xs font-semibold text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-indigo-600 bg-indigo-600 px-3 text-xs font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <Download className="h-4 w-4" />
                         {isDownloadingPrd ? "Preparing..." : "Download Word"}
@@ -1444,7 +1434,7 @@ export default function WireframeResultPage() {
                       <button
                         type="button"
                         onClick={() => setIsPrdModalOpen(false)}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/20 bg-white/10 text-white transition hover:bg-white/20"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-600 transition hover:bg-gray-50"
                         aria-label="Close PRD modal"
                       >
                         <X className="h-4 w-4" />
@@ -1452,7 +1442,7 @@ export default function WireframeResultPage() {
                     </div>
                   </div>
 
-                  <div className="max-h-[76vh] overflow-auto bg-slate-50 p-5">
+                  <div className="max-h-[84vh] overflow-auto bg-[#e8ebf0] p-5">
                     {prdLoading ? (
                       <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
                         Generating PRD document from project data...
@@ -1466,12 +1456,20 @@ export default function WireframeResultPage() {
                         )}
 
                         {prdHtml ? (
-                          <div className="mx-auto max-w-[1100px] rounded-[18px] border border-[#dbe1ea] bg-white p-8 shadow-[0_8px_30px_rgba(15,23,42,0.08)]">
-                            <div
-                              className="prose prose-slate max-w-none prose-h1:text-center prose-h1:border-b prose-h1:border-violet-600 prose-h1:pb-4 prose-h1:text-[30px] prose-h2:rounded-lg prose-h2:border-l-[6px] prose-h2:border-violet-600 prose-h2:bg-violet-50 prose-h2:px-4 prose-h2:py-3 prose-h2:text-violet-900 prose-table:border prose-table:border-gray-300 prose-th:bg-violet-700 prose-th:text-white prose-th:text-[12px] prose-th:uppercase prose-th:tracking-wide prose-td:align-top"
-                              dangerouslySetInnerHTML={{ __html: prdHtml }}
-                            />
-                          </div>
+                          <article className="formal-doc mx-auto max-w-[920px] overflow-hidden border border-slate-300 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.18)]">
+                            <header className="doc-cover border-b border-slate-200 px-12 py-12">
+                              <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                                Product Document
+                              </p>
+                              <h2 className="text-[34px] font-bold leading-tight text-slate-900">
+                                Product Requirements Document
+                              </h2>
+                              <p className="mt-3 text-[16px] text-slate-700">
+                                Structured output optimized for stakeholder review and publication.
+                              </p>
+                            </header>
+                            <div className="doc-html px-12 py-10" dangerouslySetInnerHTML={{ __html: prdHtml }} />
+                          </article>
                         ) : (
                           <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
                             No PRD output available.
@@ -1483,6 +1481,127 @@ export default function WireframeResultPage() {
                 </div>
               </div>
             )}
+
+            <style jsx global>{`
+              .formal-doc {
+                font-family: Georgia, "Times New Roman", serif;
+                color: #1f2937;
+              }
+
+              .doc-cover {
+                background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+              }
+
+              .doc-html {
+                counter-reset: section;
+                font-family: Georgia, "Times New Roman", serif;
+                line-height: 1.9;
+                color: #334155;
+              }
+
+              .doc-html > :first-child {
+                margin-top: 0;
+              }
+
+              .doc-html h1 {
+                margin: 0 0 20px;
+                border-bottom: 2px solid #0f172a;
+                padding-bottom: 12px;
+                font-size: 33px;
+                line-height: 1.2;
+                letter-spacing: -0.02em;
+                color: #0f172a;
+                text-align: center;
+                font-weight: 700;
+              }
+
+              .doc-html h2 {
+                margin: 34px 0 14px;
+                border-bottom: 1px solid #d1d5db;
+                padding-bottom: 7px;
+                font-size: 23px;
+                line-height: 1.3;
+                color: #111827;
+                font-weight: 700;
+              }
+
+              .doc-html h3 {
+                margin: 24px 0 10px;
+                font-size: 18px;
+                line-height: 1.4;
+                color: #1f2937;
+                font-weight: 700;
+              }
+
+              .doc-html h4 {
+                margin: 18px 0 8px;
+                font-size: 15px;
+                line-height: 1.5;
+                color: #334155;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+              }
+
+              .doc-html p {
+                margin: 0 0 14px;
+                font-size: 16px;
+                color: #334155;
+              }
+
+              .doc-html ul,
+              .doc-html ol {
+                margin: 8px 0 16px;
+                padding-left: 22px;
+              }
+
+              .doc-html li {
+                margin: 0 0 6px;
+                font-size: 15px;
+                color: #334155;
+              }
+
+              .doc-html table {
+                width: 100%;
+                border-collapse: collapse;
+                margin: 22px 0;
+                border: 1px solid #cbd5e1;
+                font-size: 14px;
+              }
+
+              .doc-html thead {
+                background: #0f172a;
+                color: #f8fafc;
+              }
+
+              .doc-html th,
+              .doc-html td {
+                border: 1px solid #cbd5e1;
+                padding: 10px 12px;
+                vertical-align: top;
+              }
+
+              .doc-html th {
+                font-size: 11px;
+                text-transform: uppercase;
+                letter-spacing: 0.09em;
+                text-align: left;
+              }
+
+              .doc-html blockquote {
+                margin: 16px 0;
+                border-left: 4px solid #94a3b8;
+                background: #f8fafc;
+                padding: 10px 14px;
+                color: #475569;
+              }
+
+              .doc-html hr {
+                margin: 22px 0;
+                border: none;
+                border-top: 1px solid #d1d5db;
+              }
+            `}</style>
 
           </>
         )}

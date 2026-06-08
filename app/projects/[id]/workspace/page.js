@@ -507,11 +507,12 @@ if (questionSets.length === 0) {
   };
 
   return (
-    <div className="bg-white min-h-screen">
+    <div className="min-h-screen bg-slate-50">
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
 
       {/* Persona Tabs */}
-      <div className="mb-4 border-b border-gray-200 pb-2">
-        <div className="flex gap-2">
+      <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="flex flex-wrap gap-2">
           {personas.map((p) => (
             <button
               key={p.persona_id}
@@ -528,7 +529,7 @@ if (questionSets.length === 0) {
         </div>
 
         {activePersona && (
-          <div className="group relative mt-3 w-full overflow-hidden rounded-2xl border border-gray-200 bg-white/85 px-5 py-5 shadow-sm backdrop-blur-sm transition duration-300 hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md">
+          <div className="group relative mt-4 w-full overflow-hidden rounded-2xl border border-gray-200 bg-white/85 px-5 py-5 shadow-sm backdrop-blur-sm transition duration-300 hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md sm:px-6 sm:py-6">
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-indigo-50/40 via-transparent to-transparent" />
             <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-indigo-100/35 blur-3xl" />
             <div className="pointer-events-none absolute left-1/3 top-0 h-px w-28 bg-white/80" />
@@ -644,7 +645,7 @@ if (questionSets.length === 0) {
       </div>
 
       {/* Interviewee Tabs + Plus Button */}
-      <div className="flex items-center gap-2 mb-4 overflow-x-auto flex-wrap">
+      <div className="mb-6 flex flex-wrap items-center gap-2 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
         {interviewees.map((i) => (
           <div key={i.interviewee_id} className="relative">
             <button
@@ -700,7 +701,7 @@ if (questionSets.length === 0) {
             setShowForm(!showForm);
             setSelectedInterviewee(null);
           }}
-          className="ml-2 w-9 h-9 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-xl font-semibold shadow-sm transition"
+          className="ml-1 flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-xl font-semibold shadow-sm transition hover:bg-gray-200"
         >
           +
         </button>
@@ -708,10 +709,10 @@ if (questionSets.length === 0) {
 
       {/* ✅ INLINE FORM - replaces modal, appears below + button */}
       {showForm && (
-        <div className="mb-6 p-5 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
-          <h3 className="font-semibold text-base mb-4 text-gray-800">Add Interviewee</h3>
+        <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
+          <h3 className="mb-4 text-base font-semibold text-gray-800">Add Interviewee</h3>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {[
               { key: "name", label: "Name" },
               { key: "gender", label: "Gender" },
@@ -733,7 +734,7 @@ if (questionSets.length === 0) {
             ))}
           </div>
 
-          <div className="flex gap-3 mt-4">
+          <div className="mt-5 flex gap-3">
             <button
               onClick={handleAddInterviewee}
               className="px-5 py-2 bg-indigo-500 text-white rounded-md text-sm hover:bg-indigo-600"
@@ -763,7 +764,7 @@ if (questionSets.length === 0) {
 
       {/* Interviewee Details */}
       {selectedInterviewee && (
-        <div className="mt-6 relative rounded-xl border border-gray-200 bg-white/80 p-4 backdrop-blur-sm">
+        <div className="relative mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm backdrop-blur-sm sm:p-6">
           {/* Close Button */}
           <button
             onClick={() => setSelectedInterviewee(null)}
@@ -783,7 +784,7 @@ if (questionSets.length === 0) {
             </svg>
           </button>
 
-          <div className="rounded-lg border border-gray-200 bg-gradient-to-r from-indigo-50/60 to-white px-3 py-2.5">
+          <div className="rounded-xl border border-gray-200 bg-gradient-to-r from-indigo-50/60 to-white px-4 py-3">
             <div className="flex flex-wrap items-center gap-2 pr-8 text-sm leading-snug">
               <div className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
                 <svg
@@ -814,7 +815,7 @@ if (questionSets.length === 0) {
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+          <div className="mt-5 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
             {[
               { label: "Gender", value: selectedInterviewee.gender },
               { label: "Education", value: selectedInterviewee.education },
@@ -836,7 +837,7 @@ if (questionSets.length === 0) {
 
       {/* Questions */}
       {selectedInterviewee && (
-        <div className="mt-8 max-w-5xl">
+        <div className="mt-6">
           <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-6 shadow-sm sm:p-8">
             <div className="flex flex-col gap-4 border-b border-gray-200 pb-5 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -879,7 +880,7 @@ if (questionSets.length === 0) {
                     {questionSets[0].questions.map((q, index) => (
                       <div
                         key={`${questionSets[0].interviewId}-${index}`}
-                        className="rounded-xl border border-gray-200 bg-white px-4 py-4 shadow-sm"
+                        className="rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-sm"
                       >
                         <div className="flex gap-4">
                           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-semibold text-indigo-700">
@@ -1039,7 +1040,7 @@ if (questionSets.length === 0) {
                     <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Previous Sets</p>
                     <div className="space-y-3">
                       {questionSets.slice(1).map((setItem) => (
-                        <div key={setItem.interviewId} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                        <div key={setItem.interviewId} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
                           <p className="mb-3 text-xs text-gray-500">
                             {new Date(setItem.createdAt).toLocaleString()}
                           </p>
@@ -1062,6 +1063,7 @@ if (questionSets.length === 0) {
         </div>
       )}
 
+      </div>
     </div>
   );
 }

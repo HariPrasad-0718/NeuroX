@@ -21,7 +21,6 @@ const securityHeaders = [
     key: "Referrer-Policy",
     value: "strict-origin-when-cross-origin",
   },
-  // Restrict access to browser features
   {
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
@@ -55,6 +54,8 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
+  devIndicators: false,
+
   images: {
     remotePatterns: [
       {
