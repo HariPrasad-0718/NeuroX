@@ -21,24 +21,22 @@ jobs:
           cache: npm
 
       - name: Install dependencies
+        working-directory: neurox-nextjs
         run: npm install
 
       - name: Build Next.js app
+        working-directory: neurox-nextjs
         run: npm run build
 
-      - name: Prepare deployment package (standalone)
+      - name: Prepare deployment package
         run: |
           mkdir -p deploy
 
-          # Copy standalone server
-          cp -r .next/standalone/* deploy/
-
-          # Copy static assets
+          cp -r neurox-nextjs/.next/standalone/* deploy/
           mkdir -p deploy/.next
-          cp -r .next/static deploy/.next/static
+          cp -r neurox-nextjs/.next/static deploy/.next/static
 
-          # Copy public assets
-          cp -r public deploy/public
+          if [ -d neurox-nextjs/public ]; then cp -r neurox-nextjs/public deploy/public; fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

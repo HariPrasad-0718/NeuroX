@@ -56,6 +56,10 @@ const securityHeaders = [
 const nextConfig = {
   devIndicators: false,
 output: "standalone",
+experimental: {
+    outputFileTracingRoot: __dirname,
+  },
+  devIndicators: false,
 
   images: {
     remotePatterns: [
