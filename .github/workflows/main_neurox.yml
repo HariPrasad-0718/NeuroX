@@ -34,17 +34,20 @@ jobs:
           mkdir -p deploy/.next
           cp -r .next/static deploy/.next/static
 
-          if [ -d public ]; then cp -r public deploy/public; fi
-          - name: Debug deploy folder
-            run: |
-              echo "=== DEPLOY CONTENTS ==="
-              ls -R deploy
+          if [ -d public ]; then
+            cp -r public deploy/public
+          fi
 
-                - name: Upload artifact
-                  uses: actions/upload-artifact@v4
-                  with:
-                    name: node-app
-                    path: deploy
+      - name: Debug deploy folder
+        run: |
+          echo "=== DEPLOY CONTENTS ==="
+          ls -R deploy
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-app
+          path: deploy
 
   deploy:
     runs-on: ubuntu-latest
