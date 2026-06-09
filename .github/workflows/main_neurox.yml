@@ -26,25 +26,26 @@ jobs:
       - name: Build Next.js app
         run: npm run build
 
-      - name: Verify build output
-        run: ls -R .next
+      - name: Verify standalone build
+        run: ls -R .next/standalone
 
       - name: Prepare deployment package
         run: |
+          rm -rf deploy
           mkdir -p deploy
 
-          # Copy full Next.js build
-          cp -r .next deploy/.next
+          # REQUIRED for Azure
+          cp -r .next/standalone/* deploy/
 
-          # Copy public folder if exists
+          # Static assets
+          mkdir -p deploy/.next
+          cp -r .next/static deploy/.next/static
+
+          # Public folder (safe check)
           if [ -d public ]; then cp -r public deploy/public; fi
 
-          # Copy package files
-          cp package.json deploy/
-          cp package-lock.json deploy/
-
-          # Copy server entry if exists
-          cp server.js deploy/ || true
+          echo "=== DEPLOY FOLDER CONTENTS ==="
+          ls -R deploy
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
