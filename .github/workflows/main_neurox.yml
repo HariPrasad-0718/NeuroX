@@ -33,14 +33,17 @@ jobs:
         run: |
           mkdir -p deploy
 
-          # REQUIRED for standalone Next.js
+          # REQUIRED for Next.js standalone
           cp -r .next/standalone deploy/
-          cp -r .next/static deploy/.next/static
+
+          # IMPORTANT: create folder before copying static
+          mkdir -p deploy/.next/static
+          cp -r .next/static/* deploy/.next/static/
 
           # public folder (safe)
           if [ -d public ]; then cp -r public deploy/public; fi
 
-          # package files
+          # required runtime files
           cp package.json deploy/
           cp package-lock.json deploy/
 
