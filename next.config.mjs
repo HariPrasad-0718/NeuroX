@@ -40,7 +40,7 @@ const securityHeaders = [
 
 const nextConfig = {
   output: "standalone",   // IMPORTANT for Azure
-
+  serverExternalPackages: ["mssql"],
   devIndicators: false,
 
   images: {

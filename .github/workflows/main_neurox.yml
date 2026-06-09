@@ -14,7 +14,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -26,21 +26,26 @@ jobs:
       - name: Build Next.js app
         run: npm run build
 
+      - name: Verify build output
+        run: ls -R .next
+
       - name: Prepare deployment package
         run: |
           mkdir -p deploy
 
+          # IMPORTANT: standalone output
           cp -r .next/standalone/* deploy/
+
+          # required runtime folders
           mkdir -p deploy/.next
           cp -r .next/static deploy/.next/static
 
+          # public folder (safe check)
           if [ -d public ]; then
             cp -r public deploy/public
           fi
 
-      - name: Debug deploy folder
-        run: |
-          echo "=== DEPLOY CONTENTS ==="
+          echo "==== DEPLOY CONTENTS ===="
           ls -R deploy
 
       - name: Upload artifact
@@ -59,6 +64,9 @@ jobs:
         with:
           name: node-app
           path: deploy
+
+      - name: Show deploy folder
+        run: ls -R deploy
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
