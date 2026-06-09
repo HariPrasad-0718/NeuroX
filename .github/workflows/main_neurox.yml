@@ -33,20 +33,18 @@ jobs:
         run: |
           mkdir -p deploy
 
-          # IMPORTANT: standalone output
-          cp -r .next/standalone/* deploy/
+          # Copy full Next.js build
+          cp -r .next deploy/.next
 
-          # required runtime folders
-          mkdir -p deploy/.next
-          cp -r .next/static deploy/.next/static
+          # Copy public folder if exists
+          if [ -d public ]; then cp -r public deploy/public; fi
 
-          # public folder (safe check)
-          if [ -d public ]; then
-            cp -r public deploy/public
-          fi
+          # Copy package files
+          cp package.json deploy/
+          cp package-lock.json deploy/
 
-          echo "==== DEPLOY CONTENTS ===="
-          ls -R deploy
+          # Copy server entry if exists
+          cp server.js deploy/ || true
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
