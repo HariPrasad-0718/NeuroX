@@ -75,6 +75,21 @@ jobs:
           echo "=== root contents ==="
           ls -la deploy
 
+          echo "=== node_modules ==="
+          ls deploy/node_modules | head -50 || true
+
+          echo "=== next package ==="
+          ls -la deploy/node_modules/next || true
+
+          echo "=== react package ==="
+          ls -la deploy/node_modules/react || true
+
+          echo "=== react-dom package ==="
+          ls -la deploy/node_modules/react-dom || true
+
+          echo "=== react-dom/cjs ==="
+          ls -la deploy/node_modules/react-dom/cjs || true
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -100,6 +115,12 @@ jobs:
 
           echo "=== package.json ==="
           cat deploy/package.json || true
+
+          echo "=== next package ==="
+          ls -la deploy/node_modules/next || true
+
+          echo "=== react-dom package ==="
+          ls -la deploy/node_modules/react-dom || true
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v2
