@@ -42,18 +42,15 @@ jobs:
           rm -rf deploy
           mkdir -p deploy
 
-          SERVER_PATH=$(find .next -name server.js | head -n 1)
+          APP_DIR=".next/standalone"
 
-          echo "SERVER_PATH=$SERVER_PATH"
-
-          if [ -z "$SERVER_PATH" ]; then
-            echo "ERROR: No server.js found"
+          if [ ! -f "$APP_DIR/server.js" ]; then
+            echo "ERROR: .next/standalone/server.js not found"
             exit 1
           fi
 
-          APP_DIR=$(dirname "$SERVER_PATH")
-
-          echo "APP_DIR=$APP_DIR"
+          echo "Using standalone directory:"
+          echo "$APP_DIR"
 
           cp -R "$APP_DIR"/. deploy/
 
@@ -75,8 +72,8 @@ jobs:
           echo "=== server.js ==="
           ls -la deploy/server.js || true
 
-          echo "=== react-dom cjs ==="
-          ls deploy/node_modules/react-dom/cjs | head || true
+          echo "=== root contents ==="
+          ls -la deploy
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
