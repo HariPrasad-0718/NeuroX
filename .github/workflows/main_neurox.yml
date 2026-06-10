@@ -33,28 +33,28 @@ jobs:
         run: |
           mkdir -p deploy
 
-          # REQUIRED for Next.js standalone
-          cp -r .next/standalone deploy/
+          # ✅ COPY STANDALONE SERVER (IMPORTANT)
+          cp -r .next/standalone/* deploy/
 
-          # IMPORTANT: create folder before copying static
-          mkdir -p deploy/.next/static
-          cp -r .next/static/* deploy/.next/static/
+          # ✅ COPY STATIC FILES
+          mkdir -p deploy/.next
+          cp -r .next/static deploy/.next/static
 
-          # public folder (safe)
+          # ✅ COPY PUBLIC FOLDER
           if [ -d public ]; then cp -r public deploy/public; fi
 
-          # required runtime files
-          cp package.json deploy/
-          cp package-lock.json deploy/
+          # 🔍 DEBUG (VERY IMPORTANT)
+          echo "=== DEPLOY CONTENTS ==="
+          ls -R deploy
 
-      - name: Show deploy folder (DEBUG)
-        run: ls -R deploy
+            - name: Show deploy folder (DEBUG)
+              run: ls -R deploy
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: node-app
-          path: deploy
+            - name: Upload artifact
+              uses: actions/upload-artifact@v4
+              with:
+                name: node-app
+                path: deploy
 
   deploy:
     runs-on: ubuntu-latest
