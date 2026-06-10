@@ -42,20 +42,24 @@ jobs:
           mkdir -p deploy
 
 
-          # ✅ COPY ENTIRE STANDALONE FOLDER (includes package.json)
+          # Copy entire standalone folder
           cp -r .next/standalone deploy/
 
 
-          # ✅ COPY STATIC FILES (outside standalone)
-          cp -r .next/static deploy/.next/static
-
-
-          # ✅ PUBLIC FOLDER
+          # Copy public folder
           if [ -d public ]; then cp -r public deploy/public; fi
 
 
           echo "=== DEPLOY CONTENTS ==="
           ls -R deploy
+
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-app
+          path: deploy
+          include-hidden-files: true
 
 
       - name: Upload artifact
