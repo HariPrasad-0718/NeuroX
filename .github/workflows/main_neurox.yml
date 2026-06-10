@@ -28,23 +28,32 @@ jobs:
 
       - name: Inspect build output
         run: |
-          echo "=== .next/standalone ==="
+          echo "=== .next directory ==="
+          ls -R .next || true
+
+          echo "=== .next/standalone directory ==="
           ls -R .next/standalone || true
+
+          echo "=== Searching for server.js ==="
+          find .next -name server.js || true
 
       - name: Prepare deployment package
         run: |
           rm -rf deploy
           mkdir -p deploy
 
-          APP_DIR=".next/standalone/neurox-nextjs"
+          SERVER_PATH=$(find .next -name server.js | head -n 1)
 
-          if [ ! -f "$APP_DIR/server.js" ]; then
-            echo "ERROR: standalone server.js not found"
+          echo "SERVER_PATH=$SERVER_PATH"
+
+          if [ -z "$SERVER_PATH" ]; then
+            echo "ERROR: No server.js found"
             exit 1
           fi
 
-          echo "Using standalone app directory:"
-          echo "$APP_DIR"
+          APP_DIR=$(dirname "$SERVER_PATH")
+
+          echo "APP_DIR=$APP_DIR"
 
           cp -R "$APP_DIR"/. deploy/
 
@@ -61,10 +70,10 @@ jobs:
       - name: Verify deployment package
         run: |
           echo "=== package.json ==="
-          cat deploy/package.json
+          cat deploy/package.json || true
 
           echo "=== server.js ==="
-          ls -la deploy/server.js
+          ls -la deploy/server.js || true
 
           echo "=== react-dom cjs ==="
           ls deploy/node_modules/react-dom/cjs | head || true
@@ -93,7 +102,7 @@ jobs:
           ls -R deploy
 
           echo "=== package.json ==="
-          cat deploy/package.json
+          cat deploy/package.json || true
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v2
