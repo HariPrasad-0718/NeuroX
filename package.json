@@ -5,7 +5,7 @@
   "scripts": {
   "dev": "next dev",
   "build": "next build",
-  "start": "node server.js"
+  "start": "next start"
 },
   "dependencies": {
     "@azure/storage-blob": "^12.31.0",
