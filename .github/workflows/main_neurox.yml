@@ -21,37 +21,30 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build Next.js app
         run: npm run build
 
       - name: Inspect build output
         run: |
-          echo "=== .next directory ==="
-          ls -R .next || true
-
-          echo "=== .next/standalone directory ==="
+          echo "=== .next/standalone ==="
           ls -R .next/standalone || true
-
-          echo "=== Searching for server.js ==="
-          find .next -name server.js || true
 
       - name: Prepare deployment package
         run: |
           rm -rf deploy
           mkdir -p deploy
 
-          SERVER_PATH=$(find .next/standalone -name server.js | head -n 1)
+          APP_DIR=".next/standalone/neurox-nextjs"
 
-          if [ -z "$SERVER_PATH" ]; then
-            echo "ERROR: server.js not found in .next/standalone"
+          if [ ! -f "$APP_DIR/server.js" ]; then
+            echo "ERROR: standalone server.js not found"
             exit 1
           fi
 
-          APP_DIR=$(dirname "$SERVER_PATH")
-
-          echo "Found standalone app at: $APP_DIR"
+          echo "Using standalone app directory:"
+          echo "$APP_DIR"
 
           cp -R "$APP_DIR"/. deploy/
 
@@ -62,8 +55,19 @@ jobs:
             cp -R public deploy/public
           fi
 
-          echo "=== Deploy package contents ==="
+          echo "=== DEPLOY CONTENTS ==="
           ls -R deploy
+
+      - name: Verify deployment package
+        run: |
+          echo "=== package.json ==="
+          cat deploy/package.json
+
+          echo "=== server.js ==="
+          ls -la deploy/server.js
+
+          echo "=== react-dom cjs ==="
+          ls deploy/node_modules/react-dom/cjs | head || true
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -83,10 +87,13 @@ jobs:
           name: node-app
           path: deploy
 
-      - name: Show downloaded artifact
+      - name: Verify downloaded artifact
         run: |
           echo "=== Downloaded Artifact ==="
           ls -R deploy
+
+          echo "=== package.json ==="
+          cat deploy/package.json
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v2
