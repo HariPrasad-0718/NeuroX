@@ -29,30 +29,29 @@ jobs:
       - name: Verify build output
         run: |
           echo "=== .next contents ==="
-          ls -la .next
-
-          echo "=== standalone contents ==="
-          ls -la .next/standalone
+          ls -R .next
 
       - name: Prepare deployment package
         run: |
           rm -rf deploy
+          mkdir -p deploy
 
-          # Create required folders
-          mkdir -p deploy/.next
+          echo "=== Standalone contents ==="
+          ls -R .next/standalone/neurox-nextjs
 
-          # Copy standalone server
-          cp -r .next/standalone/* deploy/
+          # Copy standalone app contents to deploy root
+          cp -r .next/standalone/neurox-nextjs/* deploy/
 
           # Copy Next.js static assets
+          mkdir -p deploy/.next
           cp -r .next/static deploy/.next/static
 
-          # Copy public assets
+          # Copy public folder if present
           if [ -d public ]; then
             cp -r public deploy/public
           fi
 
-          echo "=== DEPLOY CONTENTS ==="
+          echo "=== Final Deploy Contents ==="
           ls -R deploy
 
       - name: Upload artifact
@@ -74,10 +73,12 @@ jobs:
           path: deploy
 
       - name: Show deploy folder
-        run: ls -R deploy
+        run: |
+          echo "=== Downloaded Artifact ==="
+          ls -R deploy
 
       - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v3
+        uses: azure/webapps-deploy@v2
         with:
           app-name: "NeuroX"
           slot-name: "Production"
