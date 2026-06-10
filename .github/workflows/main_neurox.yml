@@ -26,32 +26,43 @@ jobs:
       - name: Build Next.js app
         run: npm run build
 
-      - name: Verify build output
+      - name: Inspect build output
         run: |
-          echo "=== .next contents ==="
-          ls -R .next
+          echo "=== .next directory ==="
+          ls -R .next || true
+
+          echo "=== .next/standalone directory ==="
+          ls -R .next/standalone || true
+
+          echo "=== Searching for server.js ==="
+          find .next -name server.js || true
 
       - name: Prepare deployment package
         run: |
           rm -rf deploy
           mkdir -p deploy
 
-          echo "=== Standalone contents ==="
-          ls -R .next/standalone/neurox-nextjs
+          SERVER_PATH=$(find .next/standalone -name server.js | head -n 1)
 
-          # Copy standalone app contents to deploy root
-          cp -r .next/standalone/neurox-nextjs/* deploy/
-
-          # Copy Next.js static assets
-          mkdir -p deploy/.next
-          cp -r .next/static deploy/.next/static
-
-          # Copy public folder if present
-          if [ -d public ]; then
-            cp -r public deploy/public
+          if [ -z "$SERVER_PATH" ]; then
+            echo "ERROR: server.js not found in .next/standalone"
+            exit 1
           fi
 
-          echo "=== Final Deploy Contents ==="
+          APP_DIR=$(dirname "$SERVER_PATH")
+
+          echo "Found standalone app at: $APP_DIR"
+
+          cp -R "$APP_DIR"/. deploy/
+
+          mkdir -p deploy/.next
+          cp -R .next/static deploy/.next/static
+
+          if [ -d public ]; then
+            cp -R public deploy/public
+          fi
+
+          echo "=== Deploy package contents ==="
           ls -R deploy
 
       - name: Upload artifact
@@ -72,7 +83,7 @@ jobs:
           name: node-app
           path: deploy
 
-      - name: Show deploy folder
+      - name: Show downloaded artifact
         run: |
           echo "=== Downloaded Artifact ==="
           ls -R deploy
@@ -80,7 +91,7 @@ jobs:
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v2
         with:
-          app-name: "NeuroX"
-          slot-name: "Production"
+          app-name: NeuroX
+          slot-name: Production
           package: deploy
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_A2F0B92F4B4947B0B855B18AA203114E }}
