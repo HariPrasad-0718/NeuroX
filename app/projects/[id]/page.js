@@ -1875,7 +1875,7 @@ const handleDownloadBrdDoc = async () => {
 
   return (
     <div className="bg-[#fafafa]">
-      <div className="bg-white border-b border-gray-200 px-8 py-6 mt-8">
+      <div className="bg-white border-b border-gray-200 px-8 py-6 mt-1">
         <div className="flex items-start gap-6">
           <button onClick={() => router.push("/projects")} className="w-10 h-10 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-50 flex-shrink-0 mt-1"><ArrowLeft className="w-5 h-5 text-gray-700" /></button>
           <div className="flex-1 min-w-0">
@@ -1891,10 +1891,10 @@ const handleDownloadBrdDoc = async () => {
 </p>
             {/* âœ… PROGRESS BAR */}
             
-            <div className="flex items-center gap-8 mt-4">
-              <div className="flex items-center gap-2"><span className="text-xs uppercase tracking-wide text-gray-500 font-medium">Client</span><span className="text-sm text-gray-900 font-medium">{project.client || "N/A"}</span></div>
+            <div className="flex items-center justify-start gap-8 mt-4">
+              <div className="flex items-center gap-2"><span className="text-xs uppercase tracking-wide text-gray-500 font-medium">Client:</span><span className="text-sm text-gray-900 font-medium">{project.client || "N/A"}</span></div>
               <div className="h-4 w-px bg-gray-300" />
-              <div className="flex items-center gap-2"><span className="text-xs uppercase tracking-wide text-gray-500 font-medium">Target Date</span><span className="text-sm text-gray-900 font-medium">{project.targetCompletionDate ? new Date(project.targetCompletionDate).toLocaleDateString() : "N/A"}</span></div>
+              <div className="flex items-center gap-2"><span className="text-xs uppercase tracking-wide text-gray-400 font-medium">Target Date:</span><span className="text-sm text-gray-900 font-medium">{project.targetCompletionDate ? new Date(project.targetCompletionDate).toLocaleDateString() : "N/A"}</span></div>
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">

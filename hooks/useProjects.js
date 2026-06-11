@@ -81,20 +81,23 @@ export function useProjects(userId, options = {}) {
   };
 
   const deleteProject = async (projectId) => {
-    setDeleteLoading(true);
-    try {
-      const response = await api.deleteProject(projectId, userId || "");
-      if (response.success) {
-        setProjects((prev) => prev.filter((p) => p.projectId !== projectId));
-        return { success: true };
-      }
-      throw new Error(response.error?.message || "Failed to delete project");
-    } catch (err) {
-      return { success: false, error: err.message };
-    } finally {
-      setDeleteLoading(false);
+  setDeleteLoading(true);
+
+  try {
+    const response = await api.deleteProject(projectId, userId || "");
+
+    if (response.success) {
+      await fetchProjects(); // Reload latest projects from DB
+      return { success: true };
     }
-  };
+
+    throw new Error(response.error?.message || "Failed to delete project");
+  } catch (err) {
+    return { success: false, error: err.message };
+  } finally {
+    setDeleteLoading(false);
+  }
+};
 
   useEffect(() => {
     fetchProjects();

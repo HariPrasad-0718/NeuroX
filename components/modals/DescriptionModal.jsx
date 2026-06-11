@@ -18,9 +18,9 @@ export function DescriptionModal({ project, onClose }) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
-        onClick={(e) => e.stopPropagation()}
-      >
+ className="w-[1200px] bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+  onClick={(e) => e.stopPropagation()}
+>
         {/* Header */}
         <div className="bg-gradient-to-br from-[#6366F1] to-[#4F46E5] px-6 py-5">
           <div className="flex items-start justify-between gap-4">
@@ -38,7 +38,7 @@ export function DescriptionModal({ project, onClose }) {
         </div>
 
         {/* Body */}
-        <div className="px-6 py-5 max-h-[60vh] overflow-y-auto">
+        <div className="px-6 py-5 h-[200px] overflow-y-auto">
           <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{project.description}</p>
         </div>
 
