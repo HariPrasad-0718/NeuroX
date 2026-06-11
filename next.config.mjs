@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 
+import path from "path";
+
 const securityHeaders = [
   {
     key: "X-Content-Type-Options",
@@ -21,26 +23,15 @@ const securityHeaders = [
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=()",
   },
-  {
-    key: "Content-Security-Policy",
-    value: [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob: https://images.unsplash.com",
-      "connect-src 'self' https://agent5i.c5ailabs.com https://agent5idev.c5ailabs.com",
-      "font-src 'self'",
-      "frame-src 'none'",
-      "object-src 'none'",
-      "base-uri 'self'",
-      "form-action 'self'",
-    ].join("; "),
-  },
 ];
 
 const nextConfig = {
-  output: "standalone",   // IMPORTANT for Azure
+  output: "standalone",
+
+  outputFileTracingRoot: path.join(process.cwd()),
+
   serverExternalPackages: ["mssql"],
+
   devIndicators: false,
 
   images: {
