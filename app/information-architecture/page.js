@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Minus, Plus, RotateCcw, X } from "lucide-react";
+import { ArrowLeft, Minus, Plus, RotateCcw, Upload, X } from "lucide-react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { Download } from "lucide-react";
@@ -681,30 +681,28 @@ console.log(
           </h3>
 
           <button
-  onClick={() => {
-    console.log("Upload button clicked");
-    inputRef.current?.click();
-  }}
->
-  Upload Image
-</button>
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={isAnalyzingWireframe}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-200 transition duration-200 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Upload className="h-4 w-4" />
+            Upload Image
+          </button>
 
           <input
-  ref={inputRef}
-  type="file"
-  accept="image/png,image/jpeg,image/webp"
-  className="hidden"
-  onChange={(e) => {
-    console.log("FILE PICKED");
-    console.log(e.target.files);
-
-    const file = e.target.files?.[0];
-
-    if (file) {
-      handleWireframeUpload(file);
-    }
-  }}
-/>
+            ref={inputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="hidden"
+            disabled={isAnalyzingWireframe}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                handleWireframeUpload(file);
+              }
+            }}
+          />
         </div>
       </div>
     )}

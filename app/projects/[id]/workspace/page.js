@@ -532,7 +532,7 @@ const interval = setInterval(() => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-7xl px-1 py-2 sm:px-2 lg:px-4">
 
       {/* Persona Tabs */}
       <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
@@ -669,7 +669,7 @@ const interval = setInterval(() => {
       </div>
 
       {/* Interviewee Tabs + Plus Button */}
-      <div className="mb-6 flex flex-wrap items-center gap-2 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="mb-0 flex flex-wrap items-center gap-2 overflow-x-auto bg-transparent p-2">
         {interviewees.map((i) => (
           <div key={i.interviewee_id} className="relative">
             <button
@@ -733,7 +733,7 @@ const interval = setInterval(() => {
 
       {/* ✅ INLINE FORM - replaces modal, appears below + button */}
       {showForm && (
-        <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
+        <div className="mb-0 bg-transparent p-3 sm:p-4">
           <h3 className="mb-4 text-base font-semibold text-gray-800">Add Interviewee</h3>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -788,7 +788,7 @@ const interval = setInterval(() => {
 
       {/* Interviewee Details */}
       {selectedInterviewee && (
-        <div className="relative mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm backdrop-blur-sm sm:p-6">
+        <div className="relative mt-3 bg-transparent p-0">
           {/* Close Button */}
           <button
             onClick={() => setSelectedInterviewee(null)}
@@ -861,8 +861,8 @@ const interval = setInterval(() => {
 
       {/* Questions */}
       {selectedInterviewee && (
-        <div className="mt-6">
-          <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-6 shadow-sm sm:p-8">
+        <div className="mt-3">
+          <div className="bg-transparent p-4 sm:p-6">
             <div className="flex flex-col gap-4 border-b border-gray-200 pb-5 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Interview Flow</p>

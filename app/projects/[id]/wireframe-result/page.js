@@ -1157,7 +1157,7 @@ runProgressSteps(PRD_STEPS, setPrdProgress);
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/30 to-purple-50/20">
       {/* Top bar */}
-      <div className="bg-white border-b border-gray-200 px-8 py-5 flex items-center gap-4">
+      <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-2">
         <button
           onClick={() => router.push(`/projects/${id}`)}
           className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition flex-shrink-0"
@@ -1170,7 +1170,7 @@ runProgressSteps(PRD_STEPS, setPrdProgress);
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-6 py-10 space-y-8">
+      <div className="max-w-4xl mx-auto px-4 py-4 space-y-6">
         {isFallback && (
           <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>

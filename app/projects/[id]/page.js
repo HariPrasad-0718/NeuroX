@@ -565,6 +565,23 @@ const [prdError, setPrdError] = useState("");
 const [prdHtml, setPrdHtml] = useState("");
 const [prdRawResponse, setPrdRawResponse] = useState("");
 const [isDownloadingPrd, setIsDownloadingPrd] = useState(false);
+const [brdProgress, setBrdProgress] = useState([]);
+const [prdProgress, setPrdProgress] = useState([]);
+const BRD_STEPS = [
+  "Analyzing wireframe",
+  "Extracting business requirements",
+  "Structuring BRD sections",
+  "Validating completeness",
+  "Finalizing document",
+];
+
+const PRD_STEPS = [
+  "Analyzing system flow",
+  "Mapping product features",
+  "Structuring PRD sections",
+  "Adding technical details",
+  "Finalizing document",
+];
 
   useEffect(() => {
     fetchProject();
@@ -1079,6 +1096,18 @@ const handleGenerateInformationArchitecture = async () => {
       </div>
     );
   };
+  const runProgressSteps = async (steps, setProgress) => {
+  setProgress([]);
+
+  for (let i = 0; i < steps.length; i++) {
+    await new Promise((res) => setTimeout(res, 2000)); // adjust speed
+
+    setProgress((prev) => [
+      ...prev,
+      { label: steps[i], done: i !== steps.length - 1 },
+    ]);
+  }
+};
 
   const renderDefineTemplateCard = (template, downloadableTemplateId, isCompleted) => {
   const media = DEFINE_CARD_MEDIA[template.id] || DEFINE_CARD_MEDIA["problem-statement"];
@@ -1239,113 +1268,149 @@ const WireframeReviewerCard = () => {
   };
 
   return (
-    <div className="h-full overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md flex flex-col">
-      <div className="relative h-40 overflow-hidden">
-        {image ? (
-          <>
-            <img src={image.url} alt="Wireframe preview" className="h-full w-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-gray-950/70 via-gray-950/10 to-transparent" />
-            {isGenerating && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-indigo-950/60 backdrop-blur-sm">
-                <Loader2 className="w-8 h-8 text-white animate-spin mb-2" />
-                <p className="text-sm text-white font-medium">Generating analysis…</p>
-              </div>
-            )}
-          </>
-        ) : (
-          <div
-            className={`relative h-full w-full flex flex-col items-center justify-center border-2 border-dashed border-indigo-200 ${isGenerating ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
-            onDrop={isGenerating ? undefined : onDrop}
-            onDragOver={(e) => e.preventDefault()}
-            onClick={() => !isGenerating && inputRef.current?.click()}
-          >
-            <img src={media.image} alt="Wireframe sample" className="absolute inset-0 h-full w-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-gray-950/70 via-gray-900/35 to-gray-900/10" />
-            <div className="relative z-10 flex flex-col items-center px-4 text-center">
-              <svg className="w-10 h-10 text-white/80 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-              <p className="text-sm text-white font-medium">Drop image here or click to upload</p>
-              <p className="text-xs text-white/70 mt-1">PNG, JPG, JPEG, WEBP</p>
-            </div>
-          </div>
-        )}
-        <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={isGenerating} onChange={(e) => handleFile(e.target.files[0])} />
-      </div>
+   <div className="relative flex flex-col rounded-2xl bg-white border border-gray-100 transition-all hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-100">
 
-      <div className="p-5 flex-1 flex flex-col">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">Design Review</p>
-        <h4 className="mt-1 text-lg font-semibold text-gray-900">Wireframe Reviewer</h4>
-        <p className="mt-1 text-sm text-gray-500 leading-5">Upload a wireframe image for AI-powered review and analysis.</p>
-
-        {wireframeError && (
-          <div className="mt-3 flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
-            <svg className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-red-700">{wireframeError}</p>
-              <button onClick={() => inputRef.current?.click()} className="mt-1 text-xs font-medium text-indigo-600 hover:text-indigo-800">Retry →</button>
-            </div>
-          </div>
-        )}
-
-        {!wireframeError && image ? (
-          <div className="mt-3 flex items-center justify-between gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2">
-            <div className="flex items-center gap-2 min-w-0">
-              {isGenerating
-                ? <Loader2 className="w-4 h-4 text-indigo-500 flex-shrink-0 animate-spin" />
-                : <svg className="w-4 h-4 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-              }
-              <span className="text-xs text-green-700 font-medium truncate">{image.name}</span>
-            </div>
-            {!isGenerating && (
-              <button onClick={handleRemove} className="text-xs text-red-500 hover:text-red-700 flex-shrink-0 font-medium">Remove</button>
-            )}
-          </div>
-        ) : !wireframeError && (
-          <button
-  onClick={() => inputRef.current?.click()}
-  disabled={isGenerating}
-  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
->
-  Upload Image
-  <span className="text-white/80">→</span>
-</button>
-        )}
+  {/* LOADING OVERLAY */}
+  {isGenerating && (
+    <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-white/85 backdrop-blur-sm px-4 py-4">
+      <div className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Analyzing wireframe...
       </div>
     </div>
+  )}
+
+  {/* HEADER */}
+  <div className="p-5 flex items-start gap-3">
+    <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
+      <FileText className="w-5 h-5 text-indigo-600" />
+    </div>
+
+    <div>
+      <p className="text-xs font-semibold tracking-widest text-indigo-500 uppercase">
+        Design Review
+      </p>
+      <h3 className="text-base font-semibold text-gray-900">
+        Wireframe Reviewer
+      </h3>
+    </div>
+  </div>
+
+  {/* DESCRIPTION */}
+  <p className="px-5 text-sm text-gray-600">
+    Upload a wireframe image for AI-powered review and analysis.
+  </p>
+
+  {/* STATUS */}
+  <div className="px-5 mt-3">
+    {wireframeError && (
+      <div className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
+        <p className="text-xs text-red-700">{wireframeError}</p>
+      </div>
+    )}
+
+    {!wireframeError && image && (
+      <div className="flex items-center justify-between rounded-lg bg-green-50 border border-green-200 px-3 py-2">
+        <span className="text-xs text-green-700 truncate">
+          {image.name}
+        </span>
+
+        {!isGenerating && (
+          <button
+            onClick={handleRemove}
+            className="text-xs text-red-500 hover:text-red-700"
+          >
+            Remove
+          </button>
+        )}
+      </div>
+    )}
+  </div>
+
+  {/* ACTIONS */}
+  <div className="mt-auto p-5">
+    <button
+      onClick={() => inputRef.current?.click()}
+      disabled={isGenerating}
+      className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 disabled:opacity-60"
+    >
+      {isGenerating ? (
+        <>
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Analyzing...
+        </>
+      ) : (
+        "Upload Image"
+      )}
+    </button>
+
+    <input
+      ref={inputRef}
+      type="file"
+      accept="image/png,image/jpeg,image/webp"
+      className="hidden"
+      disabled={isGenerating}
+      onChange={(e) => handleFile(e.target.files[0])}
+    />
+  </div>
+</div>
   );
 };
 const renderIdeateTemplateCard = (template, isCompleted) => {
   const media = IDEATE_CARD_MEDIA[template.id] || IDEATE_CARD_MEDIA["information-architecture"];
+
   return (
-    <div key={template.id} className={`group relative h-full overflow-hidden rounded-2xl bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-100 flex flex-col ${isCompleted ? "border border-indigo-300 shadow-md shadow-indigo-100 ring-1 ring-indigo-200" : "border border-gray-100 shadow-sm"}`}>
+    <div className={`group relative flex flex-col rounded-2xl bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-100 ${
+      isCompleted ? "border border-indigo-300 ring-1 ring-indigo-200" : "border border-gray-100"
+    }`}>
+
       {isCompleted && (
-        <div className="absolute top-3 right-3 z-10 flex items-center gap-1 bg-indigo-600 text-white text-[10px] font-semibold px-2.5 py-1 rounded-full shadow-lg shadow-indigo-200">
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/></svg>
+        <div className="absolute top-3 right-3 z-10 flex items-center gap-1 bg-indigo-600 text-white text-[10px] font-semibold px-2.5 py-1 rounded-full">
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/>
+          </svg>
           Completed
         </div>
       )}
-      <div className="relative h-40 overflow-hidden">
-        <img src={media.image} alt={media.title} className="h-full w-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-t from-gray-950/70 via-gray-950/10 to-transparent" />
-        <div className="absolute inset-x-0 bottom-0 p-4 text-white">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-white/70">{media.eyebrow}</p>
-          <h4 className="mt-1 text-base font-semibold">{media.title}</h4>
-          <p className="mt-0.5 text-xs text-white/80 line-clamp-2">{media.description}</p>
+
+      {/* HEADER (same style as BRD/PRD) */}
+      <div className="p-5 flex items-start gap-3">
+        <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
+      <FileText className="w-5 h-5 text-indigo-600" />
+    </div>
+
+        <div>
+          <p className="text-xs font-semibold tracking-widest text-indigo-500 uppercase">
+            {media.eyebrow}
+          </p>
+          <h3 className="text-base font-semibold text-gray-900">
+            {media.title}
+          </h3>
         </div>
       </div>
-      <div className="p-5 flex-1 flex flex-col">
-        <p className="text-sm leading-relaxed text-gray-600">
-          {media.description}
-        </p>
-        <div className="mt-auto pt-4 flex flex-col gap-2">
-          <button
-            onClick={(e) => { e.stopPropagation(); handleGenerateInformationArchitecture(); }}
-            disabled={isGeneratingIA}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {isGeneratingIA ? "Generating..." : "Generate IA"}
-          </button>
-          {informationArchitectureError && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600">{informationArchitectureError}</p>}
-        </div>
+
+      {/* DESCRIPTION */}
+      <p className="px-5 text-sm text-gray-600">
+        {media.description}
+      </p>
+
+      {/* ACTIONS */}
+      <div className="mt-auto p-5 space-y-2">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            handleGenerateInformationArchitecture();
+          }}
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700"
+        >
+          Generate IA
+        </button>
+
+        {informationArchitectureError && (
+          <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">
+            {informationArchitectureError}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -1353,6 +1418,8 @@ const renderIdeateTemplateCard = (template, isCompleted) => {
 
 const handleOpenBrdModal = async () => {
   setIsBrdModalOpen(true);
+  setBrdProgress([]);
+  runProgressSteps(BRD_STEPS, setBrdProgress);
 
   if (!projectId) {
     setBrdError("Project id is missing.");
@@ -1392,6 +1459,8 @@ const handleOpenBrdModal = async () => {
 
 const handleOpenPrdModal = async () => {
   setIsPrdModalOpen(true);
+  setPrdProgress([]);
+runProgressSteps(PRD_STEPS, setPrdProgress);
 
   if (!projectId) {
     setPrdError("Project id is missing.");
@@ -2033,14 +2102,7 @@ const handleDownloadBrdDoc = async () => {
       {/* reuse SAME style system */}
       <div className="h-full rounded-xl border border-gray-200 bg-white p-5 shadow-sm hover:shadow-md transition flex flex-col">
 
-        <div className="relative -mx-5 -mt-5 mb-4 h-40 overflow-hidden rounded-t-xl">
-          <img src={media.image} alt={template.name} className="h-full w-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-gray-950/70 via-gray-950/10 to-transparent" />
-          <div className="absolute inset-x-0 bottom-0 p-4 text-white">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-white/70">{media.eyebrow}</p>
-            <h3 className="mt-1 text-base font-semibold">{template.name}</h3>
-          </div>
-        </div>
+        
 
         <div className="flex items-center gap-3 mb-2">
           <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
@@ -2048,7 +2110,7 @@ const handleDownloadBrdDoc = async () => {
           </div>
 
           <div>
-            <p className="text-xs font-semibold tracking-widest text-indigo-500 uppercase">
+            <p className="text-xs font-semibold tracking-widest text-indigo-500 ">
               Document Generation
             </p>
             <h3 className="text-base font-semibold text-gray-900">
@@ -2066,14 +2128,14 @@ const handleDownloadBrdDoc = async () => {
           
           <button
             onClick={handleOpenBrdModal}
-            className="w-full py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
           >
             Generate BRD
           </button>
 
           <button
             onClick={handleOpenPrdModal}
-            className="w-full py-2.5 rounded-lg border border-gray-300 text-gray-700 text-sm hover:bg-gray-50 transition"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
           >
             Generate PRD
           </button>
@@ -2491,10 +2553,34 @@ const handleDownloadBrdDoc = async () => {
 
             <div className="max-h-[84vh] overflow-y-auto bg-[#e8ebf0] px-6 py-6">
               {brdLoading ? (
-                <div className="flex flex-col items-center gap-3 rounded-xl border border-slate-200 bg-white py-16 text-center shadow-sm">
-                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-slate-700" />
-                  <p className="text-sm text-slate-500">Generating BRD document...</p>
+                              <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white px-8 py-8 shadow-sm">
+                  <p className="text-sm font-semibold text-slate-700">
+                    Generating BRD Document
+                  </p>
+
+                  <div className="space-y-3">
+                    {brdProgress.map((step, index) => (
+                      <div key={index} className="flex items-center gap-3 text-sm">
+                        {step.done ? (
+                          <span className="text-green-600 font-bold">✓</span>
+                        ) : (
+                          <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-indigo-500" />
+                        )}
+
+                        <span className={step.done ? "text-green-700" : "text-slate-600"}>
+                          {step.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {brdProgress.length < BRD_STEPS.length && (
+                    <p className="text-xs text-slate-400">
+                      AI is structuring your document...
+                    </p>
+                  )}
                 </div>
+                   
               ) : brdError ? (
                 <div className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
                   {brdError}
@@ -2638,9 +2724,33 @@ const handleDownloadBrdDoc = async () => {
 
             <div className="max-h-[84vh] overflow-auto bg-[#e8ebf0] p-5">
               {prdLoading ? (
-                <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
-                  Generating PRD document from project data...
-                </div>
+                 <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white px-8 py-8 shadow-sm">
+    <p className="text-sm font-semibold text-slate-700">
+      Generating PRD Document
+    </p>
+
+    <div className="space-y-3">
+      {prdProgress.map((step, index) => (
+        <div key={index} className="flex items-center gap-3 text-sm">
+          {step.done ? (
+            <span className="text-green-600 font-bold">✓</span>
+          ) : (
+            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-indigo-500" />
+          )}
+
+          <span className={step.done ? "text-green-700" : "text-slate-600"}>
+            {step.label}
+          </span>
+        </div>
+      ))}
+    </div>
+
+    {prdProgress.length < PRD_STEPS.length && (
+      <p className="text-xs text-slate-400">
+        AI is structuring your product document...
+      </p>
+    )}
+  </div>
               ) : (
                 <div className="space-y-4">
                   {prdError && (
