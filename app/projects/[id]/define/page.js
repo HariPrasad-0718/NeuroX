@@ -705,11 +705,7 @@ await fetch("/api/save-generated-persona", {
           <button
             onClick={handleGenerate}
             disabled={generating || !personas.length}
-            className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition disabled:opacity-60 disabled:cursor-not-allowed"
-            style={{
-              background: generating ? "#6d28d9" : "linear-gradient(135deg, #4a00e0, #702dff)",
-              boxShadow: "0 4px 14px rgba(74,0,224,0.35)",
-            }}
+            className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {generating ? (
               <>
@@ -823,7 +819,7 @@ await fetch("/api/save-generated-persona", {
                     <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500">Agent Persona Output</p>
                     <h2 className="text-2xl font-bold text-gray-900 mt-1">Persona Card</h2>
                     <p className="text-sm text-gray-500 mt-1">
-                      Card details are rendered from the same Agent5i response used for the problem statement.
+                      Card details are rendered from the same Agent5i response.
                     </p>
                   </div>
 
@@ -876,21 +872,21 @@ await fetch("/api/save-generated-persona", {
     <div className="mt-5 flex justify-end gap-3">
       
       <button
-        onClick={() => router.push(`/process-flow?projectId=${projectId}`)}
-        className="px-5 py-2.5 rounded-xl font-semibold transition border border-[#702dff] text-[#702dff] hover:bg-[#702dff] hover:text-white"
-      >
-        Generate Process Flow
-      </button>
+  onClick={() => router.push(`/process-flow?projectId=${projectId}`)}
+  className="px-5 py-2.5 rounded-xl font-semibold transition-all duration-200 cursor-pointer border border-[#702dff] text-[#702dff] hover:bg-[#702dff] hover:text-white hover:scale-[1.02]"
+>
+  Generate Process Flow
+</button>
       <button
-        onClick={handleDownloadPDF}
-        className="px-5 py-2.5 rounded-xl text-white font-semibold transition"
-        style={{
-          background: "linear-gradient(135deg, #4a00e0, #702dff)",
-          boxShadow: "0 4px 14px rgba(74,0,224,0.25)",
-        }}
-      >
-        Download PDF
-      </button>
+  onClick={handleDownloadPDF}
+  className="px-5 py-2.5 rounded-xl text-white font-semibold transition-all duration-200 cursor-pointer hover:scale-[1.02]"
+  style={{
+    background: "linear-gradient(135deg, #4a00e0, #702dff)",
+    boxShadow: "0 4px 14px rgba(74,0,224,0.25)",
+  }}
+>
+  Download PDF
+</button>
     </div>
     {iaError ? (
       <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{iaError}</p>

@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 
 export default function WireframeResultPage() {
+  console.log("WireframeResultPage rendered");
   const searchParams = useSearchParams();
 
   const result =

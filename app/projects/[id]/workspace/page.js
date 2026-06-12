@@ -39,6 +39,15 @@ export default function EmpathyMapPage() {
   const [personaOutput, setPersonaOutput] = useState("");
   const [personaStatus, setPersonaStatus] = useState(""); // "generating" | "ready" | "error" | ""
   const [personaError, setPersonaError] = useState("");
+  const personaSteps = [
+  "Transcript Received",
+  "Analyzing Responses",
+  "Extracting Pain Points",
+  "Generating Persona",
+  "Finalizing Report",
+];
+
+const [activeStep, setActiveStep] = useState(-1);
 
   const [form, setForm] = useState({
     name: "",
@@ -293,6 +302,19 @@ if (questionSets.length === 0) {
     if (!interviewId) return;
 
     setSaveStatus("saving");
+    setPersonaStatus("generating");
+setActiveStep(0);
+
+const interval = setInterval(() => {
+  setActiveStep((prev) => {
+    // Stop at the last step ("Finalizing Report")
+    if (prev >= personaSteps.length - 1) {
+      return personaSteps.length - 1;
+    }
+
+    return prev + 1;
+  });
+}, 1500);
 
     try {
       const res = await fetch("/api/generate-questions", {
@@ -317,6 +339,8 @@ if (questionSets.length === 0) {
 
       if (transcriptDraft.trim()) {
         await generatePersonaForInterview(interviewId, transcriptDraft);
+        clearInterval(interval);
+        setActiveStep(personaSteps.length);
       } else {
         setPersonaOutput("");
         setPersonaStatus("");
@@ -919,7 +943,7 @@ if (questionSets.length === 0) {
                       )}
                     </div>
                     <p className="mt-1 text-sm leading-6 text-gray-600">
-                      Write one continuous transcript using the question numbers so your notes stay easy to review.
+                      Write one continuous transcript so your notes stay easy to review.
                     </p>
                   </div>
 
@@ -1004,10 +1028,38 @@ if (questionSets.length === 0) {
                     </p>
                   )}
 
-                  <div className="h-[320px] overflow-y-auto rounded-xl border border-gray-300 bg-white px-4 py-4 text-sm leading-7 text-gray-800 shadow-sm whitespace-pre-wrap">
-                    {personaOutput || "No persona output generated yet for this interview."}
-                  </div>
+                 {personaStatus === "generating" ? (
+  <div className="flex flex-col items-center justify-center py-16">
+    {/* Loader */}
+    {/* <div className="h-12 w-12 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent mb-8" /> */}
 
+    <div className="space-y-4">
+      {personaSteps.map((step, index) => (
+        <div key={step} className="flex items-center gap-3">
+          {index < activeStep ? (
+            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-green-500 text-white text-xs">
+              ✓
+            </div>
+          ) : index === activeStep ? (
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
+          ) : (
+            <div className="h-6 w-6 rounded-full border-2 border-gray-300" />
+          )}
+
+          <span>{step}</span>
+        </div>
+      ))}
+    </div>
+
+    {/* <p className="mt-6 text-sm text-gray-500">
+      AI is generating the interview-based persona...
+    </p> */}
+  </div>
+) : (
+  <div className="h-[320px] overflow-y-auto rounded-xl border border-gray-300 bg-white px-4 py-4 text-sm leading-7 text-gray-800 shadow-sm whitespace-pre-wrap">
+    {personaOutput || "No persona output generated yet for this interview."}
+  </div>
+)}
                   {personaOutput?.trim() && (
                     <div className="mt-4 flex justify-end gap-2">
                       <button

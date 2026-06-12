@@ -979,8 +979,8 @@ const [editingSections, setEditingSections] = useState({
 }
 
 .action-btn.secondary {
-  background: linear-gradient(135deg, #1e3a8a, #2563eb);
-  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.28);
+  background: linear-gradient(135deg, #702dff, #702dff);
+  
 }
 
 .action-btn.slate {
@@ -1422,7 +1422,7 @@ const [editingSections, setEditingSections] = useState({
   font-weight: 600;
   font-size: 13px;
   cursor: pointer;
-  background: linear-gradient(135deg, #1e3a8a, #2563eb);
+  background: linear-gradient(135deg, #702dff, #702dff);
   box-shadow: 0 10px 22px rgba(37, 99, 235, 0.28);
   transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
 }

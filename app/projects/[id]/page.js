@@ -1301,12 +1301,13 @@ const WireframeReviewerCard = () => {
           </div>
         ) : !wireframeError && (
           <button
-            onClick={() => inputRef.current?.click()}
-            disabled={isGenerating}
-            className="mt-auto pt-4 inline-flex items-center gap-2 text-sm font-medium text-indigo-600 underline decoration-indigo-300 underline-offset-4 hover:text-indigo-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Upload Image →
-          </button>
+  onClick={() => inputRef.current?.click()}
+  disabled={isGenerating}
+  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+>
+  Upload Image
+  <span className="text-white/80">→</span>
+</button>
         )}
       </div>
     </div>

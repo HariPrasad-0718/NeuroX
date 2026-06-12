@@ -533,9 +533,40 @@ export default function WireframeResultPage() {
   const [prdHtml, setPrdHtml] = useState("");
   const [prdRawResponse, setPrdRawResponse] = useState("");
   const [isDownloadingPrd, setIsDownloadingPrd] = useState(false);
+  const [brdProgress, setBrdProgress] = useState([]);
+const [prdProgress, setPrdProgress] = useState([]);
+const [promptProgress, setPromptProgress] = useState([]);
+
+
+const BRD_STEPS = [
+  "Analyzing wireframe",
+  "Extracting business requirements",
+  "Structuring BRD sections",
+  "Validating completeness",
+  "Finalizing document",
+];
+
+const PRD_STEPS = [
+  "Analyzing system flow",
+  "Mapping product features",
+  "Structuring PRD sections",
+  "Adding technical details",
+  "Finalizing document",
+];
+
+const PROMPT_STEPS = [
+  "Connecting to agent",
+  "Analyzing wireframe context",
+  "Generating prompt structure",
+  "Finalizing response"
+];
 
   useEffect(() => {
     const stored = sessionStorage.getItem("wireframeResult");
+    console.log(
+  "Result page value:",
+  sessionStorage.getItem("wireframeResult")
+);
     const fallback = sessionStorage.getItem("wireframeResultFallback") === "1";
     if (stored) {
       setRaw(stored);
@@ -562,6 +593,9 @@ export default function WireframeResultPage() {
 
   const handleOpenPromptModal = async () => {
     setIsPromptModalOpen(true);
+    setPromptProgress([]);
+
+  runProgressSteps(PROMPT_STEPS, setPromptProgress);
 
     if (!id) {
       setPromptError("Project id is missing.");
@@ -600,6 +634,9 @@ export default function WireframeResultPage() {
   const handleOpenBrdModal = async () => {
     setIsBrdModalOpen(true);
 
+    setBrdProgress([]);
+  runProgressSteps(BRD_STEPS, setBrdProgress);
+
     if (!id) {
       setBrdError("Project id is missing.");
       return;
@@ -636,8 +673,23 @@ export default function WireframeResultPage() {
     }
   };
 
+  const runProgressSteps = async (steps, setProgress) => {
+  setProgress([]);
+
+  for (let i = 0; i < steps.length; i++) {
+    await new Promise((res) => setTimeout(res, 2000)); // adjust speed
+
+    setProgress((prev) => [
+      ...prev,
+      { label: steps[i], done: i !== steps.length - 1 },
+    ]);
+  }
+};
+
   const handleOpenPrdModal = async () => {
     setIsPrdModalOpen(true);
+    setPrdProgress([]);
+runProgressSteps(PRD_STEPS, setPrdProgress);
 
     if (!id) {
       setPrdError("Project id is missing.");
@@ -1181,14 +1233,14 @@ export default function WireframeResultPage() {
 
             {/* UI/UX ENHANCEMENTS */}
             {enhancements.length > 0 && (
-              <div className="rounded-2xl border border-purple-100 bg-white shadow-sm overflow-hidden">
+              <div className="rounded-2xl border from-indigo-600 to-indigo-500 bg-white shadow-sm overflow-hidden">
                 {/* Section header */}
                 <div className="bg-gradient-to-r from-violet-600 to-purple-500 px-6 py-5 flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
                     <Sparkles className="w-5 h-5 text-white" />
                   </div>
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-purple-200">Section 2</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-indigo-200">Section 2</p>
                     <h2 className="text-base font-bold text-white">UI/UX Enhancements</h2>
                   </div>
                 </div>
@@ -1245,9 +1297,51 @@ export default function WireframeResultPage() {
 
                   <div className="max-h-[70vh] overflow-auto bg-slate-50 p-5">
                     {promptLoading ? (
-                      <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
-                        Fetching prompt from agent...
-                      </div>
+                      <div className="max-h-[70vh] overflow-auto bg-slate-50 p-5">
+  {promptLoading ? (
+    <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white px-8 py-8 shadow-sm">
+      <p className="text-sm font-semibold text-slate-700">
+        Generating Prompt
+      </p>
+
+      <div className="space-y-3">
+        {promptProgress.map((step, index) => (
+          <div key={index} className="flex items-center gap-3 text-sm">
+            {step.done ? (
+              <span className="text-green-600 font-bold">✓</span>
+            ) : (
+              <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-indigo-500" />
+            )}
+
+            <span className={step.done ? "text-green-700" : "text-slate-600"}>
+              {step.label}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {promptProgress.length < PROMPT_STEPS.length && (
+        <p className="text-xs text-slate-400">
+          AI is preparing prompt...
+        </p>
+      )}
+    </div>
+  ) : promptError ? (
+    <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+      {promptError}
+    </div>
+  ) : agentPrompt ? (
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <pre className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-700">
+        {agentPrompt}
+      </pre>
+    </div>
+  ) : (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+      Prompt not available.
+    </div>
+  )}
+</div>
                     ) : promptError ? (
                       <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
                         {promptError}
@@ -1303,12 +1397,35 @@ export default function WireframeResultPage() {
                     </div>
                   </div>
 
-                  <div className="max-h-[84vh] overflow-y-auto bg-[#e8ebf0] px-6 py-6">
+                  <div className="max-h-[84vh] overflow-y-auto bg-indigo-50/40 px-6 py-6">
                     {brdLoading ? (
-                      <div className="flex flex-col items-center gap-3 rounded-xl border border-slate-200 bg-white py-16 text-center shadow-sm">
-                        <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-slate-700" />
-                        <p className="text-sm text-slate-500">Generating BRD document…</p>
-                      </div>
+                      <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white px-8 py-8 shadow-sm">
+    <p className="text-sm font-semibold text-slate-700">
+      Generating BRD Document
+    </p>
+
+    <div className="space-y-3">
+      {brdProgress.map((step, index) => (
+        <div key={index} className="flex items-center gap-3 text-sm">
+          {step.done ? (
+            <span className="text-green-600 font-bold">✓</span>
+          ) : (
+            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-indigo-500" />
+          )}
+
+          <span className={step.done ? "text-green-700" : "text-slate-600"}>
+            {step.label}
+          </span>
+        </div>
+      ))}
+    </div>
+
+    {brdProgress.length < BRD_STEPS.length && (
+      <p className="text-xs text-slate-400">
+        AI is structuring your document...
+      </p>
+    )}
+  </div>
                     ) : brdError ? (
                       <div className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
                         {brdError}
@@ -1442,12 +1559,36 @@ export default function WireframeResultPage() {
                     </div>
                   </div>
 
-                  <div className="max-h-[84vh] overflow-auto bg-[#e8ebf0] p-5">
-                    {prdLoading ? (
-                      <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
-                        Generating PRD document from project data...
-                      </div>
-                    ) : (
+                  <div className="max-h-[84vh] overflow-auto bg-indigo-50/40 p-5">
+                   {prdLoading ? (
+  <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white px-8 py-8 shadow-sm">
+    <p className="text-sm font-semibold text-slate-700">
+      Generating PRD Document
+    </p>
+
+    <div className="space-y-3">
+      {prdProgress.map((step, index) => (
+        <div key={index} className="flex items-center gap-3 text-sm">
+          {step.done ? (
+            <span className="text-green-600 font-bold">✓</span>
+          ) : (
+            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-indigo-500" />
+          )}
+
+          <span className={step.done ? "text-green-700" : "text-slate-600"}>
+            {step.label}
+          </span>
+        </div>
+      ))}
+    </div>
+
+    {prdProgress.length < PRD_STEPS.length && (
+      <p className="text-xs text-slate-400">
+        AI is structuring your product document...
+      </p>
+    )}
+  </div>
+) : (
                       <div className="space-y-4">
                         {prdError && (
                           <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">

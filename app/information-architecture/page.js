@@ -9,48 +9,48 @@ import { Download } from "lucide-react";
 
 const TYPE_STYLES = {
   page: {
-    background: "#eeedfe",
-    border: "#1d4ed8",
-    chip: "#dbeafe",
-    chipText: "#1e3a8a",
-    accent: "#60a5fa",
+    background: "#eef2ff",
+    border: "#4f46e5",
+    chip: "#c7d2fe",
+    chipText: "#312e81",
+    accent: "#6366f1",
     text: "#1e1b4b",
     label: "Page",
   },
   section: {
-    background: "#e1f5ee",
-    border: "#059669",
-    chip: "#d1fae5",
-    chipText: "#065f46",
-    accent: "#34d399",
-    text: "#064e3b",
+    background: "#eef2ff",
+    border: "#4f46e5",
+    chip: "#c7d2fe",
+    chipText: "#312e81",
+    accent: "#6366f1",
+    text: "#1e1b4b",
     label: "Section",
   },
   action: {
-    background: "#e0faf8",
-    border: "#009e83",
-    chip: "#ccfbf1",
-    chipText: "#115e59",
-    accent: "#2dd4bf",
-    text: "#085041",
+    background: "#eef2ff",
+    border: "#4f46e5",
+    chip: "#c7d2fe",
+    chipText: "#312e81",
+    accent: "#6366f1",
+    text: "#1e1b4b",
     label: "Action / Task",
   },
   component: {
-    background: "#fff3e0",
-    border: "#c97000",
-    chip: "#ffedd5",
-    chipText: "#9a3412",
-    accent: "#fb923c",
-    text: "#633806",
+    background: "#eef2ff",
+    border: "#4f46e5",
+    chip: "#c7d2fe",
+    chipText: "#312e81",
+    accent: "#6366f1",
+    text: "#1e1b4b",
     label: "Component / Widget",
   },
   default: {
-    background: "#f8fafc",
-    border: "#475569",
-    chip: "#e2e8f0",
-    chipText: "#334155",
-    accent: "#94a3b8",
-    text: "#1f2937",
+    background: "#eef2ff",
+    border: "#4f46e5",
+    chip: "#c7d2fe",
+    chipText: "#312e81",
+    accent: "#6366f1",
+    text: "#1e1b4b",
     label: "Node",
   },
 };
@@ -271,7 +271,7 @@ function ArchitectureDiagram({ diagram, zoom }) {
             key={connector.id}
             d={connector.path}
             fill="none"
-            stroke="#c8c4e8"
+            stroke="#6366f1"
             strokeWidth="1.5"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -344,6 +344,11 @@ function InformationArchitectureContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const projectId = searchParams.get("projectId");
+  const [isWireframeModalOpen, setIsWireframeModalOpen] = useState(false);
+const [wireframeImage, setWireframeImage] = useState(null);
+const [isAnalyzingWireframe, setIsAnalyzingWireframe] = useState(false);
+const [wireframeError, setWireframeError] = useState("");
+const inputRef = useRef(null);
 
   useEffect(() => {
     if (!projectId) { setLoading(false); return; }
@@ -458,6 +463,7 @@ function InformationArchitectureContent() {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [isPromptModalOpen]);
+  
 
   const handleRegenerate = async () => {
     if (!projectId) return;
@@ -478,6 +484,52 @@ function InformationArchitectureContent() {
       setRegenerating(false);
     }
   };
+  const handleWireframeUpload = async (file) => {
+     alert("handleWireframeUpload called");
+
+  console.log("handleWireframeUpload called");
+  if (!file) return;
+
+  setIsWireframeModalOpen(false);
+  setIsAnalyzingWireframe(true);
+  setWireframeError("");
+
+  try {
+    const formData = new FormData();
+    formData.append("image", file);
+
+    const res = await fetch("/api/analyze-wireframe", {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await res.json();
+    console.log("Wireframe API Response:", data);
+
+    if (!data.success) {
+      throw new Error(data.error || "Analysis failed");
+    }
+    console.log("Agent Response:", data.result);
+
+    sessionStorage.setItem(
+  "wireframeResult",
+  data.result
+);
+console.log(
+  "Stored value:",
+  sessionStorage.getItem("wireframeResult")
+);
+
+    router.push(
+      `/projects/${projectId}/wireframe-result`
+    );
+  } catch (err) {
+    setWireframeError(err.message);
+  } finally {
+    setIsAnalyzingWireframe(false);
+  }
+};
+  
 
   if (loading) {
     return (
@@ -494,6 +546,7 @@ function InformationArchitectureContent() {
       </div>
     );
   }
+  
 
   const handleDownloadIA = async () => {
     if (!diagram.nodes.length) return;
@@ -546,6 +599,8 @@ function InformationArchitectureContent() {
     }
   };
 
+  
+
   return (
 <div className="min-h-screen bg-slate-100 p-4 md:p-6">      <div className="mb-6 flex items-center gap-4">
         <button
@@ -561,8 +616,8 @@ function InformationArchitectureContent() {
       </div>
 
       <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between gap-3 bg-slate-900 px-6 py-4">
-          <div className="text-lg font-bold text-white">IA Summary</div>
+        <div className="flex items-center justify-between gap-3 bg-indigo-600 px-6 py-4">
+          <div className="text-lg font-bold text-white">Summary</div>
           <button
             type="button"
             onClick={() => setIsPromptModalOpen(true)}
@@ -609,13 +664,68 @@ function InformationArchitectureContent() {
               )}
             </div>
           </div>
-        </div>
+             </div>
       )}
 
-<div
-  id="ia-download"
-  className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm backdrop-blur"
->        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between bg-gradient-to-r from-slate-900 to-slate-700 px-6 py-4">
+    {isWireframeModalOpen && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+        onClick={() => setIsWireframeModalOpen(false)}
+      >
+        <div
+          className="w-full max-w-lg rounded-2xl bg-white p-6"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h3 className="mb-4 text-xl font-semibold">
+            Wireframe Analyzer
+          </h3>
+
+          <button
+  onClick={() => {
+    console.log("Upload button clicked");
+    inputRef.current?.click();
+  }}
+>
+  Upload Image
+</button>
+
+          <input
+  ref={inputRef}
+  type="file"
+  accept="image/png,image/jpeg,image/webp"
+  className="hidden"
+  onChange={(e) => {
+    console.log("FILE PICKED");
+    console.log(e.target.files);
+
+    const file = e.target.files?.[0];
+
+    if (file) {
+      handleWireframeUpload(file);
+    }
+  }}
+/>
+        </div>
+      </div>
+    )}
+
+    {isAnalyzingWireframe && (
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60">
+        <div className="rounded-2xl bg-white px-8 py-6 shadow-xl">
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent"></div>
+            <p className="text-sm font-medium text-slate-700">
+              Analyzing Wireframe...
+            </p>
+          </div>
+        </div>
+      </div>
+    )}
+
+    <div
+      id="ia-download"
+      className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm backdrop-blur"
+    >       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between bg-gradient-to-r from-indigo-600 to-indigo-700 px-6 py-4">
   
   <div>
     <h2 className="text-lg font-bold text-white">
@@ -714,6 +824,14 @@ className="rounded-2xl border border-slate-200 bg-white p-4 shadow-inner" style=
           </div>
         </div>
       </div>
+      <div className="flex justify-end mt-6">
+  <button
+    onClick={() => setIsWireframeModalOpen(true)}
+    className="px-6 py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition cursor-pointer"
+  >
+    Wireframe Analyzer
+  </button>
+</div>
     </div>
   );
 }
