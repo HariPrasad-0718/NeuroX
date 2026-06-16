@@ -39,6 +39,8 @@ export default function EmpathyMapPage() {
   const [personaOutput, setPersonaOutput] = useState("");
   const [personaStatus, setPersonaStatus] = useState(""); // "generating" | "ready" | "error" | ""
   const [personaError, setPersonaError] = useState("");
+  const [questionAgentOutput, setQuestionAgentOutput] = useState("");
+const [processDiscoveryOutput, setProcessDiscoveryOutput] = useState("");
   const personaSteps = [
   "Transcript Received",
   "Analyzing Responses",
@@ -203,6 +205,15 @@ const [activeStep, setActiveStep] = useState(-1);
       });
 
       const data = await res.json();
+
+console.log("Generate Questions Response:", data);
+      setQuestionAgentOutput(
+  data?.data?.questionAgentQuestions || []
+);
+
+setProcessDiscoveryOutput(
+  data?.data?.processDiscoveryQuestions || []
+);
       if (!data?.success) {
         throw new Error(data?.error?.message || "Failed to generate questions");
       }
@@ -254,12 +265,23 @@ if (questionSets.length === 0) {
       const nextPersonaOutput = data?.data?.persona_output || "";
 
       setPersonaOutput(nextPersonaOutput);
-      setQuestionSets((prev) => prev.map((set) => (
-        set.interviewId === interviewId
-          ? { ...set, transcript: transcriptText, personaOutput: nextPersonaOutput }
-          : set
-      )));
-      setPersonaStatus("ready");
+
+setQuestionSets((prev) => prev.map((set) => (
+  set.interviewId === interviewId
+    ? { 
+        ...set, 
+        transcript: transcriptText, 
+        personaOutput: nextPersonaOutput 
+      }
+    : set
+)));
+
+
+// wait until output exists before stopping loader
+if (nextPersonaOutput.trim()) {
+  setActiveStep(personaSteps.length);
+  setPersonaStatus("ready");
+}
     } catch (err) {
       setPersonaStatus("error");
       setPersonaError(err.message || "Failed to generate persona");
@@ -300,11 +322,31 @@ if (questionSets.length === 0) {
     setTranscript(initialTranscript);
     setTranscriptDraft(initialTranscript);
     setIsEditingTranscript(!initialTranscript.trim());
-    setPersonaOutput(questionSets[0]?.personaOutput || "");
-    setPersonaError("");
-    setPersonaStatus("");
-    setSaveStatus("");
+    const savedPersona = questionSets[0]?.personaOutput || "";
+
+setPersonaOutput(savedPersona);
+setPersonaError("");
+
+if (savedPersona.trim()) {
+  setPersonaStatus("ready");
+} else {
+  setPersonaStatus("");
+}
+
+setSaveStatus("");
   }, [selectedInterviewee?.interviewee_id, questionSets]);
+
+  useEffect(() => {
+  if (questionSets.length > 0) {
+    setQuestionAgentOutput(
+      questionSets[0]?.questionAgentOutput || []
+    );
+
+    setProcessDiscoveryOutput(
+      questionSets[0]?.processDiscoveryOutput || []
+    );
+  }
+}, [questionSets]);
 
   const handleSubmitTranscript = async () => {
     const interviewId = questionSets[0]?.interviewId;
@@ -316,14 +358,17 @@ setActiveStep(0);
 
 const interval = setInterval(() => {
   setActiveStep((prev) => {
-    // Stop at the last step ("Finalizing Report")
-    if (prev >= personaSteps.length - 1) {
-      return personaSteps.length - 1;
-    }
+    // Stop before Finalizing Report
+    if (prev >= personaSteps.length - 2) {
+  clearInterval(interval);
+
+  // stay on final step loading
+  return personaSteps.length - 1;
+}
 
     return prev + 1;
   });
-}, 1500);
+}, 1800);
 
     try {
       const res = await fetch("/api/generate-questions", {
@@ -370,8 +415,9 @@ const interval = setInterval(() => {
       }),
     });
 
-    const data = await res.json();
 
+    const data = await res.json();
+    console.log("Interviewee Response:", data);
     if (data.success) {
       setShowForm(false);
       setForm({
@@ -541,11 +587,10 @@ const interval = setInterval(() => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto w-full max-w-7xl px-1 py-2 sm:px-2 lg:px-4">
-
+<div className="mx-auto w-full max-w-screen-2xl px-2 py-2">
       {/* Persona Tabs */}
       <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap agap-2">
           {personas.map((p) => (
             <button
               key={p.persona_id}
@@ -678,8 +723,9 @@ const interval = setInterval(() => {
       </div>
 
       {/* Interviewee Tabs + Plus Button */}
-      <div className="mb-0 flex flex-wrap items-center gap-2 overflow-x-auto bg-transparent p-2">
-        {interviewees.map((i) => (
+      <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+
+<div className="mb-0 flex flex-wrap items-center gap-2 overflow-x-auto bg-transparent py-2 pl-4">      {interviewees.map((i) => (
           <div key={i.interviewee_id} className="relative">
             <button
               onClick={() => {
@@ -691,7 +737,7 @@ const interval = setInterval(() => {
               }}
               className={`px-4 pr-10 py-2 rounded-t-md whitespace-nowrap text-sm font-medium transition ${
                 selectedInterviewee?.interviewee_id === i.interviewee_id
-                  ? "bg-indigo-500 text-white shadow"
+  ? "bg-white text-indigo-600 border border-gray-200 border-b-white -mb-px relative z-10"
                   : "bg-gray-100 hover:bg-gray-200"
               }`}
             >
@@ -742,7 +788,7 @@ const interval = setInterval(() => {
 
       {/* ✅ INLINE FORM - replaces modal, appears below + button */}
       {showForm && (
-        <div className="mb-0 bg-transparent p-3 sm:p-4">
+        <div className="mb-0 bg-transparent py-4">
           <h3 className="mb-4 text-base font-semibold text-gray-800">Add Interviewee</h3>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -797,7 +843,7 @@ const interval = setInterval(() => {
 
       {/* Interviewee Details */}
       {selectedInterviewee && (
-        <div className="relative mt-3 bg-transparent p-0">
+        <div className="border-t border-gray-200 bg-white">
           {/* Close Button */}
           <button
             onClick={() => setSelectedInterviewee(null)}
@@ -817,7 +863,7 @@ const interval = setInterval(() => {
             </svg>
           </button>
 
-          <div className="rounded-xl border border-gray-200 bg-gradient-to-r from-indigo-50/60 to-white px-4 py-3">
+          <div className="px-4 py-3">
             <div className="flex flex-wrap items-center gap-2 pr-8 text-sm leading-snug">
               <div className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
                 <svg
@@ -848,7 +894,7 @@ const interval = setInterval(() => {
             </div>
           </div>
 
-          <div className="mt-5 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+          <div className="mt-5 px-4 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
             {[
               { label: "Gender", value: selectedInterviewee.gender },
               { label: "Education", value: selectedInterviewee.education },
@@ -867,16 +913,17 @@ const interval = setInterval(() => {
           </div>
         </div>
       )}
+      </div>
 
       {/* Questions */}
       {selectedInterviewee && (
         <div className="mt-3">
-          <div className="bg-transparent p-4 sm:p-6">
+          <div className="bg-transparent py-6">
             <div className="flex flex-col gap-4 border-b border-gray-200 pb-5 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Interview Flow</p>
-                <h3 className="mt-2 text-xl font-semibold text-gray-900">Question Guide</h3>
-                <p className="mt-1 text-sm leading-6 text-gray-600">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] px-1 text-gray-500">Interview Flow</p>
+                <h3 className="mt-2 text-xl font-semibold px-1 text-gray-900">Question Guide</h3>
+                <p className="mt-1 text-sm leading-6 px-1 text-gray-600">
                   Review the prompts below, then respond in one structured transcript for {selectedInterviewee.name}.
                 </p>
               </div>
@@ -903,28 +950,49 @@ const interval = setInterval(() => {
               <p className="mt-5 text-sm text-gray-500">No questions generated yet for this persona member.</p>
             ) : (
               <>
-                <div className="mt-6">
-                  <div className="mb-4 flex items-center justify-between gap-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Latest Set</p>
-                    <p className="text-xs text-gray-500">{questionSets[0].questions.length} prompts</p>
-                  </div>
 
-                  <div className="space-y-3">
-                    {questionSets[0].questions.map((q, index) => (
-                      <div
-                        key={`${questionSets[0].interviewId}-${index}`}
-                        className="rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-sm"
-                      >
-                        <div className="flex gap-4">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-semibold text-indigo-700">
-                            Q{index + 1}
-                          </div>
-                          <p className="pt-1 text-sm font-medium leading-6 text-gray-800">{q}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+               <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+  {/* Process Discovery Agent */}
+  <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+    <h3 className="font-semibold text-green-600 mb-4">
+      Mandatory Questions
+    </h3>
+
+    {processDiscoveryOutput.length > 0 ? (
+      processDiscoveryOutput.map((q, idx) => (
+        <div key={idx} className="mb-3">
+          {idx + 1}. {q}
+        </div>
+      ))
+    ) : (
+      <p className="text-gray-400">
+        No response yet
+      </p>
+    )}
+  </div>
+
+  {/* Question Generator Agent */}
+  <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+    <h3 className="font-semibold text-indigo-600 mb-4">
+      Suggested Questions
+    </h3>
+
+    {questionAgentOutput.length > 0 ? (
+      questionAgentOutput.map((q, idx) => (
+        <div key={idx} className="mb-3">
+          {idx + 1}. {q}
+        </div>
+      ))
+    ) : (
+      <p className="text-gray-400">
+        No response yet
+      </p>
+    )}
+  </div>
+
+</div>
+               
 
                 <div className="mt-8 border-t border-gray-200 pt-6">
                   <div className="mb-4">
@@ -1006,7 +1074,8 @@ const interval = setInterval(() => {
                   </div>
                 </div>
 
-                <div className="mt-8 border-t border-gray-200 pt-6">
+                {personaStatus || personaOutput?.trim() ? (
+<div className="mt-8 border-t border-gray-200 pt-6">
                   <div className="mb-4 flex items-center justify-between gap-3">
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">User Persona Output</p>
@@ -1044,16 +1113,19 @@ const interval = setInterval(() => {
 
     <div className="space-y-4">
       {personaSteps.map((step, index) => (
-        <div key={step} className="flex items-center gap-3">
+        <div key={step} className="flex items-center gap-4">
           {index < activeStep ? (
-            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-green-500 text-white text-xs">
-              ✓
-            </div>
-          ) : index === activeStep ? (
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
-          ) : (
-            <div className="h-6 w-6 rounded-full border-2 border-gray-300" />
-          )}
+  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-green-500 text-white text-xs">
+    ✓
+  </div>
+) : index === activeStep ? (
+  <div className="relative flex h-7 w-7 items-center justify-center">
+    <div className="absolute h-7 w-7 animate-ping rounded-full bg-indigo-200 opacity-50" />
+    <div className="h-7 w-7 animate-spin rounded-full border-[3px] border-indigo-500 border-t-transparent" />
+  </div>
+) : (
+  <div className="h-7 w-7 rounded-full border-2 border-gray-300" />
+)}
 
           <span>{step}</span>
         </div>
@@ -1075,7 +1147,7 @@ const interval = setInterval(() => {
                         onClick={downloadPersonaReport}
                         className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
                       >
-                        Download Persona Report
+                        Download Report
                       </button>
                       <button
                         onClick={async () => {
@@ -1093,8 +1165,11 @@ const interval = setInterval(() => {
                         Generate Empathy Map
                       </button>
                     </div>
+                  
                   )}
                 </div>
+                
+                ) : null}
 
                 {questionSets.length > 1 && (
                   <div className="mt-8 border-t border-gray-200 pt-6">

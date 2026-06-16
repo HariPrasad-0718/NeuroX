@@ -702,27 +702,27 @@ await fetch("/api/save-generated-persona", {
         </div>
 
         {!loading && !loadedFromDb ? (
-          <button
-            onClick={handleGenerate}
-            disabled={generating || !personas.length}
-            className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {generating ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Generating...
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                {generated ? "Regenerate" : "Generate Problem Definition"}
-              </>
-            )}
-          </button>
+         <button
+  onClick={handleGenerate}
+  disabled={generating || !personas.length}
+  className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+>
+  {generating ? (
+    <>
+      <Loader2 className="w-4 h-4 animate-spin" />
+      Generating...
+    </>
+  ) : (
+    <>
+      <Sparkles className="w-4 h-4" />
+      {generated ? "Regenerate" : "Generate Problem Definition"}
+    </>
+  )}
+</button>
         ) : null}
       </div>
 
-      <div className="max-w-6xl mx-auto px-6 py-10">
+      <div className="max-w-6xl mx-auto px-3 py-5">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-32">
             <Loader2 className="w-10 h-10 text-indigo-500 animate-spin mb-4" />
@@ -841,24 +841,6 @@ await fetch("/api/save-generated-persona", {
                       </button>
                     ))}
                   </div>
-
-                  {activePersonaGroup?.outputs?.length ? (
-                    <div className="mb-6 flex flex-wrap gap-2 border-b border-gray-200 pb-2">
-                      {activePersonaGroup.outputs.map((output) => (
-                        <button
-                          key={`${activePersonaGroup.personaId}-${output.intervieweeId ?? "none"}`}
-                          onClick={() => setActiveIntervieweeId(output.intervieweeId ?? null)}
-                          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                            String(activeIntervieweeId) === String(output.intervieweeId)
-                              ? "bg-[#702dff] text-white shadow"
-                              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                          }`}
-                        >
-                          {output.intervieweeName || "Interviewee"}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
 
                  {activeAgentCard ? (
   <div>

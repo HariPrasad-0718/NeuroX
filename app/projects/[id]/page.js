@@ -2279,8 +2279,8 @@ const handleDownloadBrdDoc = async () => {
 )}
 
 {processFlowData && (
-  <div className="mt-10">
-    <div className="mb-6">
+  <div className="mt-1">
+    <div className="mb-3">
       <h2 className="text-xl font-semibold text-gray-900">
         AI Generated Process Flow
       </h2>
@@ -2290,7 +2290,7 @@ const handleDownloadBrdDoc = async () => {
       </p>
     </div>
 
-    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
       <pre className="whitespace-pre-wrap text-sm text-gray-700">
         {JSON.stringify(processFlowData, null, 2)}
       </pre>

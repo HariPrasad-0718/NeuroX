@@ -15,12 +15,35 @@ function groupQuestionHistory(rows) {
   for (const row of rows) {
     if (!map.has(row.interview_id)) {
       map.set(row.interview_id, {
-        interviewId: row.interview_id,
-        createdAt: row.created_at,
-        transcript: row.transcript || "",
-        personaOutput: row.persona_output || "",
-        questions: [],
-      });
+  interviewId: row.interview_id,
+  createdAt: row.created_at,
+  transcript: row.transcript || "",
+  personaOutput: row.persona_output || "",
+
+  questionAgentOutput: (() => {
+  try {
+    return row.question_agent_output
+      ? JSON.parse(row.question_agent_output)
+      : [];
+  } catch {
+    return [];
+  }
+})(),
+
+processDiscoveryOutput: (() => {
+  try {
+    return row.process_discovery_output
+      ? JSON.parse(row.process_discovery_output)
+      : [];
+  } catch {
+    return [];
+  }
+})(),
+
+  
+
+  questions: [],
+});
     }
 
     if (row.question_text) {
@@ -53,6 +76,8 @@ export const GET = withAuth(async (request, _ctx, user) => {
           i.created_at,
           i.transcript,
           i.persona_output,
+          i.question_agent_output,
+  i.process_discovery_output,
           q.question_text
         FROM interviewss i
         INNER JOIN intervieweess ie ON i.interviewee_id = ie.interviewee_id
@@ -220,12 +245,23 @@ export const POST = withAuth(async (request, _ctx, user) => {
       );
     }
 
-    const questions = await generatePersonaQuestions({
+    const {
+  questionAgentQuestions,
+  processDiscoveryQuestions,
+} = await generatePersonaQuestions({
   projectName,
   description,
   userGroup,
   personaDescription,
 });
+
+
+const questions = [
+  ...new Set([
+    ...questionAgentQuestions,
+    ...processDiscoveryQuestions,
+  ]),
+];
 
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
@@ -242,7 +278,7 @@ export const POST = withAuth(async (request, _ctx, user) => {
           `);
 
         let interviewId = latestInterviewResult.recordset[0]?.interview_id;
-
+           
         if (!interviewId) {
           const insertedInterview = await new sql.Request(transaction)
             .input("intervieweeId", sql.Int, interviewee.interviewee_id)
@@ -270,6 +306,26 @@ export const POST = withAuth(async (request, _ctx, user) => {
               WHERE interview_id = @interviewId
             `);
         }
+         // SAVE AGENT OUTPUTS HERE
+  await new sql.Request(transaction)
+    .input("interviewId", sql.Int, interviewId)
+    .input(
+      "questionAgentOutput",
+      sql.NVarChar(sql.MAX),
+      JSON.stringify(questionAgentQuestions)
+    )
+    .input(
+      "processDiscoveryOutput",
+      sql.NVarChar(sql.MAX),
+      JSON.stringify(processDiscoveryQuestions)
+    )
+    .query(`
+      UPDATE interviewss
+      SET
+        question_agent_output = @questionAgentOutput,
+        process_discovery_output = @processDiscoveryOutput
+      WHERE interview_id = @interviewId
+    `);
 
         for (const questionText of questions) {
           await new sql.Request(transaction)
@@ -289,9 +345,13 @@ export const POST = withAuth(async (request, _ctx, user) => {
     }
 
     return NextResponse.json({
-      success: true,
-      data: { questions, appliedToInterviewees: interviewees.length },
-    });
+  success: true,
+  data: {
+    questionAgentQuestions,
+    processDiscoveryQuestions,
+    appliedToInterviewees: interviewees.length,
+  },
+});
   } catch (error) {
   console.error(error);
 
