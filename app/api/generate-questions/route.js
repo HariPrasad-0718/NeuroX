@@ -71,11 +71,19 @@ export const GET = withAuth(async (request, _ctx, user) => {
       data: { latest: history[0] || null, history },
     });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: { message: error.message } },
-      { status: 500 }
-    );
-  }
+  console.error("Generate Questions Error:", error);
+
+  return NextResponse.json(
+    {
+      success: false,
+      error: {
+        message: error.message,
+        stack: error.stack,
+      },
+    },
+    { status: 500 }
+  );
+}
 });
 
 // PATCH /api/generate-questions
@@ -162,7 +170,13 @@ export const POST = withAuth(async (request, _ctx, user) => {
   const { limited, retryAfterSec } = aiStandardLimiter.check(String(user.userId));
   if (limited) return rateLimitedResponse(retryAfterSec);
 
-  const { personaId, description, user_group: userGroup, persona_description: personaDescription } = data;
+  const {
+  personaId,
+  projectName,
+  description,
+  user_group: userGroup,
+  persona_description: personaDescription,
+} = data;
 
   try {
     const pool = await getPool();
@@ -207,10 +221,11 @@ export const POST = withAuth(async (request, _ctx, user) => {
     }
 
     const questions = await generatePersonaQuestions({
-      description,
-      userGroup,
-      personaDescription,
-    });
+  projectName,
+  description,
+  userGroup,
+  personaDescription,
+});
 
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
@@ -278,9 +293,17 @@ export const POST = withAuth(async (request, _ctx, user) => {
       data: { questions, appliedToInterviewees: interviewees.length },
     });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: { message: error.message } },
-      { status: 500 }
-    );
-  }
+  console.error(error);
+
+  return NextResponse.json(
+    {
+      success: false,
+      error: {
+        message: error.message,
+        stack: error.stack,
+      },
+    },
+    { status: 500 }
+  );
+}
 });

@@ -186,11 +186,20 @@ const [activeStep, setActiveStep] = useState(-1);
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          personaId: activePersona.persona_id,
-          description: projectDescription || "Project context not provided",
-          user_group: activePersona.persona_name,
-          persona_description: enhancedPersonaDescription || activePersona.persona_description || "",
-        }),
+  personaId: activePersona.persona_id,
+
+  projectName: projectName, // <-- ADD THIS
+
+  description:
+    projectDescription || "Project context not provided",
+
+  user_group: activePersona.persona_name,
+
+  persona_description:
+    enhancedPersonaDescription ||
+    activePersona.persona_description ||
+    "",
+}),
       });
 
       const data = await res.json();

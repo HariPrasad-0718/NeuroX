@@ -713,7 +713,7 @@ console.log(
           <div className="flex flex-col items-center gap-3">
             <div className="h-10 w-10 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent"></div>
             <p className="text-sm font-medium text-slate-700">
-              Analyzing Wireframe...
+              Analyzing Requirements...
             </p>
           </div>
         </div>

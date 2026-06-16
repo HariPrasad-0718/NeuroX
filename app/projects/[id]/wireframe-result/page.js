@@ -539,7 +539,7 @@ const [promptProgress, setPromptProgress] = useState([]);
 
 
 const BRD_STEPS = [
-  "Analyzing wireframe",
+  "Analyzing Requirements",
   "Extracting business requirements",
   "Structuring BRD sections",
   "Validating completeness",

@@ -568,7 +568,7 @@ const [isDownloadingPrd, setIsDownloadingPrd] = useState(false);
 const [brdProgress, setBrdProgress] = useState([]);
 const [prdProgress, setPrdProgress] = useState([]);
 const BRD_STEPS = [
-  "Analyzing wireframe",
+  "Analyzing requirements",
   "Extracting business requirements",
   "Structuring BRD sections",
   "Validating completeness",
