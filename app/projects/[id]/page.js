@@ -35,8 +35,6 @@ const STAGE_TEMPLATES = {
   ],
   define: [
   { id: "problem-statement", name: "Problem Statement", icon: FileText, type: "file" },
-
-  // NEW CARD
   { id: "process-flow", name: "Process Flow", icon: FileText, type: "agent" },
 ],
  ideate: [
@@ -97,7 +95,6 @@ const IDEATE_CARD_MEDIA = {
     description: "Generate BRD and PRD from project context.",
   },
 };
-
 
 const PROTOTYPE_CARD_MEDIA = {
   "low-fidelity": { image: "https://images.unsplash.com/photo-1586717791821-3f44a563fa4c?w=1200&h=800&fit=crop", eyebrow: "Early Concepts", title: "Low Fidelity Prototype", description: "Sketch and wireframe your ideas to quickly validate concepts with users." },
@@ -192,13 +189,141 @@ function appendWordValue(paragraphs, value, depth = 0) {
 function cleanPrdHtml(value) {
   const text = String(value || "").trim();
 
-  return text
-    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
-    .replace(/\son\w+\s*=\s*"[^"]*"/gi, "")
-    .replace(/\son\w+\s*=\s*'[^']*'/gi, "")
-    .replace(/\sjavascript:/gi, " ");
-}
+  // Remove script tags
+  let cleaned = text.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "");
 
+  // Remove inline event handlers
+  cleaned = cleaned.replace(/\son\w+\s*=\s*"[^"]*"/gi, "");
+  cleaned = cleaned.replace(/\son\w+\s*=\s*'[^']*'/gi, "");
+
+  // Remove javascript: URLs
+  cleaned = cleaned.replace(/\sjavascript:/gi, " ");
+
+  // Ensure the content has proper HTML structure
+  if (!cleaned.startsWith("<") && !cleaned.includes("<h1")) {
+    // If it's plain text, wrap in paragraphs
+    cleaned = cleaned.split(/\n+/).filter(line => line.trim()).map(line =>
+      `<p>${line.trim()}</p>`
+    ).join("");
+  }
+
+  return cleaned;
+}
+// Helper: Convert markdown to HTML
+const convertMarkdownToHtml = (text) => {
+  if (!text) return "";
+  
+  let html = text;
+  
+  // Convert headers
+  html = html.replace(/^#\s+(.+)$/gm, '<h1>$1</h1>');
+  html = html.replace(/^##\s+(.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^####\s+(.+)$/gm, '<h4>$1</h4>');
+  
+  // Convert bold and italic
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  
+  // Convert horizontal rules
+  html = html.replace(/^---$/gm, '<hr />');
+  
+  // Convert bullet lists
+  html = html.replace(/^-\s+(.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*?<\/li>)+/g, '<ul>$&</ul>');
+  
+  // Convert numbered lists
+  html = html.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*?<\/li>)+/g, function(match) {
+    if (match.includes('<ol>')) return match;
+    return `<ol>${match}</ol>`;
+  });
+  
+  // Convert paragraphs
+  const lines = html.split('\n');
+  let result = [];
+  
+  for (let line of lines) {
+    line = line.trim();
+    if (!line) {
+      result.push('<br />');
+      continue;
+    }
+    
+    // Skip if already wrapped in HTML tags
+    if (/^<[hH][1-6]/.test(line) || /^<ul>/.test(line) || /^<ol>/.test(line) || 
+        /^<li>/.test(line) || /^<table>/.test(line) || /^<hr \/>/.test(line)) {
+      result.push(line);
+      continue;
+    }
+    
+    result.push(`<p>${line}</p>`);
+  }
+  
+  html = result.join('\n');
+  
+  return html;
+};
+// Final sanitizer: strips only what Python's clean_prd_output + normalize_text strip.
+// Run this once, right before setPrdHtml / before rendering.
+function sanitizePrdText(value) {
+  if (!value) return "";
+
+  let text = String(value).trim();
+
+  // Remove markdown code fences (```html ... ```)
+  text = text.replace(/```html/g, "");
+  text = text.replace(/```/g, "");
+
+  // Remove a single pair of wrapping outer quotes, if present
+  if (text.startsWith('"') && text.endsWith('"')) {
+    text = text.slice(1, -1);
+  }
+
+  // Normalize literal unicode-escape sequences that leaked through as text
+  // (these are LITERAL strings like backslash-u-2013, not real unicode chars)
+  const escapeReplacements = {
+    "\\u2013": "–",
+    "\\u2014": "—",
+    "\\u2018": "'",
+    "\\u2019": "'",
+    "\\u201c": '"',
+    "\\u201d": '"',
+    "\\u2192": "→",
+    "\\u2265": "≥",
+    "\\u2264": "≤",
+    "\\u2022": "•",
+    "\\n": "\n",
+    "\\t": " ",
+  };
+
+  for (const [bad, good] of Object.entries(escapeReplacements)) {
+    const escaped = bad.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    text = text.replace(new RegExp(escaped, "g"), good);
+  }
+
+  // Collapse excessive whitespace
+  text = text.replace(/[ \t]+/g, " ");
+  text = text.replace(/\n{3,}/g, "\n\n");
+
+  // Strip unsafe HTML before it's ever rendered with dangerouslySetInnerHTML
+  text = text.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "");
+  text = text.replace(/\son\w+\s*=\s*"[^"]*"/gi, "");
+  text = text.replace(/\son\w+\s*=\s*'[^']*'/gi, "");
+  text = text.replace(/\sjavascript:/gi, " ");
+
+  // If it's not HTML at all, wrap plain lines in paragraphs
+  if (!text.startsWith("<") && !text.includes("<h1") && !text.includes("<h2")) {
+    text = text
+      .split(/\n+/)
+      .filter((line) => line.trim())
+      .map((line) => `<p>${line.trim()}</p>`)
+      .join("");
+  }
+
+  return text.trim();
+}
+// Helper: Decode escaped text (single definition)
 function decodeEscapedText(value) {
   return String(value || "")
     .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
@@ -209,11 +334,203 @@ function decodeEscapedText(value) {
     .replace(/\\"/g, '"');
 }
 
+// Helper: Try to parse JSON string (mirrors Python backend)
+const tryParseJsonString = (s) => {
+  if (!s) return null;
+  
+  let cleaned = s.trim();
+  
+  // Remove markdown code fences
+  if (cleaned.startsWith("```json")) {
+    cleaned = cleaned.replace("```json", "").trim();
+  }
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned.replace("```", "").trim();
+  }
+  if (cleaned.endsWith("```")) {
+    cleaned = cleaned.slice(0, -3).trim();
+  }
+  
+  try {
+    return JSON.parse(cleaned);
+  } catch (e) {
+    // Try with unicode escape
+    try {
+      return JSON.parse(cleaned.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => 
+        String.fromCharCode(parseInt(hex, 16))
+      ));
+    } catch (e2) {
+      return null;
+    }
+  }
+};
+
+// Helper: Clean PRD output (mirrors Python backend)
+// Helper: Clean PRD output (mirrors Python backend)
+const cleanPrdOutput = (text) => {
+  if (!text) return "";
+
+  let cleaned = text.trim();
+
+  // Remove markdown code fences
+  cleaned = cleaned.replace(/```html/g, "");
+  cleaned = cleaned.replace(/```/g, "");
+
+  // Remove outer quotes if present
+  if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+    cleaned = cleaned.slice(1, -1);
+  }
+
+  // Normalize Unicode characters
+  const replacements = {
+    "\\u2013": "–",
+    "\\u2014": "—",
+    "\\u2018": "'",
+    "\\u2019": "'",
+    "\\u201c": '"',
+    "\\u201d": '"',
+    "\\u2192": "→",
+    "\\u2265": "≥",
+    "\\u2264": "≤",
+    "\\u2022": "•",
+    "\\n": "\n",
+    "\\t": " "
+  };
+
+  for (const [bad, good] of Object.entries(replacements)) {
+    cleaned = cleaned.replace(new RegExp(bad.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), good);
+  }
+
+  // Remove excessive whitespace
+  cleaned = cleaned.replace(/[ \t]+/g, ' ');
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+
+  return cleaned.trim();
+};
+// Helper: Extract PRD output (mirrors Python backend)
+const extractPrdOutput = (result) => {
+  // 1. Check for messages in response
+  const messages = result?.response?.messages || [];
+  
+  // Prefer full assistant HTML output from messages
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (typeof msg !== "string") continue;
+
+    // Try to extract content from the message string
+    const match = msg.match(/content='(.*?)'\s+additional_kwargs=/s);
+    if (!match) continue;
+
+    const content = match[1];
+    
+    // Check if it contains HTML headers
+    if (content.includes("<h1>") && content.includes("<h2>")) {
+      const cleaned = cleanPrdOutput(content);
+      // Avoid truncated output
+      if (!cleaned.includes("...") && cleaned.length > 1000) {
+        return cleaned;
+      }
+      if (cleaned.length > 1000) {
+        return cleaned;
+      }
+    }
+  }
+
+  // 2. Fallback: Check top-level prd_output
+  const topMessage = result?.message || "";
+  if (topMessage) {
+    const parsed = tryParseJsonString(topMessage);
+    if (parsed && typeof parsed === "object") {
+      const prd = parsed.prd_output || "";
+      if (typeof prd === "string" && 
+          prd.includes("<h1>") && 
+          prd.includes("<h2>") && 
+          !prd.includes("...") && 
+          prd.length > 1000) {
+        return cleanPrdOutput(prd);
+      }
+    }
+  }
+
+  // 3. Check data.prd_output directly
+  if (result?.data?.prd_output) {
+    const prd = result.data.prd_output;
+    if (typeof prd === "string" && prd.includes("<h1>") && prd.includes("<h2>")) {
+      return cleanPrdOutput(prd);
+    }
+  }
+
+  // 4. Check result.prd_output directly
+  if (result?.prd_output) {
+    const prd = result.prd_output;
+    if (typeof prd === "string" && prd.includes("<h1>") && prd.includes("<h2>")) {
+      return cleanPrdOutput(prd);
+    }
+  }
+
+  // 5. Try to extract from final_response
+  if (result?.final_response) {
+    if (typeof result.final_response === "object" && result.final_response.prd_output) {
+      return cleanPrdOutput(result.final_response.prd_output);
+    }
+    if (typeof result.final_response === "string") {
+      const parsed = tryParseJsonString(result.final_response);
+      if (parsed && parsed.prd_output) {
+        return cleanPrdOutput(parsed.prd_output);
+      }
+      // Check if it's HTML directly
+      if (result.final_response.includes("<h1>") && result.final_response.includes("<h2>")) {
+        return cleanPrdOutput(result.final_response);
+      }
+    }
+  }
+
+  return null;
+};
+
 function extractPrdMarkup(value, depth = 0) {
   if (depth > 8 || value === null || value === undefined) return "";
 
   if (typeof value === "object") {
-    const directKeys = ["prd_output", "message", "final_response", "content", "output", "result"];
+    // Check for prd_output field first
+    if (Object.prototype.hasOwnProperty.call(value, "prd_output")) {
+      const prdOutput = value.prd_output;
+      // If prd_output is a string, try to parse it
+      if (typeof prdOutput === "string") {
+        // Try to parse as JSON first
+        try {
+          const parsed = JSON.parse(prdOutput);
+          if (parsed && typeof parsed === "object") {
+            // If parsed successfully, extract from the parsed object
+            const found = extractPrdMarkup(parsed, depth + 1);
+            if (found) return found;
+          }
+        } catch (e) {
+          // If not valid JSON, it might be the HTML content itself
+          // Check if it contains HTML tags
+          if (prdOutput.includes("<h1") || prdOutput.includes("<h2")) {
+            return prdOutput;
+          }
+          // Try to clean and parse as loose JSON
+          const cleaned = prdOutput.replace(/\\n/g, "\n").replace(/\\"/g, '"');
+          try {
+            const parsed = JSON.parse(cleaned);
+            if (parsed && typeof parsed === "object") {
+              const found = extractPrdMarkup(parsed, depth + 1);
+              if (found) return found;
+            }
+          } catch (e2) {
+            // Return the cleaned string if it contains HTML
+            if (cleaned.includes("<h1") || cleaned.includes("<h2")) {
+              return cleaned;
+            }
+          }
+        }
+      }
+    }
+    
+    // Other existing checks
+    const directKeys = ["message", "final_response", "content", "output", "result"];
     for (const key of directKeys) {
       if (Object.prototype.hasOwnProperty.call(value, key)) {
         const found = extractPrdMarkup(value[key], depth + 1);
@@ -238,6 +555,19 @@ function extractPrdMarkup(value, depth = 0) {
 
   const raw = decodeEscapedText(value).trim();
   if (!raw) return "";
+
+  // Check if it's a JSON string containing prd_output
+  if (raw.startsWith("{") && raw.includes("prd_output")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        const found = extractPrdMarkup(parsed, depth + 1);
+        if (found) return found;
+      }
+    } catch (e) {
+      // Continue with other checks
+    }
+  }
 
   const stripped = stripFence(raw)
     .replace(/^```html/i, "")
@@ -795,7 +1125,6 @@ const PRD_STEPS = [
   does: getBullets(getHeadingBlock(normalized, "Does")),
   feels: getBullets(getHeadingBlock(normalized, "Feels")),
 
-  // keep old if needed
   goals: getBullets(getHeadingBlock(normalized, "Goals")),
   motivations: getBullets(getHeadingBlock(normalized, "Motivations?")),
   frustrations: getBullets(getHeadingBlock(normalized, "Frustrations?")),
@@ -854,7 +1183,6 @@ const PRD_STEPS = [
   setCombinedPersonaOutputError("");
 
   try {
-    // STEP 1: Get combined persona output
     const res = await fetch(`/api/personas?projectId=${projectId}&aggregateGenerated=true`);
     const data = await res.json();
 
@@ -865,7 +1193,6 @@ const PRD_STEPS = [
     const combinedOutput = data?.data?.combinedOutput || "";
     setCombinedPersonaOutput(combinedOutput);
 
-    // ðŸ”¥ STEP 2: SEND TO AGENT
     const agentRes = await fetch("/api/generate-persona-card", {
       method: "POST",
       headers: {
@@ -895,12 +1222,6 @@ const PRD_STEPS = [
     }
     setFinalPersonaCard(agentData.persona_card);
 
-
-    console.log("âœ… FINAL PERSONA CARD:", agentData.persona_card);
-
-    // OPTIONAL: store or show in UI
-    // setFinalPersonaCard(agentData.persona_card);
-
   } catch (err) {
     setCombinedPersonaOutputError(err.message || "Failed to combine persona outputs");
     setCombinedPersonaOutput("");
@@ -928,7 +1249,6 @@ const handleGenerateProcessFlow = async () => {
       throw new Error(agentData?.error || "Process Flow generation failed");
     }
 
-    // âœ… Navigate to new page with data
     sessionStorage.removeItem("processFlowData");
     sessionStorage.setItem(
       "processFlowData",
@@ -953,7 +1273,6 @@ const handleGenerateInformationArchitecture = async () => {
       throw new Error("Project ID is missing");
     }
 
-    // Match the Python flow by sending combined define/persona output when available.
     let combinedOutput = String(combinedPersonaOutput || "").trim();
 
     if (!combinedOutput) {
@@ -991,7 +1310,6 @@ const handleGenerateInformationArchitecture = async () => {
       );
     }
 
-    // âœ… FIX: set state so UI can show it
     setInformationArchitectureData(agentData.information_architecture);
 
     sessionStorage.setItem(
@@ -1100,7 +1418,7 @@ const handleGenerateInformationArchitecture = async () => {
   setProgress([]);
 
   for (let i = 0; i < steps.length; i++) {
-    await new Promise((res) => setTimeout(res, 2000)); // adjust speed
+    await new Promise((res) => setTimeout(res, 2000));
 
     setProgress((prev) => [
       ...prev,
@@ -1162,8 +1480,6 @@ const handleGenerateInformationArchitecture = async () => {
     </div>
   );
 };
-
-
 
 const renderGenericCard = (template, stageId, downloadableTemplateId, link, isCompleted) => {
   const mediaMap = STAGE_MEDIA_MAP[stageId] || {};
@@ -1270,7 +1586,6 @@ const WireframeReviewerCard = () => {
   return (
    <div className="relative flex flex-col rounded-2xl bg-white border border-gray-100 transition-all hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-100">
 
-  {/* LOADING OVERLAY */}
   {isGenerating && (
     <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-white/85 backdrop-blur-sm px-4 py-4">
       <div className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg">
@@ -1280,7 +1595,6 @@ const WireframeReviewerCard = () => {
     </div>
   )}
 
-  {/* HEADER */}
   <div className="p-5 flex items-start gap-3">
     <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
       <FileText className="w-5 h-5 text-indigo-600" />
@@ -1296,12 +1610,10 @@ const WireframeReviewerCard = () => {
     </div>
   </div>
 
-  {/* DESCRIPTION */}
   <p className="px-5 text-sm text-gray-600">
     Upload a wireframe image for AI-powered review and analysis.
   </p>
 
-  {/* STATUS */}
   <div className="px-5 mt-3">
     {wireframeError && (
       <div className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
@@ -1327,7 +1639,6 @@ const WireframeReviewerCard = () => {
     )}
   </div>
 
-  {/* ACTIONS */}
   <div className="mt-auto p-5">
     <button
       onClick={() => inputRef.current?.click()}
@@ -1373,7 +1684,6 @@ const renderIdeateTemplateCard = (template, isCompleted) => {
         </div>
       )}
 
-      {/* HEADER (same style as BRD/PRD) */}
       <div className="p-5 flex items-start gap-3">
         <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
       <FileText className="w-5 h-5 text-indigo-600" />
@@ -1389,12 +1699,10 @@ const renderIdeateTemplateCard = (template, isCompleted) => {
         </div>
       </div>
 
-      {/* DESCRIPTION */}
       <p className="px-5 text-sm text-gray-600">
         {media.description}
       </p>
 
-      {/* ACTIONS */}
       <div className="mt-auto p-5 space-y-2">
         <button
           onClick={(e) => {
@@ -1460,7 +1768,7 @@ const handleOpenBrdModal = async () => {
 const handleOpenPrdModal = async () => {
   setIsPrdModalOpen(true);
   setPrdProgress([]);
-runProgressSteps(PRD_STEPS, setPrdProgress);
+  runProgressSteps(PRD_STEPS, setPrdProgress);
 
   if (!projectId) {
     setPrdError("Project id is missing.");
@@ -1479,12 +1787,23 @@ runProgressSteps(PRD_STEPS, setPrdProgress);
     });
 
     const bodyText = await res.text();
-    const data = parseApiJson(bodyText);
+    console.log("Raw response:", bodyText);
+
+    // Parse the main response
+    let data;
+    try {
+      data = JSON.parse(bodyText);
+    } catch (e) {
+      console.error("Failed to parse JSON:", e);
+      setPrdError("Invalid JSON response from server");
+      setPrdHtml("");
+      return;
+    }
 
     setPrdRawResponse(formatApiResponse(data?.agent_response || ""));
 
     if (!data) {
-      setPrdError("API returned invalid JSON.");
+      setPrdError("API returned invalid data.");
       setPrdHtml("");
       return;
     }
@@ -1495,26 +1814,86 @@ runProgressSteps(PRD_STEPS, setPrdProgress);
       return;
     }
 
-      const nextHtml = cleanPrdHtml(
-        data?.data?.prd_output ||
-          data?.prd_output ||
-          extractPrdMarkup(data?.raw_response || "")
-      );
-    if (!nextHtml) {
-      setPrdError("PRD output is empty.");
+    // Extract PRD content
+    let prdContent = "";
+
+    // Check data.prd_output (this is where the content is)
+    if (data?.prd_output) {
+      prdContent = data.prd_output;
+    } else if (data?.data?.prd_output) {
+      prdContent = data.data.prd_output;
+    } else if (data?.final_response?.prd_output) {
+      prdContent = data.final_response.prd_output;
+    } else if (data?.final_response && typeof data.final_response === 'string') {
+      // Try to parse final_response as JSON
+      try {
+        const parsed = JSON.parse(data.final_response);
+        if (parsed?.prd_output) {
+          prdContent = parsed.prd_output;
+        }
+      } catch (e) {
+        // Handle Python-repr style: prd_output='<html>...'
+        const pyMatch = data.final_response.match(/prd_output\s*=\s*'([\s\S]*)'$/);
+        if (pyMatch) {
+          prdContent = pyMatch[1];
+        } else {
+          prdContent = data.final_response;
+        }
+      }
+    }
+
+    console.log("PRD Content before cleaning:", prdContent);
+
+    if (!prdContent) {
+      setPrdError("Could not extract PRD content from response.");
       setPrdHtml("");
       return;
     }
 
-    setPrdHtml(nextHtml);
+    let cleaned = prdContent;
+
+    if (typeof cleaned === 'string' && cleaned.trim().startsWith('{')) {
+      try {
+        const parsed = JSON.parse(cleaned);
+        if (parsed && parsed.prd_output) {
+          cleaned = parsed.prd_output;
+        }
+      } catch (e) {
+        const match = cleaned.match(/"prd_output"\s*:\s*"([\s\S]*?)"\s*}$/);
+        if (match) cleaned = match[1];
+      }
+    }
+
+    // Guard: if cleaned still looks like raw JSON, try one more extraction pass
+    if (cleaned.trim().startsWith('{') && cleaned.includes('prd_output')) {
+      const fallback = extractPrdMarkup(cleaned);
+      if (fallback) cleaned = fallback;
+    }
+
+    console.log("PRD Content after cleaning:", cleaned);
+
+    if (!cleaned) {
+      setPrdError("PRD content is empty after cleaning.");
+      setPrdHtml("");
+      return;
+    }
+
+    // If it doesn't have HTML tags, convert markdown-like content to HTML
+    if (!cleaned.includes('<h1') && !cleaned.includes('<h2')) {
+      cleaned = convertMarkdownToHtml(cleaned);
+    }
+
+    // Final sanitization before rendering
+    cleaned = sanitizePrdText(cleaned);
+    setPrdHtml(cleaned);
   } catch (err) {
+    console.error("PRD Error:", err);
     setPrdError(err.message || "Failed to generate PRD document");
     setPrdHtml("");
   } finally {
     setPrdLoading(false);
   }
 };
-
 const handleDownloadPrdDoc = async () => {
   if (!prdHtml || isDownloadingPrd) return;
 
@@ -1959,7 +2338,6 @@ const handleDownloadBrdDoc = async () => {
   {project.projectDescription || "No description"}
   {!showFullDesc && "..."}
 </p>
-            {/* âœ… PROGRESS BAR */}
             
             <div className="flex items-center justify-start gap-8 mt-4">
               <div className="flex items-center gap-2"><span className="text-xs uppercase tracking-wide text-gray-500 font-medium">Client:</span><span className="text-sm text-gray-900 font-medium">{project.client || "N/A"}</span></div>
@@ -1991,7 +2369,6 @@ const handleDownloadBrdDoc = async () => {
 >
   <div className="flex items-center justify-between gap-4">
     
-    {/* LEFT CONTENT */}
     <div className="flex items-center gap-3 flex-1">
       <div className={`transform transition-transform ${isExpanded ? "rotate-180" : ""}`}>
         <ChevronDown className="w-5 h-5 text-gray-600" />
@@ -2026,7 +2403,6 @@ const handleDownloadBrdDoc = async () => {
       </div>
     </div>
 
-
   <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
       {completedStages.includes(stage.id) ? (
         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/></svg>Completed</span>
@@ -2038,7 +2414,6 @@ const handleDownloadBrdDoc = async () => {
 </div>
                   {isExpanded && (
                     <div className="px-6 pb-6 border-t border-gray-200 pt-6">
-                      
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {(STAGE_TEMPLATES[stage.id] || []).map((template) => {
                           const TemplateIcon = template.icon;
@@ -2057,7 +2432,7 @@ const handleDownloadBrdDoc = async () => {
                                       <div key={doc.documentId} className="rounded-lg border border-gray-200 bg-white p-2.5">
                                         <div className="mb-1 flex items-center gap-2"><FileText className="h-4 w-4 text-blue-500" /><span className="truncate text-xs text-gray-900">{getFileName(doc.blobPath)}</span></div>
                                         <div className="flex items-center justify-between">
-                                          <span className="text-xs text-gray-500">{doc.status} â€¢ {new Date(doc.createdAt).toLocaleDateString()}</span>
+                                          <span className="text-xs text-gray-500">{doc.status} • {new Date(doc.createdAt).toLocaleDateString()}</span>
                                           <div className="flex items-center gap-2">
                                             <button className="text-blue-600 hover:text-blue-800"><Download className="h-3 w-3" /></button>
                                             <button onClick={async () => { if (window.confirm("Delete this document?")) { try { await api.deleteDocument(doc.documentId); await fetchDocuments(); alert("Document deleted"); } catch (err) { alert("Delete failed: " + err.message); } } }} className="text-red-500 hover:text-red-700"><Trash2 className="h-3 w-3" /></button>
@@ -2074,8 +2449,6 @@ const handleDownloadBrdDoc = async () => {
                         return (
                           <div key={template.id} className="space-y-3">
                             {renderDefineTemplateCard(template, downloadableTemplateId, completedStages.includes(stage.id))}
-
-                            {/* Documents are loaded lazily when the documents feature is available. */}
                           </div>
                         );
                       }
@@ -2099,10 +2472,7 @@ const handleDownloadBrdDoc = async () => {
   return (
     <div key={template.id} className="h-full">
       
-      {/* reuse SAME style system */}
       <div className="h-full rounded-xl border border-gray-200 bg-white p-5 shadow-sm hover:shadow-md transition flex flex-col">
-
-        
 
         <div className="flex items-center gap-3 mb-2">
           <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
@@ -2123,7 +2493,6 @@ const handleDownloadBrdDoc = async () => {
           {template.description}
         </p>
 
-        {/* SAME BUTTON STYLE AS IA CARD */}
         <div className="space-y-2 mt-auto">
           
           <button
@@ -2197,7 +2566,6 @@ const handleDownloadBrdDoc = async () => {
 
     <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
 
-      {/* HEADER */}
       <div className="border-b pb-4 mb-6">
         <h3 className="text-2xl font-bold text-[#702dff]">
           {finalPersonaCard.name || "Persona"}
@@ -2212,36 +2580,26 @@ const handleDownloadBrdDoc = async () => {
         </p>
       </div>
 
-      {/* GRID */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-        {/* GOALS */}
         <Section title="Goals" items={finalPersonaCard.goals} />
 
-        {/* NEEDS */}
         <Section title="Needs" items={finalPersonaCard.needs} />
 
-        {/* PAIN POINTS */}
         <Section title="Pain Points" items={finalPersonaCard.frustrations} />
 
-        {/* MOTIVATIONS */}
         <Section title="Motivations" items={finalPersonaCard.motivations} />
 
-        {/* PERSONALITY */}
         <Section title="Personality" items={finalPersonaCard.personality} />
 
-        {/* BEHAVIOURS */}
         <Section title="Behaviours & Habits" items={finalPersonaCard.behaviours} />
 
-        {/* POSITIVE THEMES */}
         <Section title="Positive Themes" items={finalPersonaCard.positiveThemes} />
 
-        {/* NEGATIVE THEMES */}
         <Section title="Negative Themes" items={finalPersonaCard.negativeThemes} />
 
       </div>
 
-      {/* SCENARIO */}
       <div className="mt-6">
         <h4 className="font-semibold mb-2">Scenario</h4>
         <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
@@ -2266,7 +2624,6 @@ const handleDownloadBrdDoc = async () => {
   </div>
 </div>
 
-      {/* PROBLEM STATEMENT */}
 <div className="mt-4">
   <h4 className="font-semibold mb-2">Problem Statement</h4>
   <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
@@ -2306,7 +2663,6 @@ const handleDownloadBrdDoc = async () => {
               <p className="rounded-lg border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500">No personas found for this project.</p>
             ) : (
               <>
-                {/* Persona group tabs â€” same style as workspace */}
                 <div className="mb-4 border-b border-gray-200 pb-0 flex gap-2 flex-wrap">
                   {personaCards.map((card) => (
                     <button
@@ -2329,7 +2685,6 @@ const handleDownloadBrdDoc = async () => {
                   </p>
                 ) : (
                   <div className="persona-container">
-                    {/* LEFT SIDEBAR */}
                     <div className="persona-sidebar">
                       <div className="persona-avatar" />
 
@@ -2352,7 +2707,6 @@ const handleDownloadBrdDoc = async () => {
                       </ul>
                     </div>
 
-                    {/* RIGHT MAIN */}
                     <div className="persona-main">
                       <div className="persona-header">
                         <h1>Name: {activePersonaCard.parsed.name}</h1>
@@ -2480,41 +2834,6 @@ const handleDownloadBrdDoc = async () => {
           </div>
         </div>
       )}
-
-      {/* {showCombinedOutputModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowCombinedOutputModal(false)}>
-          <div
-            className="w-full max-w-4xl rounded-xl bg-white shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Combined Output</p>
-                <h3 className="mt-1 text-base font-semibold text-gray-900">All persona outputs with project + interview details</h3>
-              </div>
-              <button
-                onClick={() => setShowCombinedOutputModal(false)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-600 transition hover:bg-gray-50"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                Close
-              </button>
-            </div>
-
-            <div className="px-5 py-4">
-              {isCombiningPersonaOutput ? (
-                <p className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-10 text-center text-sm text-gray-500">Combining persona outputs...</p>
-              ) : combinedPersonaOutputError ? (
-                <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{combinedPersonaOutputError}</p>
-              ) : (
-                <div className="whitespace-pre-wrap break-words rounded-lg border border-gray-200 bg-gray-50 px-4 py-4 text-sm leading-6 text-gray-800">
-                  {combinedPersonaOutput || "No combined output available."}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )} */}
 
       {isBrdModalOpen && (
         <div
@@ -2772,7 +3091,9 @@ const handleDownloadBrdDoc = async () => {
                           Structured output optimized for stakeholder review and publication.
                         </p>
                       </header>
-                      <div className="doc-html px-12 py-10" dangerouslySetInnerHTML={{ __html: prdHtml }} />
+                      <div className="doc-html px-12 py-10">
+                        <div dangerouslySetInnerHTML={{ __html: prdHtml }} />
+                      </div>
                     </article>
                   ) : (
                     <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">

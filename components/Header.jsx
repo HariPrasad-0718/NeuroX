@@ -55,8 +55,7 @@ export default function Header({
     "Define",
     "Ideate",
     "Prototype",
-    "Test",
-    "Implement",
+    
   ];
 
   // BACKEND VALUES

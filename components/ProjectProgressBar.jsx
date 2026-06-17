@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-const STAGES = ["Empathize", "Define", "Ideate", "Prototype", "Test", "Implement"];
+const STAGES = ["Empathize", "Define", "Ideate", "Prototype"];
 
 export default function ProjectProgressBar({ projectId }) {
   const [completedStages, setCompletedStages] = useState([]);

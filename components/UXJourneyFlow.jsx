@@ -2,22 +2,21 @@
  //bow bow
 import { useEffect, useMemo, useRef, useState } from "react";
  
-const NODE_WIDTH = 286;
+const NODE_WIDTH = 320;
 const NODE_HEIGHT = 114;
 const TERMINAL_WIDTH = 210;
 const TERMINAL_HEIGHT = 74;
 const DECISION_SIZE = 82;
  
-const MIN_ROW_GAP = 290;
-const MAX_ROW_GAP = 520;
-const MIN_COL_SEPARATION = 44;
+const MIN_ROW_GAP = 240;
+const MAX_ROW_GAP = 360;
+const MIN_COL_SEPARATION = 220;
 const VIEW_PADDING_X = 260;
 const VIEW_PADDING_Y = 220;
 const GRID_SIZE = 30;
-const MIN_ZOOM = 0.55;
+const MIN_ZOOM = 0.35;
 const MAX_ZOOM = 2.1;
 const ZOOM_STEP = 0.14;
-const EDGE_CURVE_SMOOTHNESS = 0.2;
  
 const NODE_THEME = {
   process: {
@@ -60,7 +59,7 @@ export default function UXJourneyFlow({ flow }) {
   const containerRef = useRef(null);
   const panStateRef = useRef(null);
   const [viewportWidth, setViewportWidth] = useState(1260);
-  const [viewState, setViewState] = useState({ scale: 1, tx: 0, ty: 0 });
+  const [viewState, setViewState] = useState({ scale: 0.49, tx: 0, ty: 0 });
  
   useEffect(() => {
     if (!containerRef.current) return;
@@ -201,7 +200,7 @@ export default function UXJourneyFlow({ flow }) {
   return (
     <div
       ref={containerRef}
-      className="relative w-full max-h-[80vh] overflow-auto rounded-3xl border border-[#e2e8f0] bg-gradient-to-br from-[#fbfdff] via-white to-[#f4f8ff] p-6 shadow-[0_20px_50px_rgba(15,23,42,0.10)]"
+      className="relative w-full overflow-x-auto rounded-3xl border border-[#e2e8f0] bg-gradient-to-br from-[#fbfdff] via-white to-[#f4f8ff] p-6 shadow-[0_20px_50px_rgba(15,23,42,0.10)]"
     >
       <div className="absolute right-5 top-5 z-10 flex items-center gap-2 rounded-xl border border-[#dbe6f2] bg-white/90 px-2 py-1.5 shadow-[0_8px_24px_rgba(15,23,42,0.12)] backdrop-blur">
         <button
@@ -235,6 +234,10 @@ export default function UXJourneyFlow({ flow }) {
  
       <svg
         ref={svgRef}
+        style={{
+          width: renderModel?.layout?.svgWidth || "100%",
+          height: renderModel?.layout?.svgHeight || 420,
+        }}
         className="min-w-max cursor-grab active:cursor-grabbing"
         role="img"
         aria-label="Process workflow diagram"
@@ -406,7 +409,11 @@ function computeLayout(graph, viewportWidth) {
     MAX_ROW_GAP
   );
  
-  const baseColGap = clamp(140 + Math.log2(nodeCount + 1) * 14 + maxLayerSize * 3.1, 140, 260);
+  const baseColGap = clamp(
+    220 + Math.log2(nodeCount + 1) * 15,
+    220,
+    340
+  );
  
   const positions = new Map();
  
@@ -419,6 +426,43 @@ function computeLayout(graph, viewportWidth) {
   });
  
   relaxColumns(layers, graph, positions, baseColGap);
+  
+  // Center single-child nodes directly under parents
+  graph.nodes.forEach((node) => {
+    const children = (graph.outgoing.get(node.id) || [])
+      .filter((e) => !e.isLoop);
+
+    if (children.length === 1) {
+      const parentPos = positions.get(node.id);
+      const childPos = positions.get(children[0].to);
+
+      if (parentPos && childPos) {
+        childPos.x = parentPos.x;
+      }
+    }
+  });
+ 
+  // Final collision pass to guarantee no overlaps
+  for (const layer of layers) {
+    const sortedLayer = [...layer].sort((a, b) => (positions.get(a)?.x || 0) - (positions.get(b)?.x || 0));
+    
+    for (let i = 1; i < sortedLayer.length; i++) {
+      const left = positions.get(sortedLayer[i - 1]);
+      const right = positions.get(sortedLayer[i]);
+      
+      if (left && right) {
+        const leftNode = graph.nodeMap.get(sortedLayer[i - 1]);
+        const rightNode = graph.nodeMap.get(sortedLayer[i]);
+        const leftSize = getNodeSize(leftNode);
+        const rightSize = getNodeSize(rightNode);
+        const actualMinGap = leftSize.width / 2 + rightSize.width / 2 + MIN_COL_SEPARATION;
+        
+        if (right.x - left.x < actualMinGap) {
+          right.x = left.x + actualMinGap;
+        }
+      }
+    }
+  }
  
   const nodeBounds = getNodeBounds(graph, positions);
   const loopBounds = estimateLoopBounds(graph, positions);
@@ -458,7 +502,7 @@ function buildAndOrderLayers(graph) {
   const orderedLevels = [...grouped.keys()].sort((a, b) => a - b);
   const layers = orderedLevels.map((level) => grouped.get(level).sort((a, b) => a.localeCompare(b)));
  
-  for (let pass = 0; pass < 8; pass += 1) {
+  for (let pass = 0; pass < 3; pass += 1) {
     barycenterSweep(layers, graph, "forward");
     barycenterSweep(layers, graph, "backward");
   }
@@ -540,7 +584,7 @@ function initializeLayerColumns(layers, graph) {
 }
  
 function relaxColumns(layers, graph, positions, baseColGap) {
-  for (let pass = 0; pass < 6; pass += 1) {
+  for (let pass = 0; pass < 2; pass += 1) {
     sweepColumns(layers, graph, positions, "forward", baseColGap);
     sweepColumns(layers, graph, positions, "backward", baseColGap);
   }
@@ -624,7 +668,7 @@ function enforceHorizontalSeparation(weighted, graph, positions, baseColGap) {
       prev.weight +
       prevSize.width / 2 +
       currentSize.width / 2 +
-      Math.max(MIN_COL_SEPARATION, baseColGap * 0.14);
+      Math.max(MIN_COL_SEPARATION, baseColGap);
     if (current.weight < required) current.weight = required;
   }
  
@@ -640,7 +684,7 @@ function enforceHorizontalSeparation(weighted, graph, positions, baseColGap) {
       next.weight -
       nextSize.width / 2 -
       currentSize.width / 2 -
-      Math.max(MIN_COL_SEPARATION, baseColGap * 0.14);
+      Math.max(MIN_COL_SEPARATION, baseColGap);
     if (current.weight > required) current.weight = required;
   }
 }
@@ -679,7 +723,14 @@ function computeEdgeRoutes(graph, positions) {
     }
  
     const isDecisionNo = fromNode.type === "decision" && isNoBranchLabel(edge.label);
-    const fromAnchor = getAnchor(fromPos, fromNode, isDecisionNo ? "right" : "bottom");
+    
+    // Decision nodes: No goes right, Yes goes bottom
+    let sourceSide = "bottom";
+    if (fromNode.type === "decision") {
+      sourceSide = isDecisionNo ? "right" : "bottom";
+    }
+    
+    const fromAnchor = getAnchor(fromPos, fromNode, sourceSide);
     const toAnchor = getAnchor(toPos, toNode, "top");
  
     const pairKey = `${edge.from}|${edge.to}`;
@@ -691,42 +742,41 @@ function computeEdgeRoutes(graph, positions) {
  
     if (!edge.isLoop) {
       if (isDecisionNo) {
-        const sideX = Math.max(fromAnchor.x, toAnchor.x) + 120 + Math.abs(spread);
-        const turnY = Math.min(toAnchor.y - 28, fromAnchor.y + 64 + Math.abs(spread));
-        const sweepY = fromAnchor.y + clamp((turnY - fromAnchor.y) * 0.58, 26, 92);
- 
-        const d = buildSmoothBezierPath([
-          { x: fromAnchor.x, y: fromAnchor.y },
-          { x: sideX - 20, y: sweepY - 18 },
-          { x: sideX, y: turnY },
-          { x: toAnchor.x + 14, y: turnY + 10 },
-          { x: toAnchor.x, y: toAnchor.y },
-        ]);
+        const sideX = Math.max(fromAnchor.x, toAnchor.x) + 140;
+        const midY = (fromAnchor.y + toAnchor.y) / 2;
+        
+        const d = `
+          M ${fromAnchor.x} ${fromAnchor.y}
+          L ${sideX} ${fromAnchor.y}
+          L ${sideX} ${midY}
+          L ${toAnchor.x} ${midY}
+          L ${toAnchor.x} ${toAnchor.y - 6}
+        `;
  
         return {
           edge,
           d,
-          labelX: sideX + 10,
-          labelY: (fromAnchor.y + turnY) / 2 - 8,
+          labelX: sideX + 14,
+          labelY: fromAnchor.y - 14,
           isLoop: false,
         };
       }
  
-      const verticalGap = Math.abs(toAnchor.y - fromAnchor.y);
-      const curvature = clamp(verticalGap * 0.36, 90, 240);
-      const midY = (fromAnchor.y + toAnchor.y) / 2 + spread;
+      const laneOffset = spread * 15;
+      const midY = (fromAnchor.y + toAnchor.y) / 2;
  
-      const d = buildSmoothBezierPath([
-        { x: fromAnchor.x, y: fromAnchor.y },
-        { x: fromAnchor.x + spread * 0.45, y: fromAnchor.y + curvature * 0.58 },
-        { x: toAnchor.x + spread * 0.45, y: toAnchor.y - curvature * 0.58 },
-        { x: toAnchor.x, y: toAnchor.y },
-      ]);
+      const d = `
+        M ${fromAnchor.x} ${fromAnchor.y}
+        L ${fromAnchor.x} ${midY}
+        L ${toAnchor.x + laneOffset} ${midY}
+        L ${toAnchor.x + laneOffset} ${toAnchor.y - 6}
+        L ${toAnchor.x} ${toAnchor.y - 6}
+      `;
  
       return {
         edge,
         d,
-        labelX: (fromAnchor.x + toAnchor.x) / 2,
+        labelX: fromAnchor.x + 16,
         labelY: midY - 10,
         isLoop: false,
       };
@@ -743,32 +793,25 @@ function computeEdgeRoutes(graph, positions) {
     const toSize = getNodeSize(toNode);
     const loopStart = getAnchor(fromPos, fromNode, "right");
     const loopTargetTop = getAnchor(toPos, toNode, "top");
-    const loopTargetRight = getAnchor(toPos, toNode, "right");
     const side = getLoopSideOffset(span, lane);
     const rightX = Math.max(
       fromPos.x + fromSize.width / 2,
       toPos.x + toSize.width / 2
     ) + side;
  
-    const startY = loopStart.y;
-    const approachY = Math.min(loopTargetTop.y - 34, startY - 26);
-    const targetX = loopTargetRight.x + 22;
-    const d = buildSmoothBezierPath([
-      { x: loopStart.x, y: loopStart.y },
-      { x: rightX - 20, y: startY },
-      { x: rightX, y: startY + 14 },
-      { x: rightX, y: approachY - 14 },
-      { x: rightX - 22, y: approachY },
-      { x: targetX + 22, y: approachY },
-      { x: targetX, y: loopTargetTop.y - 20 },
-      { x: loopTargetTop.x, y: loopTargetTop.y },
-    ]);
+    const d = `
+      M ${loopStart.x} ${loopStart.y}
+      L ${rightX} ${loopStart.y}
+      L ${rightX} ${loopTargetTop.y - 80}
+      L ${loopTargetTop.x} ${loopTargetTop.y - 80}
+      L ${loopTargetTop.x} ${loopTargetTop.y - 6}
+    `;
  
     return {
       edge,
       d,
       labelX: rightX + 8,
-      labelY: (startY + approachY) / 2 - 8,
+      labelY: (loopStart.y + (loopTargetTop.y - 80)) / 2 - 8,
       isLoop: true,
     };
   });
@@ -779,7 +822,7 @@ function getLoopBandKey(fromLevel, toLevel) {
 }
  
 function getLoopSideOffset(span, lane) {
-  return 206 + span * 42 + lane * 58;
+  return 220 + span * 120 + lane * 160;
 }
  
 function isNoBranchLabel(label) {
@@ -788,40 +831,18 @@ function isNoBranchLabel(label) {
   return /\b(no|false|fail|failed|reject|rejected)\b/.test(text);
 }
  
-function buildSmoothBezierPath(points, smoothness = EDGE_CURVE_SMOOTHNESS) {
-  const pts = points.filter((point) => Number.isFinite(point?.x) && Number.isFinite(point?.y));
-  if (pts.length < 2) return "";
- 
-  const d = [`M ${pts[0].x} ${pts[0].y}`];
- 
-  for (let i = 0; i < pts.length - 1; i += 1) {
-    const p0 = pts[i - 1] || pts[i];
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-    const p3 = pts[i + 2] || p2;
- 
-    const cp1x = p1.x + (p2.x - p0.x) * smoothness;
-    const cp1y = p1.y + (p2.y - p0.y) * smoothness;
-    const cp2x = p2.x - (p3.x - p1.x) * smoothness;
-    const cp2y = p2.y - (p3.y - p1.y) * smoothness;
- 
-    d.push(`C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`);
-  }
- 
-  return d.join(" ");
-}
- 
 function drawEdges(layer, graph, routes) {
   routes.forEach((route) => {
     if (!route.d) return;
  
     const path = svgEl("path", {
-      d: route.d,
+      d: route.d.trim(),
       fill: "none",
-      stroke: route.isLoop ? "#94a3b8" : "#c9d5e7",
-      "stroke-width": route.isLoop ? "2.5" : "2.3",
+      stroke: route.isLoop ? "#94a3b8" : "#7b8aa5",
+      "stroke-width": route.isLoop ? "2.5" : "2.5",
       "stroke-linecap": "round",
       "stroke-linejoin": "round",
+      "shape-rendering": "geometricPrecision",
       "marker-end": route.isLoop ? "url(#flowArrowLoop)" : "url(#flowArrow)",
       class: "edge-path",
     });
@@ -963,29 +984,42 @@ function drawNodes(layer, graph, positions) {
 function createDefs() {
   const defs = svgEl("defs");
  
+  // Main arrow marker
   const arrow = svgEl("marker", {
     id: "flowArrow",
-    markerWidth: "11",
-    markerHeight: "11",
-    refX: "9.8",
-    refY: "5.5",
-    orient: "auto",
-    markerUnits: "strokeWidth",
+    viewBox: "0 0 10 10",
+    refX: "5",
+    refY: "5",
+    markerWidth: "6",
+    markerHeight: "6",
+    orient: "auto-start-reverse",
   });
-  arrow.appendChild(svgEl("path", { d: "M1,1 L10,5.5 L1,10 Z", fill: "#94a3b8" }));
+  arrow.appendChild(svgEl("path", {
+    d: "M 0 0 L 5 10 L 10 0 z",
+fill: "#7b8aa5"
+  }));
   defs.appendChild(arrow);
  
-  const loopArrow = svgEl("marker", {
-    id: "flowArrowLoop",
-    markerWidth: "11",
-    markerHeight: "11",
-    refX: "9.8",
-    refY: "5.5",
-    orient: "auto",
-    markerUnits: "strokeWidth",
-  });
-  loopArrow.appendChild(svgEl("path", { d: "M1,1 L10,5.5 L1,10 Z", fill: "#64748b" }));
-  defs.appendChild(loopArrow);
+ const loopArrow = svgEl("marker", {
+  id: "flowArrowLoop",
+  viewBox: "0 0 12 12",
+  refX: "10",
+  refY: "6",
+  markerWidth: "6",
+  markerHeight: "6",
+  markerUnits: "strokeWidth",
+  orient: "auto",
+});
+
+loopArrow.appendChild(
+  svgEl("path", {
+    d: "M 0 0 L 12 6 L 0 12 Z",
+    fill: "#4f554e",
+    stroke: "none",
+  })
+);
+
+defs.appendChild(loopArrow);
  
   const nodeShadow = svgEl("filter", {
     id: "nodeShadow",
@@ -1077,7 +1111,7 @@ function estimateLoopBounds(graph, positions) {
     const rightX = Math.max(from.x + fromSize.width / 2, to.x + toSize.width / 2) + side;
     const toTop = getAnchor(to, toNode, "top");
     const startY = getAnchor(from, fromNode, "right").y;
-    const approachY = Math.min(toTop.y - 34, startY - 26);
+    const approachY = toTop.y - 80;
  
     minX = Math.min(minX, from.x, to.x, toTop.x);
     maxX = Math.max(maxX, rightX);
@@ -1192,4 +1226,3 @@ function svgEl(tag, attrs = {}) {
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
- 

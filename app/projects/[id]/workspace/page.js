@@ -15,12 +15,13 @@ import { saveAs } from "file-saver";
 export default function EmpathyMapPage() {
   const { id: projectId } = useParams();
   const router = useRouter();
-
+  const [isSaving, setIsSaving] = useState(false);
   const [personas, setPersonas] = useState([]);
   const [activePersona, setActivePersona] = useState(null);
   const [projectName, setProjectName] = useState("");
   const [projectDescription, setProjectDescription] = useState("");
-  const [enhancedPersonaDescription, setEnhancedPersonaDescription] = useState("");
+  const [enhancedPersonaDescription, setEnhancedPersonaDescription] =
+    useState("");
   const [isEditingPersonaContext, setIsEditingPersonaContext] = useState(false);
   const [personaContextDraft, setPersonaContextDraft] = useState("");
   const [personaContextSaveStatus, setPersonaContextSaveStatus] = useState("");
@@ -39,17 +40,15 @@ export default function EmpathyMapPage() {
   const [personaOutput, setPersonaOutput] = useState("");
   const [personaStatus, setPersonaStatus] = useState(""); // "generating" | "ready" | "error" | ""
   const [personaError, setPersonaError] = useState("");
-  const [questionAgentOutput, setQuestionAgentOutput] = useState("");
-const [processDiscoveryOutput, setProcessDiscoveryOutput] = useState("");
   const personaSteps = [
-  "Transcript Received",
-  "Analyzing Responses",
-  "Extracting Pain Points",
-  "Generating Persona",
-  "Finalizing Report",
-];
+    "Transcript Received",
+    "Analyzing Responses",
+    "Extracting Pain Points",
+    "Generating Persona",
+    "Finalizing Report",
+  ];
 
-const [activeStep, setActiveStep] = useState(-1);
+  const [activeStep, setActiveStep] = useState(-1);
 
   const [form, setForm] = useState({
     name: "",
@@ -130,16 +129,22 @@ const [activeStep, setActiveStep] = useState(-1);
 
       const data = await res.json();
       if (!data?.success) {
-        throw new Error(data?.error?.message || "Failed to update persona context");
+        throw new Error(
+          data?.error?.message || "Failed to update persona context",
+        );
       }
 
       setEnhancedPersonaDescription(nextValue);
-      setPersonas((prev) => prev.map((p) => (
-        p.persona_id === activePersona.persona_id
-          ? { ...p, persona_description: nextValue }
-          : p
-      )));
-      setActivePersona((prev) => (prev ? { ...prev, persona_description: nextValue } : prev));
+      setPersonas((prev) =>
+        prev.map((p) =>
+          p.persona_id === activePersona.persona_id
+            ? { ...p, persona_description: nextValue }
+            : p,
+        ),
+      );
+      setActivePersona((prev) =>
+        prev ? { ...prev, persona_description: nextValue } : prev,
+      );
       setIsEditingPersonaContext(false);
       setPersonaContextSaveStatus("saved");
     } catch (error) {
@@ -158,7 +163,9 @@ const [activeStep, setActiveStep] = useState(-1);
     setQuestionError("");
 
     try {
-      const res = await fetch(`/api/generate-questions?intervieweeId=${intervieweeId}`);
+      const res = await fetch(
+        `/api/generate-questions?intervieweeId=${intervieweeId}`,
+      );
       const data = await res.json();
 
       if (!data?.success) {
@@ -188,57 +195,42 @@ const [activeStep, setActiveStep] = useState(-1);
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-  personaId: activePersona.persona_id,
-
-  projectName: projectName, // <-- ADD THIS
-
-  description:
-    projectDescription || "Project context not provided",
-
-  user_group: activePersona.persona_name,
-
-  persona_description:
-    enhancedPersonaDescription ||
-    activePersona.persona_description ||
-    "",
-}),
+          personaId: activePersona.persona_id,
+          description: projectDescription || "Project context not provided",
+          user_group: activePersona.persona_name,
+          persona_description:
+            enhancedPersonaDescription ||
+            activePersona.persona_description ||
+            "",
+        }),
       });
 
       const data = await res.json();
-
-console.log("Generate Questions Response:", data);
-      setQuestionAgentOutput(
-  data?.data?.questionAgentQuestions || []
-);
-
-setProcessDiscoveryOutput(
-  data?.data?.processDiscoveryQuestions || []
-);
       if (!data?.success) {
         throw new Error(data?.error?.message || "Failed to generate questions");
       }
 
       if (selectedInterviewee?.interviewee_id) {
-  await fetchQuestionSets(selectedInterviewee.interviewee_id);
-}
+        await fetchQuestionSets(selectedInterviewee.interviewee_id);
+      }
 
-/* ---------------- PROGRESS UPDATE ---------------- */
-if (questionSets.length === 0) {
-  try {
-    await fetch(`/api/projects/${projectId}/progress`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        progressIncrement: 5,
-        currentStage: "Empathize",
-      }),
-    });
-  } catch (err) {
-    console.error("Progress update failed", err);
-  }
-}
+      /* ---------------- PROGRESS UPDATE ---------------- */
+      if (questionSets.length === 0) {
+        try {
+          await fetch(`/api/projects/${projectId}/progress`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              progressIncrement: 5,
+              currentStage: "Empathize",
+            }),
+          });
+        } catch (err) {
+          console.error("Progress update failed", err);
+        }
+      }
     } catch (err) {
       setQuestionError(err.message || "Failed to generate questions");
     } finally {
@@ -265,23 +257,18 @@ if (questionSets.length === 0) {
       const nextPersonaOutput = data?.data?.persona_output || "";
 
       setPersonaOutput(nextPersonaOutput);
-
-setQuestionSets((prev) => prev.map((set) => (
-  set.interviewId === interviewId
-    ? { 
-        ...set, 
-        transcript: transcriptText, 
-        personaOutput: nextPersonaOutput 
-      }
-    : set
-)));
-
-
-// wait until output exists before stopping loader
-if (nextPersonaOutput.trim()) {
-  setActiveStep(personaSteps.length);
-  setPersonaStatus("ready");
-}
+      setQuestionSets((prev) =>
+        prev.map((set) =>
+          set.interviewId === interviewId
+            ? {
+                ...set,
+                transcript: transcriptText,
+                personaOutput: nextPersonaOutput,
+              }
+            : set,
+        ),
+      );
+      setPersonaStatus("ready");
     } catch (err) {
       setPersonaStatus("error");
       setPersonaError(err.message || "Failed to generate persona");
@@ -317,36 +304,19 @@ if (nextPersonaOutput.trim()) {
   }, [selectedInterviewee]);
 
   useEffect(() => {
-    const latestSubmittedSet = questionSets.find((setItem) => String(setItem?.transcript || "").trim());
-    const initialTranscript = latestSubmittedSet?.transcript || questionSets[0]?.transcript || "";
+    const latestSubmittedSet = questionSets.find((setItem) =>
+      String(setItem?.transcript || "").trim(),
+    );
+    const initialTranscript =
+      latestSubmittedSet?.transcript || questionSets[0]?.transcript || "";
     setTranscript(initialTranscript);
     setTranscriptDraft(initialTranscript);
     setIsEditingTranscript(!initialTranscript.trim());
-    const savedPersona = questionSets[0]?.personaOutput || "";
-
-setPersonaOutput(savedPersona);
-setPersonaError("");
-
-if (savedPersona.trim()) {
-  setPersonaStatus("ready");
-} else {
-  setPersonaStatus("");
-}
-
-setSaveStatus("");
+    setPersonaOutput(questionSets[0]?.personaOutput || "");
+    setPersonaError("");
+    setPersonaStatus("");
+    setSaveStatus("");
   }, [selectedInterviewee?.interviewee_id, questionSets]);
-
-  useEffect(() => {
-  if (questionSets.length > 0) {
-    setQuestionAgentOutput(
-      questionSets[0]?.questionAgentOutput || []
-    );
-
-    setProcessDiscoveryOutput(
-      questionSets[0]?.processDiscoveryOutput || []
-    );
-  }
-}, [questionSets]);
 
   const handleSubmitTranscript = async () => {
     const interviewId = questionSets[0]?.interviewId;
@@ -354,21 +324,18 @@ setSaveStatus("");
 
     setSaveStatus("saving");
     setPersonaStatus("generating");
-setActiveStep(0);
+    setActiveStep(0);
 
-const interval = setInterval(() => {
-  setActiveStep((prev) => {
-    // Stop before Finalizing Report
-    if (prev >= personaSteps.length - 2) {
-  clearInterval(interval);
+    const interval = setInterval(() => {
+      setActiveStep((prev) => {
+        // Stop at the last step ("Finalizing Report")
+        if (prev >= personaSteps.length - 1) {
+          return personaSteps.length - 1;
+        }
 
-  // stay on final step loading
-  return personaSteps.length - 1;
-}
-
-    return prev + 1;
-  });
-}, 1800);
+        return prev + 1;
+      });
+    }, 1500);
 
     try {
       const res = await fetch("/api/generate-questions", {
@@ -383,11 +350,13 @@ const interval = setInterval(() => {
       }
 
       setTranscript(transcriptDraft);
-      setQuestionSets((prev) => prev.map((setItem) => (
-        setItem.interviewId === interviewId
-          ? { ...setItem, transcript: transcriptDraft }
-          : setItem
-      )));
+      setQuestionSets((prev) =>
+        prev.map((setItem) =>
+          setItem.interviewId === interviewId
+            ? { ...setItem, transcript: transcriptDraft }
+            : setItem,
+        ),
+      );
       setSaveStatus("saved");
       setIsEditingTranscript(false);
 
@@ -406,48 +375,67 @@ const interval = setInterval(() => {
   };
 
   const handleAddInterviewee = async () => {
-    const res = await fetch("/api/interviewees", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        personaId: activePersona.persona_id,
-        ...form,
-      }),
-    });
+    if (isSaving) return; // Prevent multiple clicks
 
+    try {
+      setIsSaving(true);
 
-    const data = await res.json();
-    console.log("Interviewee Response:", data);
-    if (data.success) {
-      setShowForm(false);
-      setForm({
-        name: "",
-        gender: "",
-        age: "",
-        location: "",
-        relationship_status: "",
-        title: "",
-        education: "",
+      const res = await fetch("/api/interviewees", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          personaId: activePersona.persona_id,
+          ...form,
+        }),
       });
-      fetchInterviewees(activePersona.persona_id);
+
+      const data = await res.json();
+
+      if (data.success) {
+        setShowForm(false);
+        setForm({
+          name: "",
+          gender: "",
+          age: "",
+          location: "",
+          relationship_status: "",
+          title: "",
+          education: "",
+        });
+
+        await fetchInterviewees(activePersona.persona_id);
+      }
+    } catch (error) {
+      console.error("Failed to save interviewee:", error);
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleDeleteInterviewee = async (interviewee) => {
-    const confirmed = window.confirm(`Delete interviewee \"${interviewee.name}\"? This will remove their question sets and transcript.`);
+    const confirmed = window.confirm(
+      `Delete interviewee \"${interviewee.name}\"? This will remove their question sets and transcript.`,
+    );
     if (!confirmed) return;
 
     try {
-      const res = await fetch(`/api/interviewees?intervieweeId=${interviewee.interviewee_id}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(
+        `/api/interviewees?intervieweeId=${interviewee.interviewee_id}`,
+        {
+          method: "DELETE",
+        },
+      );
 
       const data = await res.json();
       if (!data?.success) {
         throw new Error(data?.error?.message || "Failed to delete interviewee");
       }
 
-      setInterviewees((prev) => prev.filter((item) => item.interviewee_id !== interviewee.interviewee_id));
+      setInterviewees((prev) =>
+        prev.filter(
+          (item) => item.interviewee_id !== interviewee.interviewee_id,
+        ),
+      );
 
       if (selectedInterviewee?.interviewee_id === interviewee.interviewee_id) {
         setSelectedInterviewee(null);
@@ -471,7 +459,7 @@ const interval = setInterval(() => {
     const extractSectionBullets = (fullText, headingPattern) => {
       const regex = new RegExp(
         `(?:^|\\n)\\s*(?:\\*\\*)?${headingPattern}(?:\\*\\*)?\\s*:?\\s*\\n?([\\s\\S]*?)(?=\\n\\s*(?:\\*\\*)?[A-Za-z][^\\n]{0,80}(?:\\*\\*)?\\s*:?\\s*(?:\\n|$)|$)`,
-        "i"
+        "i",
       );
       const match = fullText.match(regex);
       if (!match?.[1]) return [];
@@ -486,7 +474,10 @@ const interval = setInterval(() => {
     const thinksBullets = extractSectionBullets(personaOutput, "Thinks");
     const doesBullets = extractSectionBullets(personaOutput, "Does");
     const feelsBullets = extractSectionBullets(personaOutput, "Feels");
-    const experienceBullets = extractSectionBullets(personaOutput, "Previous\\s+Experience");
+    const experienceBullets = extractSectionBullets(
+      personaOutput,
+      "Previous\\s+Experience",
+    );
 
     const bulletParagraphs = (items) =>
       items.length
@@ -496,7 +487,7 @@ const interval = setInterval(() => {
                 text: item,
                 bullet: { level: 0 },
                 spacing: { after: 120 },
-              })
+              }),
           )
         : [new Paragraph({ text: "-", spacing: { after: 120 } })];
 
@@ -506,7 +497,7 @@ const interval = setInterval(() => {
             new Paragraph({
               text: `${idx + 1}. ${q}`,
               spacing: { after: 120 },
-            })
+            }),
         )
       : [new Paragraph({ text: "-", spacing: { after: 120 } })];
 
@@ -516,47 +507,128 @@ const interval = setInterval(() => {
           properties: {},
           children: [
             new Paragraph({
-              children: [new TextRun({ text: "NEUROX Persona Report", bold: true, size: 34 })],
+              children: [
+                new TextRun({
+                  text: "NEUROX Persona Report",
+                  bold: true,
+                  size: 34,
+                }),
+              ],
               heading: HeadingLevel.TITLE,
               alignment: AlignmentType.CENTER,
               spacing: { after: 300 },
             }),
             new Paragraph({
-              children: [new TextRun({ text: `Generated On: ${generatedOn}`, italics: true })],
+              children: [
+                new TextRun({
+                  text: `Generated On: ${generatedOn}`,
+                  italics: true,
+                }),
+              ],
               alignment: AlignmentType.CENTER,
               spacing: { after: 400 },
             }),
 
-            new Paragraph({ text: "Project Details", heading: HeadingLevel.HEADING_1, spacing: { after: 160 } }),
-            new Paragraph({ text: `Project Name: ${projectName || "-"}`, spacing: { after: 120 } }),
-            new Paragraph({ text: `Project Description: ${projectDescription || "-"}`, spacing: { after: 240 } }),
+            new Paragraph({
+              text: "Project Details",
+              heading: HeadingLevel.HEADING_1,
+              spacing: { after: 160 },
+            }),
+            new Paragraph({
+              text: `Project Name: ${projectName || "-"}`,
+              spacing: { after: 120 },
+            }),
+            new Paragraph({
+              text: `Project Description: ${projectDescription || "-"}`,
+              spacing: { after: 240 },
+            }),
 
-            new Paragraph({ text: "Persona Group", heading: HeadingLevel.HEADING_1, spacing: { after: 160 } }),
-            new Paragraph({ text: `Persona Name: ${activePersona?.persona_name || "-"}`, spacing: { after: 120 } }),
-            new Paragraph({ text: `Persona Description: ${enhancedPersonaDescription || activePersona?.persona_description || "-"}`, spacing: { after: 240 } }),
+            new Paragraph({
+              text: "Persona Group",
+              heading: HeadingLevel.HEADING_1,
+              spacing: { after: 160 },
+            }),
+            new Paragraph({
+              text: `Persona Name: ${activePersona?.persona_name || "-"}`,
+              spacing: { after: 120 },
+            }),
+            new Paragraph({
+              text: `Persona Description: ${enhancedPersonaDescription || activePersona?.persona_description || "-"}`,
+              spacing: { after: 240 },
+            }),
 
-            new Paragraph({ text: "Interviewee Details", heading: HeadingLevel.HEADING_1, spacing: { after: 160 } }),
-            new Paragraph({ text: `Name: ${selectedInterviewee?.name || "-"}`, spacing: { after: 100 } }),
-            new Paragraph({ text: `Gender: ${selectedInterviewee?.gender || "-"}`, spacing: { after: 100 } }),
-            new Paragraph({ text: `Age: ${selectedInterviewee?.age ?? "-"}`, spacing: { after: 100 } }),
-            new Paragraph({ text: `Location: ${selectedInterviewee?.location || "-"}`, spacing: { after: 100 } }),
-            new Paragraph({ text: `Relationship Status: ${selectedInterviewee?.relationship_status || "-"}`, spacing: { after: 100 } }),
-            new Paragraph({ text: `Title: ${selectedInterviewee?.title || "-"}`, spacing: { after: 100 } }),
-            new Paragraph({ text: `Education: ${selectedInterviewee?.education || "-"}`, spacing: { after: 240 } }),
+            new Paragraph({
+              text: "Interviewee Details",
+              heading: HeadingLevel.HEADING_1,
+              spacing: { after: 160 },
+            }),
+            new Paragraph({
+              text: `Name: ${selectedInterviewee?.name || "-"}`,
+              spacing: { after: 100 },
+            }),
+            new Paragraph({
+              text: `Gender: ${selectedInterviewee?.gender || "-"}`,
+              spacing: { after: 100 },
+            }),
+            new Paragraph({
+              text: `Age: ${selectedInterviewee?.age ?? "-"}`,
+              spacing: { after: 100 },
+            }),
+            new Paragraph({
+              text: `Location: ${selectedInterviewee?.location || "-"}`,
+              spacing: { after: 100 },
+            }),
+            new Paragraph({
+              text: `Relationship Status: ${selectedInterviewee?.relationship_status || "-"}`,
+              spacing: { after: 100 },
+            }),
+            new Paragraph({
+              text: `Title: ${selectedInterviewee?.title || "-"}`,
+              spacing: { after: 100 },
+            }),
+            new Paragraph({
+              text: `Education: ${selectedInterviewee?.education || "-"}`,
+              spacing: { after: 240 },
+            }),
 
-            new Paragraph({ text: "Interview Context", heading: HeadingLevel.HEADING_1, spacing: { after: 160 } }),
-            new Paragraph({ text: `Interview ID: ${latestSet?.interviewId || "-"}`, spacing: { after: 120 } }),
-            new Paragraph({ text: `Question Set Created: ${generatedOn}`, spacing: { after: 240 } }),
+            new Paragraph({
+              text: "Interview Context",
+              heading: HeadingLevel.HEADING_1,
+              spacing: { after: 160 },
+            }),
+            new Paragraph({
+              text: `Interview ID: ${latestSet?.interviewId || "-"}`,
+              spacing: { after: 120 },
+            }),
+            new Paragraph({
+              text: `Question Set Created: ${generatedOn}`,
+              spacing: { after: 240 },
+            }),
 
-            new Paragraph({ text: "Generated Questions", heading: HeadingLevel.HEADING_1, spacing: { after: 160 } }),
+            new Paragraph({
+              text: "Generated Questions",
+              heading: HeadingLevel.HEADING_1,
+              spacing: { after: 160 },
+            }),
             ...questionParagraphs,
             new Paragraph({ text: "", spacing: { after: 120 } }),
 
-            new Paragraph({ text: "Transcript", heading: HeadingLevel.HEADING_1, spacing: { after: 160 } }),
-            new Paragraph({ text: transcript?.trim() || "-", spacing: { after: 300 } }),
+            new Paragraph({
+              text: "Transcript",
+              heading: HeadingLevel.HEADING_1,
+              spacing: { after: 160 },
+            }),
+            new Paragraph({
+              text: transcript?.trim() || "-",
+              spacing: { after: 300 },
+            }),
 
-            new Paragraph({ text: "Persona Output Summary", heading: HeadingLevel.HEADING_1, spacing: { after: 160 } }),
-           new Paragraph({ text: "Says", heading: HeadingLevel.HEADING_2 }),
+            new Paragraph({
+              text: "Persona Output Summary",
+              heading: HeadingLevel.HEADING_1,
+              spacing: { after: 160 },
+            }),
+            new Paragraph({ text: "Says", heading: HeadingLevel.HEADING_2 }),
             ...bulletParagraphs(saysBullets),
 
             new Paragraph({ text: "Thinks", heading: HeadingLevel.HEADING_2 }),
@@ -568,8 +640,15 @@ const interval = setInterval(() => {
             new Paragraph({ text: "Feels", heading: HeadingLevel.HEADING_2 }),
             ...bulletParagraphs(feelsBullets),
 
-            new Paragraph({ text: "Raw Persona Output", heading: HeadingLevel.HEADING_2, spacing: { after: 120 } }),
-            new Paragraph({ text: personaOutput.trim(), spacing: { after: 120 } }),
+            new Paragraph({
+              text: "Raw Persona Output",
+              heading: HeadingLevel.HEADING_2,
+              spacing: { after: 120 },
+            }),
+            new Paragraph({
+              text: personaOutput.trim(),
+              spacing: { after: 120 },
+            }),
           ],
         },
       ],
@@ -587,174 +666,302 @@ const interval = setInterval(() => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-<div className="mx-auto w-full max-w-screen-2xl px-2 py-2">
-      {/* Persona Tabs */}
-      <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="flex flex-wrap agap-2">
-          {personas.map((p) => (
-            <button
-              key={p.persona_id}
-              onClick={() => setActivePersona(p)}
-              className={`px-4 py-2 rounded-t-md text-sm font-medium transition ${
-                activePersona?.persona_id === p.persona_id
-                  ? "bg-indigo-500 text-white shadow"
-                  : "bg-gray-100 hover:bg-gray-200"
-              }`}
-            >
-              {p.persona_name}
-            </button>
-          ))}
-        </div>
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        {/* Persona Tabs */}
+        <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex flex-wrap gap-2">
+            {personas.map((p) => (
+              <button
+                key={p.persona_id}
+                onClick={() => setActivePersona(p)}
+                className={`px-4 py-2 rounded-t-md text-sm font-medium transition ${
+                  activePersona?.persona_id === p.persona_id
+                    ? "bg-indigo-500 text-white shadow"
+                    : "bg-gray-100 hover:bg-gray-200"
+                }`}
+              >
+                {p.persona_name}
+              </button>
+            ))}
+          </div>
 
-        {activePersona && (
-          <div className="group relative mt-4 w-full overflow-hidden rounded-2xl border border-gray-200 bg-white/85 px-5 py-5 shadow-sm backdrop-blur-sm transition duration-300 hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md sm:px-6 sm:py-6">
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-indigo-50/40 via-transparent to-transparent" />
-            <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-indigo-100/35 blur-3xl" />
-            <div className="pointer-events-none absolute left-1/3 top-0 h-px w-28 bg-white/80" />
+          {activePersona && (
+            <div className="group relative mt-4 w-full overflow-hidden rounded-2xl border border-gray-200 bg-white/85 px-5 py-5 shadow-sm backdrop-blur-sm transition duration-300 hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md sm:px-6 sm:py-6">
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-indigo-50/40 via-transparent to-transparent" />
+              <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-indigo-100/35 blur-3xl" />
+              <div className="pointer-events-none absolute left-1/3 top-0 h-px w-28 bg-white/80" />
 
-            <div className="relative flex flex-wrap items-start justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <div className="relative">
-                  <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white transition duration-300 group-hover:scale-105">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      className="h-5 w-5"
-                      aria-hidden="true"
-                    >
-                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                      <circle cx="12" cy="7" r="4" />
-                    </svg>
+              <div className="relative flex flex-wrap items-start justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="relative">
+                    <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white transition duration-300 group-hover:scale-105">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        className="h-5 w-5"
+                        aria-hidden="true"
+                      >
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                        <circle cx="12" cy="7" r="4" />
+                      </svg>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-400">
+                        Persona Context
+                      </p>
+                      <p className="mt-0.5 text-base font-semibold text-gray-900">
+                        {activePersona.persona_name}
+                      </p>
+                    </div>
+                    <div className="h-8 w-px bg-gray-200" />
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-400">Persona Context</p>
-                    <p className="mt-0.5 text-base font-semibold text-gray-900">{activePersona.persona_name}</p>
-                  </div>
-                  <div className="h-8 w-px bg-gray-200" />
+                <div className="inline-flex items-center gap-2 rounded-full border border-green-200 bg-green-50 px-3.5 py-1.5 text-xs font-semibold text-green-600 transition duration-300 group-hover:shadow-sm group-hover:shadow-green-100">
+                  <span className="h-2 w-2 rounded-full bg-green-500" />
+                  {isEditingPersonaContext ? "Editing" : "Saved"}
                 </div>
               </div>
 
-              <div className="inline-flex items-center gap-2 rounded-full border border-green-200 bg-green-50 px-3.5 py-1.5 text-xs font-semibold text-green-600 transition duration-300 group-hover:shadow-sm group-hover:shadow-green-100">
-                <span className="h-2 w-2 rounded-full bg-green-500" />
-                {isEditingPersonaContext ? "Editing" : "Saved"}
-              </div>
-            </div>
-
-            <div className="relative mt-4">
-              <div className="mb-2 flex justify-end">
-                {!isEditingPersonaContext ? (
-                  <button
-                    onClick={() => {
-                      setIsEditingPersonaContext(true);
-                      setPersonaContextDraft(enhancedPersonaDescription || activePersona.persona_description || "");
-                      setPersonaContextSaveStatus("");
-                    }}
-                    title="Edit persona context"
-                    className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-50"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5" aria-hidden="true">
-                      <path d="M12 20h9" />
-                      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                    </svg>
-                    Edit
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-2">
+              <div className="relative mt-4">
+                <div className="mb-2 flex justify-end">
+                  {!isEditingPersonaContext ? (
                     <button
                       onClick={() => {
-                        setIsEditingPersonaContext(false);
-                        setPersonaContextDraft(enhancedPersonaDescription || activePersona.persona_description || "");
+                        setIsEditingPersonaContext(true);
+                        setPersonaContextDraft(
+                          enhancedPersonaDescription ||
+                            activePersona.persona_description ||
+                            "",
+                        );
                         setPersonaContextSaveStatus("");
                       }}
-                      className="rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-50"
+                      title="Edit persona context"
+                      className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-50"
                     >
-                      Cancel
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        className="h-3.5 w-3.5"
+                        aria-hidden="true"
+                      >
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                      </svg>
+                      Edit
                     </button>
-                    <button
-                      onClick={savePersonaContext}
-                      className="rounded-md bg-indigo-600 px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-indigo-700"
-                    >
-                      Save
-                    </button>
-                  </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setIsEditingPersonaContext(false);
+                          setPersonaContextDraft(
+                            enhancedPersonaDescription ||
+                              activePersona.persona_description ||
+                              "",
+                          );
+                          setPersonaContextSaveStatus("");
+                        }}
+                        className="rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={savePersonaContext}
+                        className="rounded-md bg-indigo-600 px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-indigo-700"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {isEditingPersonaContext ? (
+                  <textarea
+                    value={personaContextDraft}
+                    onChange={(e) => {
+                      setPersonaContextDraft(e.target.value);
+                      setPersonaContextSaveStatus("");
+                    }}
+                    rows={5}
+                    className="w-full resize-y rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm leading-relaxed text-gray-800 shadow-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                  />
+                ) : (
+                  <p className="rounded-xl border border-gray-200 border-l-4 border-l-indigo-400 bg-gradient-to-r from-gray-50 to-gray-100 px-4 py-3 text-sm leading-relaxed text-gray-800 break-words">
+                    {enhancedPersonaDescription ||
+                      activePersona.persona_description}
+                  </p>
+                )}
+
+                {personaContextSaveStatus && (
+                  <p
+                    className={`mt-2 text-right text-xs ${
+                      personaContextSaveStatus === "saving"
+                        ? "text-gray-400"
+                        : personaContextSaveStatus === "saved"
+                          ? "text-emerald-600"
+                          : "text-red-500"
+                    }`}
+                  >
+                    {personaContextSaveStatus === "saving"
+                      ? "Saving..."
+                      : personaContextSaveStatus === "saved"
+                        ? "Saved"
+                        : "Failed to save"}
+                  </p>
                 )}
               </div>
+            </div>
+          )}
+        </div>
 
-              {isEditingPersonaContext ? (
-                <textarea
-                  value={personaContextDraft}
-                  onChange={(e) => {
-                    setPersonaContextDraft(e.target.value);
-                    setPersonaContextSaveStatus("");
-                  }}
-                  rows={5}
-                  className="w-full resize-y rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm leading-relaxed text-gray-800 shadow-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                />
-              ) : (
-                <p className="rounded-xl border border-gray-200 border-l-4 border-l-indigo-400 bg-gradient-to-r from-gray-50 to-gray-100 px-4 py-3 text-sm leading-relaxed text-gray-800 break-words">
-                  {enhancedPersonaDescription || activePersona.persona_description}
-                </p>
-              )}
+        {/* Interviewee Tabs + Plus Button */}
+        <div className="mb-6 flex flex-wrap items-center gap-2 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+          {interviewees.map((i) => (
+            <div key={i.interviewee_id} className="relative">
+              <button
+                onClick={() => {
+                  if (
+                    selectedInterviewee?.interviewee_id === i.interviewee_id
+                  ) {
+                    setSelectedInterviewee(null);
+                  } else {
+                    setSelectedInterviewee(i);
+                  }
+                }}
+                className={`px-4 pr-10 py-2 rounded-t-md whitespace-nowrap text-sm font-medium transition ${
+                  selectedInterviewee?.interviewee_id === i.interviewee_id
+                    ? "bg-indigo-500 text-white shadow"
+                    : "bg-gray-100 hover:bg-gray-200"
+                }`}
+              >
+                {i.name}
+              </button>
 
-              {personaContextSaveStatus && (
-                <p className={`mt-2 text-right text-xs ${
-                  personaContextSaveStatus === "saving"
-                    ? "text-gray-400"
-                    : personaContextSaveStatus === "saved"
-                      ? "text-emerald-600"
-                      : "text-red-500"
-                }`}>
-                  {personaContextSaveStatus === "saving"
-                    ? "Saving..."
-                    : personaContextSaveStatus === "saved"
-                      ? "Saved"
-                      : "Failed to save"}
-                </p>
-              )}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteInterviewee(i);
+                }}
+                title="Delete interviewee"
+                className={`absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 transition ${
+                  selectedInterviewee?.interviewee_id === i.interviewee_id
+                    ? "text-white/80 hover:text-white hover:bg-white/20"
+                    : "text-gray-500 hover:text-red-600 hover:bg-red-50"
+                }`}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="h-4 w-4"
+                  aria-hidden="true"
+                >
+                  <path d="M3 6h18" />
+                  <path d="M8 6V4h8v2" />
+                  <path d="M19 6l-1 14H6L5 6" />
+                  <path d="M10 11v6" />
+                  <path d="M14 11v6" />
+                </svg>
+              </button>
+            </div>
+          ))}
+
+          <button
+            onClick={() => {
+              setShowForm(!showForm);
+              setSelectedInterviewee(null);
+            }}
+            className="ml-1 flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-xl font-semibold shadow-sm transition hover:bg-gray-200"
+          >
+            +
+          </button>
+        </div>
+
+        {/* ✅ INLINE FORM - replaces modal, appears below + button */}
+        {showForm && (
+          <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
+            <h3 className="mb-4 text-base font-semibold text-gray-800">
+              Add Interviewee
+            </h3>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {[
+                { key: "name", label: "Name" },
+                { key: "gender", label: "Gender" },
+                { key: "age", label: "Age" },
+                { key: "location", label: "Location" },
+                { key: "relationship_status", label: "Relationship Status" },
+                { key: "title", label: "Title" },
+                { key: "education", label: "Education" },
+              ].map(({ key, label }) => (
+                <div key={key} className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">
+                    {label}
+                  </label>
+                  <input
+                    placeholder={`Enter ${label.toLowerCase()}`}
+                    value={form[key]}
+                    onChange={(e) =>
+                      setForm({ ...form, [key]: e.target.value })
+                    }
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-400 bg-white"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={handleAddInterviewee}
+                disabled={isSaving}
+                className={`px-5 py-2 text-white rounded-md text-sm ${
+                  isSaving
+                    ? "bg-gray-400 cursor-not-allowed"
+                    : "bg-indigo-500 hover:bg-indigo-600"
+                }`}
+              >
+                {isSaving ? "Saving..." : "Save"}
+              </button>
+              <button
+                onClick={() => {
+                  setShowForm(false);
+                  setForm({
+                    name: "",
+                    gender: "",
+                    age: "",
+                    location: "",
+                    relationship_status: "",
+                    title: "",
+                    education: "",
+                  });
+                }}
+                className="px-5 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         )}
-      </div>
 
-      {/* Interviewee Tabs + Plus Button */}
-      <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-
-<div className="mb-0 flex flex-wrap items-center gap-2 overflow-x-auto bg-transparent py-2 pl-4">      {interviewees.map((i) => (
-          <div key={i.interviewee_id} className="relative">
+        {/* Interviewee Details */}
+        {selectedInterviewee && (
+          <div className="relative mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm backdrop-blur-sm sm:p-6">
+            {/* Close Button */}
             <button
-              onClick={() => {
-                if (selectedInterviewee?.interviewee_id === i.interviewee_id) {
-                  setSelectedInterviewee(null);
-                } else {
-                  setSelectedInterviewee(i);
-                }
-              }}
-              className={`px-4 pr-10 py-2 rounded-t-md whitespace-nowrap text-sm font-medium transition ${
-                selectedInterviewee?.interviewee_id === i.interviewee_id
-  ? "bg-white text-indigo-600 border border-gray-200 border-b-white -mb-px relative z-10"
-                  : "bg-gray-100 hover:bg-gray-200"
-              }`}
-            >
-              {i.name}
-            </button>
-
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDeleteInterviewee(i);
-              }}
-              title="Delete interviewee"
-              className={`absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 transition ${
-                selectedInterviewee?.interviewee_id === i.interviewee_id
-                  ? "text-white/80 hover:text-white hover:bg-white/20"
-                  : "text-gray-500 hover:text-red-600 hover:bg-red-50"
-              }`}
+              onClick={() => setSelectedInterviewee(null)}
+              className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -765,440 +972,407 @@ const interval = setInterval(() => {
                 className="h-4 w-4"
                 aria-hidden="true"
               >
-                <path d="M3 6h18" />
-                <path d="M8 6V4h8v2" />
-                <path d="M19 6l-1 14H6L5 6" />
-                <path d="M10 11v6" />
-                <path d="M14 11v6" />
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
               </svg>
             </button>
-          </div>
-        ))}
 
-        <button
-          onClick={() => {
-            setShowForm(!showForm);
-            setSelectedInterviewee(null);
-          }}
-          className="ml-1 flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-xl font-semibold shadow-sm transition hover:bg-gray-200"
-        >
-          +
-        </button>
-      </div>
+            <div className="rounded-xl border border-gray-200 bg-gradient-to-r from-indigo-50/60 to-white px-4 py-3">
+              <div className="flex flex-wrap items-center gap-2 pr-8 text-sm leading-snug">
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    className="h-4 w-4"
+                    aria-hidden="true"
+                  >
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                  </svg>
+                </div>
+                <span className="font-semibold text-gray-900">
+                  {selectedInterviewee.name}
+                </span>
+                <span className="text-gray-300">•</span>
+                <span className="text-gray-500">Interviewee</span>
+                <span className="text-gray-300">•</span>
+                <span className="text-gray-700">
+                  {selectedInterviewee.age || "—"} yrs
+                </span>
+                <span className="text-gray-300">•</span>
+                <span className="text-gray-700">
+                  {selectedInterviewee.location || "—"}
+                </span>
 
-      {/* ✅ INLINE FORM - replaces modal, appears below + button */}
-      {showForm && (
-        <div className="mb-0 bg-transparent py-4">
-          <h3 className="mb-4 text-base font-semibold text-gray-800">Add Interviewee</h3>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {[
-              { key: "name", label: "Name" },
-              { key: "gender", label: "Gender" },
-              { key: "age", label: "Age" },
-              { key: "location", label: "Location" },
-              { key: "relationship_status", label: "Relationship Status" },
-              { key: "title", label: "Title" },
-              { key: "education", label: "Education" },
-            ].map(({ key, label }) => (
-              <div key={key} className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-gray-600">{label}</label>
-                <input
-                  placeholder={`Enter ${label.toLowerCase()}`}
-                  value={form[key]}
-                  onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-400 bg-white"
-                />
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-5 flex gap-3">
-            <button
-              onClick={handleAddInterviewee}
-              className="px-5 py-2 bg-indigo-500 text-white rounded-md text-sm hover:bg-indigo-600"
-            >
-              Save
-            </button>
-            <button
-              onClick={() => {
-                setShowForm(false);
-                setForm({
-                  name: "",
-                  gender: "",
-                  age: "",
-                  location: "",
-                  relationship_status: "",
-                  title: "",
-                  education: "",
-                });
-              }}
-              className="px-5 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-100"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Interviewee Details */}
-      {selectedInterviewee && (
-        <div className="border-t border-gray-200 bg-white">
-          {/* Close Button */}
-          <button
-            onClick={() => setSelectedInterviewee(null)}
-            className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              className="h-4 w-4"
-              aria-hidden="true"
-            >
-              <path d="M18 6 6 18" />
-              <path d="m6 6 12 12" />
-            </svg>
-          </button>
-
-          <div className="px-4 py-3">
-            <div className="flex flex-wrap items-center gap-2 pr-8 text-sm leading-snug">
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="h-4 w-4"
-                  aria-hidden="true"
-                >
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                  <circle cx="12" cy="7" r="4" />
-                </svg>
-              </div>
-              <span className="font-semibold text-gray-900">{selectedInterviewee.name}</span>
-              <span className="text-gray-300">•</span>
-              <span className="text-gray-500">Interviewee</span>
-              <span className="text-gray-300">•</span>
-              <span className="text-gray-700">{selectedInterviewee.age || "—"} yrs</span>
-              <span className="text-gray-300">•</span>
-              <span className="text-gray-700">{selectedInterviewee.location || "—"}</span>
-
-              <span className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-gray-600">
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                Active
-              </span>
-            </div>
-          </div>
-
-          <div className="mt-5 px-4 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-            {[
-              { label: "Gender", value: selectedInterviewee.gender },
-              { label: "Education", value: selectedInterviewee.education },
-              { label: "Title", value: selectedInterviewee.title },
-              { label: "Relationship", value: selectedInterviewee.relationship_status },
-              { label: "Age", value: selectedInterviewee.age ? `${selectedInterviewee.age}` : "" },
-              { label: "Location", value: selectedInterviewee.location },
-            ].map((item) => (
-              <div key={item.label} className="flex items-center justify-between gap-3 border-b border-gray-100 pb-1 text-sm leading-snug">
-                <span className="text-gray-400">{item.label}</span>
-                <span className="font-medium text-gray-800">
-                  {item.value || <span className="italic text-gray-400">Not set</span>}
+                <span className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-gray-600">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  Active
                 </span>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-      </div>
-
-      {/* Questions */}
-      {selectedInterviewee && (
-        <div className="mt-3">
-          <div className="bg-transparent py-6">
-            <div className="flex flex-col gap-4 border-b border-gray-200 pb-5 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] px-1 text-gray-500">Interview Flow</p>
-                <h3 className="mt-2 text-xl font-semibold px-1 text-gray-900">Question Guide</h3>
-                <p className="mt-1 text-sm leading-6 px-1 text-gray-600">
-                  Review the prompts below, then respond in one structured transcript for {selectedInterviewee.name}.
-                </p>
-              </div>
-              <button
-                onClick={handleGenerateQuestions}
-                disabled={isGeneratingQuestions}
-                className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-60"
-              >
-                {isGeneratingQuestions
-                  ? "Generating..."
-                  : questionSets.length > 0
-                    ? "Regenerate Questions"
-                    : "Generate Questions"}
-              </button>
             </div>
 
-            {questionError && (
-              <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{questionError}</p>
-            )}
-
-            {isLoadingQuestions ? (
-              <p className="mt-5 text-sm text-gray-500">Loading question history...</p>
-            ) : questionSets.length === 0 ? (
-              <p className="mt-5 text-sm text-gray-500">No questions generated yet for this persona member.</p>
-            ) : (
-              <>
-
-               <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-  {/* Process Discovery Agent */}
-  <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-    <h3 className="font-semibold text-green-600 mb-4">
-      Mandatory Questions
-    </h3>
-
-    {processDiscoveryOutput.length > 0 ? (
-      processDiscoveryOutput.map((q, idx) => (
-        <div key={idx} className="mb-3">
-          {idx + 1}. {q}
-        </div>
-      ))
-    ) : (
-      <p className="text-gray-400">
-        No response yet
-      </p>
-    )}
-  </div>
-
-  {/* Question Generator Agent */}
-  <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-    <h3 className="font-semibold text-indigo-600 mb-4">
-      Suggested Questions
-    </h3>
-
-    {questionAgentOutput.length > 0 ? (
-      questionAgentOutput.map((q, idx) => (
-        <div key={idx} className="mb-3">
-          {idx + 1}. {q}
-        </div>
-      ))
-    ) : (
-      <p className="text-gray-400">
-        No response yet
-      </p>
-    )}
-  </div>
-
-</div>
-               
-
-                <div className="mt-8 border-t border-gray-200 pt-6">
-                  <div className="mb-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Your Answers</p>
-                        <h4 className="mt-2 text-lg font-semibold text-gray-900">Structured Transcript</h4>
-                      </div>
-                      {!isEditingTranscript && (
-                        <button
-                          onClick={() => {
-                            setTranscriptDraft(transcript || "");
-                            setIsEditingTranscript(true);
-                            setSaveStatus("");
-                          }}
-                          title="Edit transcript"
-                          className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-50"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5" aria-hidden="true">
-                            <path d="M12 20h9" />
-                            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                          </svg>
-                          Edit
-                        </button>
-                      )}
-                    </div>
-                    <p className="mt-1 text-sm leading-6 text-gray-600">
-                      Write one continuous transcript so your notes stay easy to review.
-                    </p>
-                  </div>
-
-                  <div className="relative">
-                    {isEditingTranscript ? (
-                      <>
-                        <textarea
-                          value={transcriptDraft}
-                          onChange={(e) => {
-                            setTranscriptDraft(e.target.value);
-                            setSaveStatus("");
-                          }}
-                          placeholder={"Write your answers like:\nQ1: ...\nQ2: ...\nQ3: ..."}
-                          className="h-[320px] w-full resize-none overflow-y-auto rounded-xl border border-gray-300 bg-white px-4 py-4 font-mono text-sm leading-7 text-gray-800 shadow-sm outline-none transition placeholder:text-gray-400 hover:border-gray-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
-                        />
-                        <div className="mt-3 flex justify-end gap-2">
-                          <button
-                            onClick={() => {
-                              setTranscriptDraft(transcript || "");
-                              setIsEditingTranscript(false);
-                              setSaveStatus("");
-                            }}
-                            className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={handleSubmitTranscript}
-                            disabled={saveStatus === "saving"}
-                            className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-60"
-                          >
-                            {saveStatus === "saving" ? "Submitting..." : "Submit Transcript"}
-                          </button>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="h-[320px] w-full overflow-y-auto whitespace-pre-wrap rounded-xl border border-gray-300 bg-white px-4 py-4 font-mono text-sm leading-7 text-gray-800 shadow-sm">
-                        {transcript?.trim() ? transcript : "No transcript submitted yet."}
-                      </div>
+            <div className="mt-5 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+              {[
+                { label: "Gender", value: selectedInterviewee.gender },
+                { label: "Education", value: selectedInterviewee.education },
+                { label: "Title", value: selectedInterviewee.title },
+                {
+                  label: "Relationship",
+                  value: selectedInterviewee.relationship_status,
+                },
+                {
+                  label: "Age",
+                  value: selectedInterviewee.age
+                    ? `${selectedInterviewee.age}`
+                    : "",
+                },
+                { label: "Location", value: selectedInterviewee.location },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="flex items-center justify-between gap-3 border-b border-gray-100 pb-1 text-sm leading-snug"
+                >
+                  <span className="text-gray-400">{item.label}</span>
+                  <span className="font-medium text-gray-800">
+                    {item.value || (
+                      <span className="italic text-gray-400">Not set</span>
                     )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
-                    {saveStatus && (
-                      <p className={`mt-1.5 text-right text-xs ${
-                        saveStatus === "saving" ? "text-gray-400" :
-                        saveStatus === "saved" ? "text-emerald-600" :
-                        "text-red-500"
-                      }`}>
-                        {saveStatus === "saving" ? "Saving..." : saveStatus === "saved" ? "Submitted and saved" : "Failed to save"}
+        {/* Questions */}
+        {selectedInterviewee && (
+          <div className="mt-6">
+            <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-6 shadow-sm sm:p-8">
+              <div className="flex flex-col gap-4 border-b border-gray-200 pb-5 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
+                    Interview Flow
+                  </p>
+                  <h3 className="mt-2 text-xl font-semibold text-gray-900">
+                    Question Guide
+                  </h3>
+                  <p className="mt-1 text-sm leading-6 text-gray-600">
+                    Review the prompts below, then respond in one structured
+                    transcript for {selectedInterviewee.name}.
+                  </p>
+                </div>
+                <button
+                  onClick={handleGenerateQuestions}
+                  disabled={isGeneratingQuestions}
+                  className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-60"
+                >
+                  {isGeneratingQuestions
+                    ? "Generating..."
+                    : questionSets.length > 0
+                      ? "Regenerate Questions"
+                      : "Generate Questions"}
+                </button>
+              </div>
+
+              {questionError && (
+                <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                  {questionError}
+                </p>
+              )}
+
+              {isLoadingQuestions ? (
+                <p className="mt-5 text-sm text-gray-500">
+                  Loading question history...
+                </p>
+              ) : questionSets.length === 0 ? (
+                <p className="mt-5 text-sm text-gray-500">
+                  No questions generated yet for this persona member.
+                </p>
+              ) : (
+                <>
+                  <div className="mt-6">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
+                        Latest Set
                       </p>
-                    )}
-                  </div>
-                </div>
-
-                {personaStatus || personaOutput?.trim() ? (
-<div className="mt-8 border-t border-gray-200 pt-6">
-                  <div className="mb-4 flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">User Persona Output</p>
-                      <h4 className="mt-2 text-lg font-semibold text-gray-900">Interview-based Persona</h4>
+                      <p className="text-xs text-gray-500">
+                        {questionSets[0].questions.length} prompts
+                      </p>
                     </div>
-                    <p className={`text-xs ${
-                      personaStatus === "generating"
-                        ? "text-gray-500"
-                        : personaStatus === "ready"
-                          ? "text-emerald-600"
-                          : personaStatus === "error"
-                            ? "text-red-600"
-                            : "text-gray-400"
-                    }`}>
-                      {personaStatus === "generating"
-                        ? "Generating persona..."
-                        : personaStatus === "ready"
-                          ? "Persona updated"
-                          : personaStatus === "error"
-                            ? "Generation failed"
-                            : "Submit transcript to generate"}
-                    </p>
-                  </div>
 
-                  {personaError && (
-                    <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-                      {personaError}
-                    </p>
-                  )}
-
-                 {personaStatus === "generating" ? (
-  <div className="flex flex-col items-center justify-center py-16">
-    {/* Loader */}
-    {/* <div className="h-12 w-12 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent mb-8" /> */}
-
-    <div className="space-y-4">
-      {personaSteps.map((step, index) => (
-        <div key={step} className="flex items-center gap-4">
-          {index < activeStep ? (
-  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-green-500 text-white text-xs">
-    ✓
-  </div>
-) : index === activeStep ? (
-  <div className="relative flex h-7 w-7 items-center justify-center">
-    <div className="absolute h-7 w-7 animate-ping rounded-full bg-indigo-200 opacity-50" />
-    <div className="h-7 w-7 animate-spin rounded-full border-[3px] border-indigo-500 border-t-transparent" />
-  </div>
-) : (
-  <div className="h-7 w-7 rounded-full border-2 border-gray-300" />
-)}
-
-          <span>{step}</span>
-        </div>
-      ))}
-    </div>
-
-    {/* <p className="mt-6 text-sm text-gray-500">
-      AI is generating the interview-based persona...
-    </p> */}
-  </div>
-) : (
-  <div className="h-[320px] overflow-y-auto rounded-xl border border-gray-300 bg-white px-4 py-4 text-sm leading-7 text-gray-800 shadow-sm whitespace-pre-wrap">
-    {personaOutput || "No persona output generated yet for this interview."}
-  </div>
-)}
-                  {personaOutput?.trim() && (
-                    <div className="mt-4 flex justify-end gap-2">
-                      <button
-                        onClick={downloadPersonaReport}
-                        className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
-                      >
-                        Download Report
-                      </button>
-                      <button
-                        onClick={async () => {
-                          try {
-                            await fetch(`/api/projects/${projectId}/progress`, {
-                              method: "PUT",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ stage: "empathize", progress: 100 }),
-                            });
-                          } catch (_) {}
-                          router.push(`/view-persona?projectId=${encodeURIComponent(projectId)}&projectName=${encodeURIComponent(projectName)}`);
-                        }}
-                        className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
-                      >
-                        Generate Empathy Map
-                      </button>
-                    </div>
-                  
-                  )}
-                </div>
-                
-                ) : null}
-
-                {questionSets.length > 1 && (
-                  <div className="mt-8 border-t border-gray-200 pt-6">
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Previous Sets</p>
                     <div className="space-y-3">
-                      {questionSets.slice(1).map((setItem) => (
-                        <div key={setItem.interviewId} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                          <p className="mb-3 text-xs text-gray-500">
-                            {new Date(setItem.createdAt).toLocaleString()}
-                          </p>
-                          <div className="space-y-2">
-                            {setItem.questions.map((q, idx) => (
-                              <div key={`${setItem.interviewId}-${idx}`} className="flex gap-3 text-sm text-gray-700">
-                                <span className="min-w-8 font-semibold text-gray-500">Q{idx + 1}</span>
-                                <span className="leading-6">{q}</span>
-                              </div>
-                            ))}
+                      {questionSets[0].questions.map((q, index) => (
+                        <div
+                          key={`${questionSets[0].interviewId}-${index}`}
+                          className="rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-sm"
+                        >
+                          <div className="flex gap-4">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-semibold text-indigo-700">
+                              Q{index + 1}
+                            </div>
+                            <p className="pt-1 text-sm font-medium leading-6 text-gray-800">
+                              {q}
+                            </p>
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
 
+                  <div className="mt-8 border-t border-gray-200 pt-6">
+                    <div className="mb-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
+                            Your Answers
+                          </p>
+                          <h4 className="mt-2 text-lg font-semibold text-gray-900">
+                            Structured Transcript
+                          </h4>
+                        </div>
+                        {!isEditingTranscript && (
+                          <button
+                            onClick={() => {
+                              setTranscriptDraft(transcript || "");
+                              setIsEditingTranscript(true);
+                              setSaveStatus("");
+                            }}
+                            title="Edit transcript"
+                            className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-50"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              className="h-3.5 w-3.5"
+                              aria-hidden="true"
+                            >
+                              <path d="M12 20h9" />
+                              <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                            </svg>
+                            Edit
+                          </button>
+                        )}
+                      </div>
+                      <p className="mt-1 text-sm leading-6 text-gray-600">
+                        Write one continuous transcript so your notes stay easy
+                        to review.
+                      </p>
+                    </div>
+
+                    <div className="relative">
+                      {isEditingTranscript ? (
+                        <>
+                          <textarea
+                            value={transcriptDraft}
+                            onChange={(e) => {
+                              setTranscriptDraft(e.target.value);
+                              setSaveStatus("");
+                            }}
+                            placeholder={
+                              "Write your answers like:\nQ1: ...\nQ2: ...\nQ3: ..."
+                            }
+                            className="h-[320px] w-full resize-none overflow-y-auto rounded-xl border border-gray-300 bg-white px-4 py-4 font-mono text-sm leading-7 text-gray-800 shadow-sm outline-none transition placeholder:text-gray-400 hover:border-gray-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
+                          />
+                          <div className="mt-3 flex justify-end gap-2">
+                            <button
+                              onClick={() => {
+                                setTranscriptDraft(transcript || "");
+                                setIsEditingTranscript(false);
+                                setSaveStatus("");
+                              }}
+                              className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={handleSubmitTranscript}
+                              disabled={saveStatus === "saving"}
+                              className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-60"
+                            >
+                              {saveStatus === "saving"
+                                ? "Submitting..."
+                                : "Submit Transcript"}
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="h-[320px] w-full overflow-y-auto whitespace-pre-wrap rounded-xl border border-gray-300 bg-white px-4 py-4 font-mono text-sm leading-7 text-gray-800 shadow-sm">
+                          {transcript?.trim()
+                            ? transcript
+                            : "No transcript submitted yet."}
+                        </div>
+                      )}
+
+                      {saveStatus && (
+                        <p
+                          className={`mt-1.5 text-right text-xs ${
+                            saveStatus === "saving"
+                              ? "text-gray-400"
+                              : saveStatus === "saved"
+                                ? "text-emerald-600"
+                                : "text-red-500"
+                          }`}
+                        >
+                          {saveStatus === "saving"
+                            ? "Saving..."
+                            : saveStatus === "saved"
+                              ? "Submitted and saved"
+                              : "Failed to save"}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-8 border-t border-gray-200 pt-6">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
+                          User Persona Output
+                        </p>
+                        <h4 className="mt-2 text-lg font-semibold text-gray-900">
+                          Interview-based Persona
+                        </h4>
+                      </div>
+                      <p
+                        className={`text-xs ${
+                          personaStatus === "generating"
+                            ? "text-gray-500"
+                            : personaStatus === "ready"
+                              ? "text-emerald-600"
+                              : personaStatus === "error"
+                                ? "text-red-600"
+                                : "text-gray-400"
+                        }`}
+                      >
+                        {personaStatus === "generating"
+                          ? "Generating persona..."
+                          : personaStatus === "ready"
+                            ? "Persona updated"
+                            : personaStatus === "error"
+                              ? "Generation failed"
+                              : "Submit transcript to generate"}
+                      </p>
+                    </div>
+
+                    {personaError && (
+                      <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                        {personaError}
+                      </p>
+                    )}
+
+                    {personaStatus === "generating" ? (
+                      <div className="flex flex-col items-center justify-center py-16">
+                        {/* Loader */}
+                        {/* <div className="h-12 w-12 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent mb-8" /> */}
+
+                        <div className="space-y-4">
+                          {personaSteps.map((step, index) => (
+                            <div key={step} className="flex items-center gap-3">
+                              {index < activeStep ? (
+                                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-green-500 text-white text-xs">
+                                  ✓
+                                </div>
+                              ) : index === activeStep ? (
+                                <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
+                              ) : (
+                                <div className="h-6 w-6 rounded-full border-2 border-gray-300" />
+                              )}
+
+                              <span>{step}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* <p className="mt-6 text-sm text-gray-500">
+      AI is generating the interview-based persona...
+    </p> */}
+                      </div>
+                    ) : (
+                      <div className="h-[320px] overflow-y-auto rounded-xl border border-gray-300 bg-white px-4 py-4 text-sm leading-7 text-gray-800 shadow-sm whitespace-pre-wrap">
+                        {personaOutput ||
+                          "No persona output generated yet for this interview."}
+                      </div>
+                    )}
+                    {personaOutput?.trim() && (
+                      <div className="mt-4 flex justify-end gap-2">
+                        <button
+                          onClick={downloadPersonaReport}
+                          className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+                        >
+                          Download Persona Report
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await fetch(
+                                `/api/projects/${projectId}/progress`,
+                                {
+                                  method: "PUT",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                  },
+                                  body: JSON.stringify({
+                                    stage: "empathize",
+                                    progress: 100,
+                                  }),
+                                },
+                              );
+                            } catch (_) {}
+                            router.push(
+                              `/view-persona?projectId=${encodeURIComponent(projectId)}&projectName=${encodeURIComponent(projectName)}`,
+                            );
+                          }}
+                          className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
+                        >
+                          Generate Empathy Map
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {questionSets.length > 1 && (
+                    <div className="mt-8 border-t border-gray-200 pt-6">
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
+                        Previous Sets
+                      </p>
+                      <div className="space-y-3">
+                        {questionSets.slice(1).map((setItem) => (
+                          <div
+                            key={setItem.interviewId}
+                            className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm"
+                          >
+                            <p className="mb-3 text-xs text-gray-500">
+                              {new Date(setItem.createdAt).toLocaleString()}
+                            </p>
+                            <div className="space-y-2">
+                              {setItem.questions.map((q, idx) => (
+                                <div
+                                  key={`${setItem.interviewId}-${idx}`}
+                                  className="flex gap-3 text-sm text-gray-700"
+                                >
+                                  <span className="min-w-8 font-semibold text-gray-500">
+                                    Q{idx + 1}
+                                  </span>
+                                  <span className="leading-6">{q}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
