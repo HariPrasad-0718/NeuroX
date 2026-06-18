@@ -16,6 +16,7 @@ import {
   WidthType,
 } from "docx";
 import { saveAs } from "file-saver";
+import { RefreshCw } from "lucide-react";
 
 function decodeUnicode(str) {
   return str.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
@@ -685,65 +686,111 @@ const PROMPT_STEPS = [
     ]);
   }
 };
+const generatePrd = async (forceRegenerate = false) => {
+    console.log("🔥 GENERATE PRD CALLED");
 
-  const handleOpenPrdModal = async () => {
-    setIsPrdModalOpen(true);
-    setPrdProgress([]);
-runProgressSteps(PRD_STEPS, setPrdProgress);
+  if (!id) {
+    setPrdError("Project id is missing.");
+    return;
+  }
 
-    if (!id) {
-      setPrdError("Project id is missing.");
+  setPrdLoading(true);
+  setPrdError("");
+  setPrdRawResponse("");
+
+  try {
+    const res = await fetch("/api/generate-prd", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        projectId: Number(id),
+        forceRegenerate,
+      }),
+    });
+
+    const bodyText = await res.text();
+    const data = parseApiJson(bodyText);
+    console.log("POST Response:", data);
+
+    setPrdRawResponse(formatApiResponse(data?.agent_response || ""));
+
+    if (!data) {
+      setPrdError("API returned invalid JSON.");
+      setPrdHtml("");
       return;
     }
 
-    setPrdLoading(true);
-    setPrdError("");
-    setPrdRawResponse("");
-
-    try {
-      const res = await fetch("/api/generate-prd", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: Number(id) }),
-      });
-
-      const bodyText = await res.text();
-      const data = parseApiJson(bodyText);
-
-      setPrdRawResponse(formatApiResponse(data?.agent_response || ""));
-
-      if (!data) {
-        setPrdError("API returned invalid JSON.");
-        setPrdHtml("");
-        return;
-      }
-
-      if (!res.ok || !data?.success) {
-        setPrdError(data?.error?.message || data?.error || "Failed to generate PRD document");
-        setPrdHtml("");
-        return;
-      }
-
-      const nextHtml = cleanPrdHtml(
-        data?.data?.prd_output ||
-          data?.prd_output ||
-          extractPrdMarkup(data?.raw_response || "")
+    if (!res.ok || !data?.success) {
+      setPrdError(
+        data?.error?.message ||
+        data?.error ||
+        "Failed to generate PRD document"
       );
-      if (!nextHtml) {
-        setPrdError("PRD output is empty.");
-        setPrdHtml("");
-        return;
-      }
-
-      setPrdHtml(nextHtml);
-    } catch (err) {
-      setPrdError(err.message || "Failed to generate PRD document");
       setPrdHtml("");
-    } finally {
-      setPrdLoading(false);
+      return;
     }
-  };
 
+    const nextHtml = cleanPrdHtml(
+      data?.data?.prd_output ||
+      data?.prd_output ||
+      extractPrdMarkup(data?.raw_response || "")
+    );
+
+    if (!nextHtml) {
+      setPrdError("PRD output is empty.");
+      setPrdHtml("");
+      return;
+    }
+
+    setPrdHtml(nextHtml);
+  } catch (err) {
+    setPrdError(err.message || "Failed to generate PRD document");
+    setPrdHtml("");
+  } finally {
+    setPrdLoading(false);
+  }
+};
+
+
+
+const handleRegeneratePrd = async () => {
+  setPrdProgress([]);
+  runProgressSteps(PRD_STEPS, setPrdProgress);
+
+  await generatePrd(true);
+};
+
+ const handleOpenPrdModal = async () => {
+  setIsPrdModalOpen(true);
+
+  if (!id) {
+    setPrdError("Project id is missing.");
+    return;
+  }
+
+  try {
+    const existingRes = await fetch(
+      `/api/generate-prd?projectId=${id}`
+    );
+
+    const existingData = await existingRes.json();
+
+    if (existingData?.prd_content) {
+      setPrdHtml(existingData.prd_content);
+      return;
+    }
+  } catch (err) {
+    console.error("Failed to fetch existing PRD", err);
+  }
+
+ // No PRD found -> generate new one
+setPrdProgress([]);
+runProgressSteps(PRD_STEPS, setPrdProgress);
+
+await generatePrd();
+};
   const handleDownloadPrdDoc = async () => {
     if (!prdHtml || isDownloadingPrd) return;
 
@@ -1155,9 +1202,12 @@ runProgressSteps(PRD_STEPS, setPrdProgress);
   const hasContent = summary || enhancements.length > 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/30 to-purple-50/20">
+    <div className="min-h-screen bg-slate-100 px-3 py-3">
+
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-6">
+
       {/* Top bar */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-2">
+      <div className="mb-6 flex items-center gap-4">
         <button
           onClick={() => router.push(`/projects/${id}`)}
           className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition flex-shrink-0"
@@ -1165,12 +1215,16 @@ runProgressSteps(PRD_STEPS, setPrdProgress);
           <ArrowLeft className="w-4 h-4 text-gray-600" />
         </button>
         <div>
-          <h1 className="text-lg font-semibold text-gray-900">Wireframe Analysis</h1>
-          <p className="text-xs text-gray-500">AI-generated design review</p>
+          <h1 className="text-2xl font-bold text-gray-900">
+              Wireframe Analysis
+          </h1>          
+          <p className="text-sm text-gray-500">
+      AI-generated design review
+    </p>
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 py-4 space-y-6">
+      <div className="space-y-6">
         {isFallback && (
           <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -1186,7 +1240,7 @@ runProgressSteps(PRD_STEPS, setPrdProgress);
           <>
             {/* WIREFRAME SUMMARY */}
             {summary && (
-              <div className="rounded-2xl border border-indigo-100 bg-white shadow-sm overflow-hidden">
+             <div className="rounded-2xl border border-indigo-100 shadow-sm overflow-hidden">
                 {/* Section header */}
                 <div className="bg-gradient-to-r from-indigo-600 to-indigo-500 px-6 py-5 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
@@ -1233,7 +1287,7 @@ runProgressSteps(PRD_STEPS, setPrdProgress);
 
             {/* UI/UX ENHANCEMENTS */}
             {enhancements.length > 0 && (
-              <div className="rounded-2xl border from-indigo-600 to-indigo-500 bg-white shadow-sm overflow-hidden">
+             <div className="rounded-2xl border border-indigo-100 shadow-sm overflow-hidden">
                 {/* Section header */}
                 <div className="bg-gradient-to-r from-violet-600 to-purple-500 px-6 py-5 flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
@@ -1283,12 +1337,12 @@ runProgressSteps(PRD_STEPS, setPrdProgress);
                   className="w-full max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
                   onClick={(event) => event.stopPropagation()}
                 >
-                  <div className="flex items-center justify-between border-b border-slate-200 bg-slate-900 px-5 py-4">
-                    <h3 className="text-base font-semibold text-white">Prompt from Agent</h3>
+                  <div className="flex items-center justify-between border-b border-slate-200 bg-white-900 px-5 py-4">
+                    <h3 className="text-base font-semibold text-black">Prompt from Agent</h3>
                     <button
                       type="button"
                       onClick={() => setIsPromptModalOpen(false)}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/20 bg-white/10 text-white transition hover:bg-white/20"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/20 bg-white/10 text-black transition hover:bg-white/20"
                       aria-label="Close prompt modal"
                     >
                       <X className="h-4 w-4" />
@@ -1541,6 +1595,14 @@ runProgressSteps(PRD_STEPS, setPrdProgress);
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
+                        onClick={handleRegeneratePrd}
+                        disabled={prdLoading}
+                        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-indigo-600 bg-indigo-600 px-3 text-xs font-semibold text-white hover:bg-indigo-700"
+                      >
+                        Regenerate
+                      </button>
+                      <button
+                        type="button"
                         onClick={handleDownloadPrdDoc}
                         disabled={!prdHtml || isDownloadingPrd}
                         className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-indigo-600 bg-indigo-600 px-3 text-xs font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1747,6 +1809,7 @@ runProgressSteps(PRD_STEPS, setPrdProgress);
           </>
         )}
       </div>
+    </div>
     </div>
   );
 }

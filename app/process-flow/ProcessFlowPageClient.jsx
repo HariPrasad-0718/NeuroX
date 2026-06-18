@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { RotateCcw } from "lucide-react";
+import { ChevronLeft, RotateCcw } from "lucide-react";
 import UXJourneyFlow from "@/components/UXJourneyFlow";
 
 export default function ProcessFlowPageClient() {
@@ -108,18 +108,27 @@ export default function ProcessFlowPageClient() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] p-8">
-      <button
-        onClick={() => router.back()}
-        className="mb-6 px-4 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 transition"
-      >
-        Back
-      </button>
+    <div className="min-h-screen bg-[#f8fafc] px-3 py-3">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+       <div className="flex items-center gap-4 mb-6">
+  <button
+    onClick={() => router.back()}
+    className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-gray-200 bg-white text-gray-700 shadow-sm hover:bg-gray-50 transition"
+    aria-label="Go back"
+  >
+    <ChevronLeft className="w-5 h-5" />
+  </button>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">AI Generated Process Flow</h1>
-        <p className="text-sm text-gray-600 mb-6">Generated from persona insights</p>
+  <div>
+    <h1 className="text-2xl font-bold text-gray-900">
+      AI Generated Process Flow
+    </h1>
 
+    <p className="text-sm text-gray-600">
+      Generated from persona insights
+    </p>
+  </div>
+</div>
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20">
             <div className="w-12 h-12 border-4 border-gray-200 border-t-[#702dff] rounded-full animate-spin" />

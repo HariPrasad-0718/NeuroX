@@ -354,7 +354,9 @@ function buildProjectBrief({
 }
 
 export const POST = withAuth(async (request, _ctx, user) => {
+    console.log("🔥 AGENT API HIT");
   const { data: input, error: validationError } = await validateBody(request, generatePRDSchema);
+  console.log("INPUT RECEIVED:", input);
   if (validationError) return validationError;
 
   const { limited, retryAfterSec } = aiHeavyLimiter.check(String(user.userId));
@@ -364,6 +366,7 @@ export const POST = withAuth(async (request, _ctx, user) => {
 
   try {
     const projectId = Number(input.projectId);
+const forceRegenerate = input.forceRegenerate ?? false;
 
     if (!projectId) {
       return NextResponse.json(
@@ -383,7 +386,28 @@ export const POST = withAuth(async (request, _ctx, user) => {
     }
 
     const pool = await getPool();
+    const existingPrdResult = await pool
+  .request()
+  .input("projectId", sql.Int, projectId)
+  .query(`
+    SELECT TOP 1 prd_content
+    FROM ProductRequirementsDocuments
+    WHERE project_id = @projectId
+  `);
 
+if (
+  existingPrdResult.recordset.length > 0 &&
+  !forceRegenerate
+) {
+  return NextResponse.json({
+    success: true,
+    source: "database",
+    prd_output: existingPrdResult.recordset[0].prd_content,
+    data: {
+      prd_output: existingPrdResult.recordset[0].prd_content,
+    },
+  });
+}
     const [
       projectResult,
       personasResult,
@@ -572,6 +596,37 @@ export const POST = withAuth(async (request, _ctx, user) => {
         { status: 502 }
       );
     }
+    await pool
+  .request()
+  .input("projectId", sql.Int, projectId)
+  .input("prdOutput", sql.NVarChar(sql.MAX), prdOutput)
+  .query(`
+    IF EXISTS (
+      SELECT 1
+      FROM ProductRequirementsDocuments
+      WHERE project_id = @projectId
+    )
+    BEGIN
+      UPDATE ProductRequirementsDocuments
+      SET
+        prd_content = @prdOutput,
+        updated_at = GETDATE()
+      WHERE project_id = @projectId
+    END
+    ELSE
+    BEGIN
+      INSERT INTO ProductRequirementsDocuments
+      (
+        project_id,
+        prd_content
+      )
+      VALUES
+      (
+        @projectId,
+        @prdOutput
+      )
+    END
+  `);
 
     return NextResponse.json({
       success: true,
@@ -598,6 +653,38 @@ export const POST = withAuth(async (request, _ctx, user) => {
     logger.error("POST /api/generate-prd error", { error });
     return NextResponse.json(
       { success: false, error: { message: error?.message || "Internal server error" }, agent_input: agentInput, agent_response: null },
+      { status: 500 }
+    );
+  }
+});
+
+export const GET = withAuth(async (request, _ctx, user) => {
+  try {
+    const { searchParams } = new URL(request.url);
+
+    const projectId = Number(searchParams.get("projectId"));
+
+    const pool = await getPool();
+
+    const result = await pool
+      .request()
+      .input("projectId", sql.Int, projectId)
+      .query(`
+        SELECT TOP 1 prd_content
+        FROM ProductRequirementsDocuments
+        WHERE project_id = @projectId
+      `);
+
+    return NextResponse.json({
+      success: true,
+      prd_content: result.recordset?.[0]?.prd_content || null,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: error.message,
+      },
       { status: 500 }
     );
   }

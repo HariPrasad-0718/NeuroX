@@ -485,9 +485,7 @@ const inputRef = useRef(null);
     }
   };
   const handleWireframeUpload = async (file) => {
-     alert("handleWireframeUpload called");
 
-  console.log("handleWireframeUpload called");
   if (!file) return;
 
   setIsWireframeModalOpen(false);
@@ -601,8 +599,11 @@ console.log(
 
   
 
-  return (
-<div className="min-h-screen bg-slate-100 p-4 md:p-6">      <div className="mb-6 flex items-center gap-4">
+return (
+  <div className="min-h-screen bg-slate-100 px-3 py-3">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+
+      <div className="mb-6 flex items-center gap-4">
         <button
           onClick={() => router.back()}
           className="h-10 w-10 rounded-full border border-slate-300 bg-white shadow-sm"
@@ -610,7 +611,7 @@ console.log(
           <ArrowLeft className="mx-auto h-5 w-5" />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 md:text-4xl">Information Architecture</h1>
+          <h1 className="text-2xl font-bold text-slate-700 md:text-3xl">Information Architecture</h1>
           <p className="mt-1 text-slate-600">Structured view of pages, sections, actions, and components</p>
         </div>
       </div>
@@ -830,6 +831,7 @@ className="rounded-2xl border border-slate-200 bg-white p-4 shadow-inner" style=
     Wireframe Analyzer
   </button>
 </div>
+    </div>
     </div>
   );
 }
