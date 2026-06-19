@@ -789,9 +789,9 @@ const interval = setInterval(() => {
       {/* ✅ INLINE FORM - replaces modal, appears below + button */}
       {showForm && (
         <div className="mb-0 bg-transparent py-4">
-          <h3 className="mb-4 text-base font-semibold text-gray-800">Add Interviewee</h3>
+          <h3 className="mb-4 text-base font-semibold text-gray-800 px-5">Add Interviewee</h3>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 px-5">
             {[
               { key: "name", label: "Name" },
               { key: "gender", label: "Gender" },
@@ -813,7 +813,7 @@ const interval = setInterval(() => {
             ))}
           </div>
 
-          <div className="mt-5 flex gap-3">
+          <div className="mt-5 flex gap-3 px-5">
             <button
               onClick={handleAddInterviewee}
               className="px-5 py-2 bg-indigo-500 text-white rounded-md text-sm hover:bg-indigo-600"
