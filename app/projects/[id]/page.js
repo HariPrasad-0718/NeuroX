@@ -1757,7 +1757,7 @@ const handleOpenBrdModal = async () => {
 const generatePrd = async (forceRegenerate = false) => {
     console.log("🔥 GENERATE PRD CALLED");
 
-  if (!id) {
+  if (!projectId) {
     setPrdError("Project id is missing.");
     return;
   }
@@ -1773,7 +1773,7 @@ const generatePrd = async (forceRegenerate = false) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        projectId: Number(id),
+        projectId: Number(projectId),
         forceRegenerate,
       }),
     });
