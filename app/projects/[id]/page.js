@@ -1374,7 +1374,11 @@ const handleGenerateInformationArchitecture = async () => {
   const renderEmpathizeTemplateCard = (template, downloadableTemplateId, isCompleted) => {
     const media = EMPATHIZE_CARD_MEDIA[template.id] || EMPATHIZE_CARD_MEDIA["other-files"];
     const workspaceUrl = getWorkspaceUrl(template.name);
-    const topActionLabel = "Start";
+    const topActionLabel = template.id === "empathy-map"
+      ? "Get Started"
+      : template.id === "other-files"
+      ? "Upload"
+      : "Generate Empathy Map";
     const primaryFooterLabel = template.id === "user-persona" ? "Use Basic Template" : "Use Standard Template";
     const uploadLabel = template.id === "empathy-map" ? "Upload Standard Template" : "Upload Templates";
     return (
@@ -1641,28 +1645,13 @@ const WireframeReviewerCard = () => {
 
   <div className="mt-auto p-5">
     <button
-      onClick={() => inputRef.current?.click()}
-      disabled={isGenerating}
-      className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 disabled:opacity-60"
-    >
-      {isGenerating ? (
-        <>
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Analyzing...
-        </>
-      ) : (
-        "Upload Image"
-      )}
-    </button>
+  onClick={() => router.push(`/projects/${projectId}/wireframe-analyzer`)}
+  className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 disabled:opacity-60"
+>
+  Get Started
+</button>
 
-    <input
-      ref={inputRef}
-      type="file"
-      accept="image/png,image/jpeg,image/webp"
-      className="hidden"
-      disabled={isGenerating}
-      onChange={(e) => handleFile(e.target.files[0])}
-    />
+    
   </div>
 </div>
   );
@@ -1765,12 +1754,10 @@ const handleOpenBrdModal = async () => {
   }
 };
 
-const handleOpenPrdModal = async () => {
-  setIsPrdModalOpen(true);
-  setPrdProgress([]);
-  runProgressSteps(PRD_STEPS, setPrdProgress);
+const generatePrd = async (forceRegenerate = false) => {
+    console.log("🔥 GENERATE PRD CALLED");
 
-  if (!projectId) {
+  if (!id) {
     setPrdError("Project id is missing.");
     return;
   }
@@ -1782,218 +1769,214 @@ const handleOpenPrdModal = async () => {
   try {
     const res = await fetch("/api/generate-prd", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId: Number(projectId) }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        projectId: Number(id),
+        forceRegenerate,
+      }),
     });
 
     const bodyText = await res.text();
-    console.log("Raw response:", bodyText);
-
-    // Parse the main response
-    let data;
-    try {
-      data = JSON.parse(bodyText);
-    } catch (e) {
-      console.error("Failed to parse JSON:", e);
-      setPrdError("Invalid JSON response from server");
-      setPrdHtml("");
-      return;
-    }
+    const data = parseApiJson(bodyText);
+    console.log("POST Response:", data);
 
     setPrdRawResponse(formatApiResponse(data?.agent_response || ""));
 
     if (!data) {
-      setPrdError("API returned invalid data.");
+      setPrdError("API returned invalid JSON.");
       setPrdHtml("");
       return;
     }
 
     if (!res.ok || !data?.success) {
-      setPrdError(data?.error?.message || data?.error || "Failed to generate PRD document");
+      setPrdError(
+        data?.error?.message ||
+        data?.error ||
+        "Failed to generate PRD document"
+      );
       setPrdHtml("");
       return;
     }
 
-    // Extract PRD content
-    let prdContent = "";
+    const nextHtml = cleanPrdHtml(
+      data?.data?.prd_output ||
+      data?.prd_output ||
+      extractPrdMarkup(data?.raw_response || "")
+    );
 
-    // Check data.prd_output (this is where the content is)
-    if (data?.prd_output) {
-      prdContent = data.prd_output;
-    } else if (data?.data?.prd_output) {
-      prdContent = data.data.prd_output;
-    } else if (data?.final_response?.prd_output) {
-      prdContent = data.final_response.prd_output;
-    } else if (data?.final_response && typeof data.final_response === 'string') {
-      // Try to parse final_response as JSON
-      try {
-        const parsed = JSON.parse(data.final_response);
-        if (parsed?.prd_output) {
-          prdContent = parsed.prd_output;
-        }
-      } catch (e) {
-        // Handle Python-repr style: prd_output='<html>...'
-        const pyMatch = data.final_response.match(/prd_output\s*=\s*'([\s\S]*)'$/);
-        if (pyMatch) {
-          prdContent = pyMatch[1];
-        } else {
-          prdContent = data.final_response;
-        }
-      }
-    }
-
-    console.log("PRD Content before cleaning:", prdContent);
-
-    if (!prdContent) {
-      setPrdError("Could not extract PRD content from response.");
+    if (!nextHtml) {
+      setPrdError("PRD output is empty.");
       setPrdHtml("");
       return;
     }
 
-    let cleaned = prdContent;
-
-    if (typeof cleaned === 'string' && cleaned.trim().startsWith('{')) {
-      try {
-        const parsed = JSON.parse(cleaned);
-        if (parsed && parsed.prd_output) {
-          cleaned = parsed.prd_output;
-        }
-      } catch (e) {
-        const match = cleaned.match(/"prd_output"\s*:\s*"([\s\S]*?)"\s*}$/);
-        if (match) cleaned = match[1];
-      }
-    }
-
-    // Guard: if cleaned still looks like raw JSON, try one more extraction pass
-    if (cleaned.trim().startsWith('{') && cleaned.includes('prd_output')) {
-      const fallback = extractPrdMarkup(cleaned);
-      if (fallback) cleaned = fallback;
-    }
-
-    console.log("PRD Content after cleaning:", cleaned);
-
-    if (!cleaned) {
-      setPrdError("PRD content is empty after cleaning.");
-      setPrdHtml("");
-      return;
-    }
-
-    // If it doesn't have HTML tags, convert markdown-like content to HTML
-    if (!cleaned.includes('<h1') && !cleaned.includes('<h2')) {
-      cleaned = convertMarkdownToHtml(cleaned);
-    }
-
-    // Final sanitization before rendering
-    cleaned = sanitizePrdText(cleaned);
-    setPrdHtml(cleaned);
+    setPrdHtml(nextHtml);
   } catch (err) {
-    console.error("PRD Error:", err);
     setPrdError(err.message || "Failed to generate PRD document");
     setPrdHtml("");
   } finally {
     setPrdLoading(false);
   }
 };
-const handleDownloadPrdDoc = async () => {
-  if (!prdHtml || isDownloadingPrd) return;
 
-  setIsDownloadingPrd(true);
+
+
+const handleRegeneratePrd = async () => {
+  setPrdProgress([]);
+  runProgressSteps(PRD_STEPS, setPrdProgress);
+
+  await generatePrd(true);
+};
+
+ const handleOpenPrdModal = async () => {
+  setIsPrdModalOpen(true);
+
+  if (!projectId ) {
+    setPrdError("Project id is missing.");
+    return;
+  }
+
   try {
-    const parser = new DOMParser();
-    const dom = parser.parseFromString(prdHtml, "text/html");
-    const children = [];
-    let titleAdded = false;
+    const existingRes = await fetch(
+      `/api/generate-prd?projectId=${projectId}`
+    );
 
-    const elements = dom.body.querySelectorAll("h1, h2, h3, p, li, table");
-    elements.forEach((element) => {
-      const tag = element.tagName.toLowerCase();
-      const text = (element.textContent || "").trim();
+    const existingData = await existingRes.json();
 
-      if (tag === "h1") {
-        titleAdded = true;
-        children.push(
-          new Paragraph({ text, heading: HeadingLevel.HEADING_1, spacing: { after: 220 } })
-        );
-        return;
-      }
+    if (existingData?.prd_content) {
+      setPrdHtml(existingData.prd_content);
+      return;
+    }
+  } catch (err) {
+    console.error("Failed to fetch existing PRD", err);
+  }
 
-      if (tag === "h2") {
-        children.push(
-          new Paragraph({ text, heading: HeadingLevel.HEADING_2, spacing: { before: 180, after: 120 } })
-        );
-        return;
-      }
+ // No PRD found -> generate new one
+setPrdProgress([]);
+runProgressSteps(PRD_STEPS, setPrdProgress);
 
-      if (tag === "h3") {
-        children.push(
-          new Paragraph({ text, heading: HeadingLevel.HEADING_3, spacing: { before: 140, after: 100 } })
-        );
-        return;
-      }
+await generatePrd();
+};
+  const handleDownloadPrdDoc = async () => {
+    if (!prdHtml || isDownloadingPrd) return;
 
-      if (tag === "p" && text) {
-        children.push(new Paragraph({ text, spacing: { after: 120 } }));
-        return;
-      }
+    setIsDownloadingPrd(true);
+    try {
+      const parser = new DOMParser();
+      const dom = parser.parseFromString(prdHtml, "text/html");
 
-      if (tag === "li" && text) {
-        children.push(new Paragraph({ text, bullet: { level: 0 }, spacing: { after: 80 } }));
-        return;
-      }
+      const children = [];
+      let titleAdded = false;
+      const elements = dom.body.querySelectorAll("h1, h2, h3, p, li, table");
 
-      if (tag === "table") {
-        const rows = Array.from(element.querySelectorAll("tr"));
-        if (!rows.length) return;
+      elements.forEach((element) => {
+        const tag = element.tagName.toLowerCase();
+        const text = (element.textContent || "").trim();
 
-        const maxCols = rows.reduce(
-          (max, row) => Math.max(max, row.querySelectorAll("td,th").length),
-          0
-        );
-        if (!maxCols) return;
+        if (tag === "h1") {
+          titleAdded = true;
+          children.push(
+            new Paragraph({
+              text,
+              heading: HeadingLevel.HEADING_1,
+              spacing: { after: 220 },
+            })
+          );
+          return;
+        }
 
-        const tableRows = rows.map((row) => {
-          const cells = Array.from(row.querySelectorAll("td,th"));
-          const tableCells = [];
+        if (tag === "h2") {
+          children.push(
+            new Paragraph({
+              text,
+              heading: HeadingLevel.HEADING_2,
+              spacing: { before: 180, after: 120 },
+            })
+          );
+          return;
+        }
 
-          for (let i = 0; i < maxCols; i += 1) {
-            const cellText = (cells[i]?.textContent || "").trim();
-            tableCells.push(
-              new TableCell({
-                children: [new Paragraph({ text: cellText || " " })],
-              })
-            );
+        if (tag === "h3") {
+          children.push(
+            new Paragraph({
+              text,
+              heading: HeadingLevel.HEADING_3,
+              spacing: { before: 140, after: 100 },
+            })
+          );
+          return;
+        }
+
+        if (tag === "p") {
+          if (text) {
+            children.push(new Paragraph({ text, spacing: { after: 120 } }));
           }
+          return;
+        }
 
-          return new TableRow({ children: tableCells });
-        });
+        if (tag === "li") {
+          if (text) {
+            children.push(new Paragraph({ text, bullet: { level: 0 }, spacing: { after: 80 } }));
+          }
+          return;
+        }
 
-        children.push(
-          new Table({
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            rows: tableRows,
+        if (tag === "table") {
+          const rows = Array.from(element.querySelectorAll("tr"));
+          if (!rows.length) return;
+
+          const maxCols = rows.reduce(
+            (max, row) => Math.max(max, row.querySelectorAll("td,th").length),
+            0
+          );
+          if (!maxCols) return;
+
+          const tableRows = rows.map((row) => {
+            const cells = Array.from(row.querySelectorAll("td,th"));
+            const tableCells = [];
+
+            for (let i = 0; i < maxCols; i += 1) {
+              const cellText = (cells[i]?.textContent || "").trim();
+              tableCells.push(
+                new TableCell({
+                  children: [new Paragraph({ text: cellText || " " })],
+                })
+              );
+            }
+
+            return new TableRow({ children: tableCells });
+          });
+
+          children.push(
+            new Table({
+              width: { size: 100, type: WidthType.PERCENTAGE },
+              rows: tableRows,
+            })
+          );
+          children.push(new Paragraph({ text: "", spacing: { after: 120 } }));
+        }
+      });
+
+      if (!titleAdded) {
+        children.unshift(
+          new Paragraph({
+            text: "Product Requirements Document",
+            heading: HeadingLevel.TITLE,
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 300 },
           })
         );
       }
-    });
 
-    if (!titleAdded) {
-      children.unshift(
-        new Paragraph({
-          text: "Product Requirements Document",
-          heading: HeadingLevel.TITLE,
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 300 },
-        })
-      );
+      const doc = new Document({ sections: [{ children }] });
+      const blob = await Packer.toBlob(doc);
+      saveAs(blob, "product-requirements-document.docx");
+    } finally {
+      setIsDownloadingPrd(false);
     }
-
-    const doc = new Document({ sections: [{ children }] });
-    const blob = await Packer.toBlob(doc);
-    saveAs(blob, "product-requirements-document.docx");
-  } finally {
-    setIsDownloadingPrd(false);
-  }
-};
+  };
 
 const BRD_SECTIONS = [
   { key: "business_problem", num: "01", title: "Business Problem", type: "prose" },
@@ -3021,6 +3004,14 @@ const handleDownloadBrdDoc = async () => {
                 <h3 className="text-base font-semibold text-gray-900">Product Requirements Document</h3>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                        type="button"
+                        onClick={handleRegeneratePrd}
+                        disabled={prdLoading}
+                        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-indigo-600 bg-indigo-600 px-3 text-xs font-semibold text-white hover:bg-indigo-700"
+                      >
+                        Regenerate
+                      </button>
                 <button
                   type="button"
                   onClick={handleDownloadPrdDoc}

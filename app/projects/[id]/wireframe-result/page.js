@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState } from "react"
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Download, LayoutDashboard, Sparkles, X } from "lucide-react";
 import {
@@ -17,6 +17,7 @@ import {
 } from "docx";
 import { saveAs } from "file-saver";
 import { RefreshCw } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 
 function decodeUnicode(str) {
   return str.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
@@ -514,6 +515,11 @@ function parseApiJson(text) {
 }
 
 export default function WireframeResultPage() {
+  const params = useParams();
+const searchParams = useSearchParams();
+
+const projectId = params.id;
+const pageId = searchParams.get("pageId");
   const router = useRouter();
   const { id } = useParams();
   const [raw, setRaw] = useState("");
@@ -537,6 +543,13 @@ export default function WireframeResultPage() {
   const [brdProgress, setBrdProgress] = useState([]);
 const [prdProgress, setPrdProgress] = useState([]);
 const [promptProgress, setPromptProgress] = useState([]);
+const [analysis, setAnalysis] = useState(null);
+useEffect(() => {
+  if (analysis?.analysis_output) {
+    setRaw(analysis.analysis_output);
+  }
+}, [analysis]);
+const [loading, setLoading] = useState(true);
 
 
 const BRD_STEPS = [
@@ -556,10 +569,10 @@ const PRD_STEPS = [
 ];
 
 const PROMPT_STEPS = [
-  "Connecting to agent",
+  "Finalizing response",
   "Analyzing wireframe context",
   "Generating prompt structure",
-  "Finalizing response"
+  "Getting all the contexts"
 ];
 
   useEffect(() => {
@@ -591,6 +604,37 @@ const PROMPT_STEPS = [
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isPromptModalOpen, isBrdModalOpen, isPrdModalOpen]);
+
+  useEffect(() => {
+  if (!pageId) return;
+
+  const fetchAnalysis = async () => {
+    try {
+      const res = await fetch(
+        `/api/wireframe-pages?pageId=${pageId}`
+      );
+
+      const data = await res.json();
+
+      if (data.success) {
+  setAnalysis(data.data);
+
+  if (data.data?.analysis_output) {
+    setRaw(data.data.analysis_output);
+  }
+}
+    } catch (err) {
+      console.error(err);
+    } finally {
+      try {
+        sessionStorage.removeItem("wireframeResultLoading");
+      } catch (_) {}
+      setLoading(false);
+    }
+  };
+
+  fetchAnalysis();
+}, [pageId]);
 
   const handleOpenPromptModal = async () => {
     setIsPromptModalOpen(true);
@@ -1209,7 +1253,7 @@ await generatePrd();
       {/* Top bar */}
       <div className="mb-6 flex items-center gap-4">
         <button
-          onClick={() => router.push(`/projects/${id}`)}
+          onClick={() => router.push(`/projects/${projectId}/wireframe-analyzer`)}
           className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition flex-shrink-0"
         >
           <ArrowLeft className="w-4 h-4 text-gray-600" />
@@ -1223,6 +1267,13 @@ await generatePrd();
     </p>
         </div>
       </div>
+
+      {loading && (
+        <div className="flex flex-col items-center justify-center py-20">
+          <div className="h-12 w-12 rounded-full border-4 border-indigo-200 border-t-indigo-600 animate-spin" />
+          <p className="mt-4 text-gray-500">Loading analysis…</p>
+        </div>
+      )}
 
       <div className="space-y-6">
         {isFallback && (
@@ -1252,29 +1303,7 @@ await generatePrd();
                       <h2 className="text-base font-bold text-white">Wireframe Summary</h2>
                     </div>
                   </div>
-                  <div className="inline-flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleOpenPromptModal}
-                      className="inline-flex h-9 items-center justify-center rounded-lg border border-white/30 bg-white/10 px-3 text-sm font-semibold text-white transition hover:bg-white/20"
-                    >
-                      Prompt
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleOpenBrdModal}
-                      className="inline-flex h-9 items-center justify-center rounded-lg border border-white/30 bg-white/10 px-3 text-sm font-semibold text-white transition hover:bg-white/20"
-                    >
-                      Generate BRD Document
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleOpenPrdModal}
-                      className="inline-flex h-9 items-center justify-center rounded-lg border border-white/30 bg-white/10 px-3 text-sm font-semibold text-white transition hover:bg-white/20"
-                    >
-                      Generate PRD Document
-                    </button>
-                  </div>
+                  
                 </div>
                 {/* Body */}
                 <div className="px-7 py-6">
@@ -1805,6 +1834,8 @@ await generatePrd();
                 border-top: 1px solid #d1d5db;
               }
             `}</style>
+
+          
 
           </>
         )}
