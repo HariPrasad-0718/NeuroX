@@ -14,7 +14,7 @@ const accountKey =
 
 const containerName =
   process.env.AZURE_STORAGE_CONTAINER_NAME ||
-  "de-ux-governance";
+  "images";
 
 
 export const GET = withAuth(async (request, _ctx, user) => {
