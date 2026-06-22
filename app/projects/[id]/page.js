@@ -2306,98 +2306,104 @@ const handleDownloadBrdDoc = async () => {
     personaCards.find((card) => card.personaId === activePersonaCardId) || null;
 
   return (
-    <div className="bg-[#fafafa]">
-      <div className="bg-white border-b border-gray-200 px-8 py-6 mt-1">
-        <div className="flex items-start gap-6">
-          <button onClick={() => router.push("/projects")} className="w-10 h-10 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-50 flex-shrink-0 mt-1"><ArrowLeft className="w-5 h-5 text-gray-700" /></button>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-2xl font-semibold text-gray-900 mb-2">{project.projectName}</h1>
-            <p
-  className={`text-sm text-gray-600 leading-relaxed max-w-3xl cursor-pointer ${
-    showFullDesc ? "" : "line-clamp-2"
-  }`}
-  onClick={() => setShowFullDesc(!showFullDesc)}
->
-  {project.projectDescription || "No description"}
-  {!showFullDesc && "..."}
-</p>
-            
-            <div className="flex items-center justify-start gap-8 mt-4">
-              <div className="flex items-center gap-2"><span className="text-xs uppercase tracking-wide text-gray-500 font-medium">Client:</span><span className="text-sm text-gray-900 font-medium">{project.client || "N/A"}</span></div>
-              <div className="h-4 w-px bg-gray-300" />
-              <div className="flex items-center gap-2"><span className="text-xs uppercase tracking-wide text-gray-400 font-medium">Target Date:</span><span className="text-sm text-gray-900 font-medium">{project.targetCompletionDate ? new Date(project.targetCompletionDate).toLocaleDateString() : "N/A"}</span></div>
+    <div className="bg-[#fafafa] px-3 py-3">
+      <div className="mx-auto max-w-[1600px] overflow-hidden rounded-[32px] bg-white shadow-sm">
+        <div className="border-b border-gray-200 px-6 py-6 md:px-8 md:py-8">
+          <div className="flex items-start gap-6">
+            <button onClick={() => router.push("/projects")} className="w-10 h-10 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-50 flex-shrink-0 mt-1"><ArrowLeft className="w-5 h-5 text-gray-700" /></button>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-2xl font-semibold text-gray-900 mb-2">{project.projectName}</h1>
+              <p
+                className={`text-sm text-gray-600 leading-relaxed max-w-3xl cursor-pointer ${
+                  showFullDesc ? "" : "line-clamp-2"
+                }`}
+                onClick={() => setShowFullDesc(!showFullDesc)}
+              >
+                {project.projectDescription || "No description"}
+                {!showFullDesc && "..."}
+              </p>
+
+              <div className="flex flex-col gap-3 mt-4 sm:flex-row sm:items-center sm:gap-8">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs uppercase tracking-wide text-gray-500 font-medium">Client:</span>
+                  <span className="text-sm text-gray-900 font-medium">{project.client || "N/A"}</span>
+                </div>
+                <div className="hidden h-4 w-px bg-gray-300 sm:block" />
+                <div className="flex items-center gap-2">
+                  <span className="text-xs uppercase tracking-wide text-gray-400 font-medium">Target Date:</span>
+                  <span className="text-sm text-gray-900 font-medium">{project.targetCompletionDate ? new Date(project.targetCompletionDate).toLocaleDateString() : "N/A"}</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <label className="flex items-center gap-2.5 cursor-pointer rounded-lg border border-gray-200 bg-white px-4 py-2.5 hover:bg-gray-50">
+                <input type="checkbox" checked={projectCompleted} onChange={(e) => setProjectCompleted(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-[#702dff] focus:ring-[#702dff]" />
+                <span className="text-sm text-gray-700 font-medium whitespace-nowrap">Mark as Complete</span>
+              </label>
             </div>
           </div>
-          <div className="flex flex-col items-end gap-2">
-            <label className="flex items-center gap-2.5 cursor-pointer px-4 py-2.5 rounded-lg border border-gray-200 hover:bg-gray-50">
-              <input type="checkbox" checked={projectCompleted} onChange={(e) => setProjectCompleted(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-[#702dff] focus:ring-[#702dff]" />
-              <span className="text-sm text-gray-700 font-medium whitespace-nowrap">Mark as Complete</span>
-            </label>
-          </div>
         </div>
-      </div>
 
-      <div className="px-8 py-8">
-        {isLoadingDocs ? (
-          <div className="flex flex-col items-center justify-center h-64"><Loader2 className="w-12 h-12 text-[#702dff] animate-spin mb-4" /><p className="text-gray-600">Loading documents...</p></div>
-        ) : (
-          <div className="space-y-4">
-            {STAGES.map((stage ,index ) => {
-              const isExpanded = expandedStage === stage.id;
-              return (
-                <div key={stage.id} className={`bg-white rounded-lg border overflow-hidden transition-all duration-200 hover:shadow-sm ${completedStages.includes(stage.id) ? "border-emerald-300 ring-1 ring-emerald-100 shadow-emerald-50" : "border-gray-200"}`}>
-                  <div
-  className="p-6 cursor-pointer"
-  onClick={() => setExpandedStage(isExpanded ? null : stage.id)}
->
-  <div className="flex items-center justify-between gap-4">
-    
-    <div className="flex items-center gap-3 flex-1">
-      <div className={`transform transition-transform ${isExpanded ? "rotate-180" : ""}`}>
-        <ChevronDown className="w-5 h-5 text-gray-600" />
-      </div>
+        <div className="px-6 py-6 md:px-8 md:py-8">
+          {isLoadingDocs ? (
+            <div className="flex flex-col items-center justify-center h-64"><Loader2 className="w-12 h-12 text-[#702dff] animate-spin mb-4" /><p className="text-gray-600">Loading documents...</p></div>
+          ) : (
+            <div className="space-y-4">
+              {STAGES.map((stage ,index ) => {
+                const isExpanded = expandedStage === stage.id;
+                return (
+                  <div key={stage.id} className={`rounded-lg border bg-white overflow-hidden transition-all duration-200 hover:shadow-sm ${completedStages.includes(stage.id) ? "border-emerald-300 ring-1 ring-emerald-100 shadow-emerald-50" : "border-gray-200"}`}>
+                    <div
+                      className="p-6 cursor-pointer"
+                      onClick={() => setExpandedStage(isExpanded ? null : stage.id)}
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3 flex-1">
+                          <div className={`transform transition-transform ${isExpanded ? "rotate-180" : ""}`}>
+                            <ChevronDown className="w-5 h-5 text-gray-600" />
+                          </div>
 
-      <div className="flex-1">
-       <div className="flex items-center gap-3 mb-1">
-  <h3 className="text-lg font-semibold text-gray-900">
-    {stage.name}
-  </h3>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-1">
+                              <h3 className="text-lg font-semibold text-gray-900">
+                                {stage.name}
+                              </h3>
 
-  <span
-    className={`text-xs px-2 py-1 rounded ${
-      completedStages.includes(stage.id)
-        ? "bg-green-100 text-green-700"
-        : STAGES.find((s) => !completedStages.includes(s.id))?.id === stage.id
-        ? "bg-yellow-100 text-yellow-700"
-        : "bg-gray-100 text-gray-600"
-    }`}
-  >
-    {completedStages.includes(stage.id)
-      ? "Completed"
-      : STAGES.find((s) => !completedStages.includes(s.id))?.id === stage.id
-      ? "In Progress"
-      : "Not Started"}
-  </span>
-</div>
+                              <span
+                                className={`text-xs px-2 py-1 rounded ${
+                                  completedStages.includes(stage.id)
+                                    ? "bg-green-100 text-green-700"
+                                    : STAGES.find((s) => !completedStages.includes(s.id))?.id === stage.id
+                                    ? "bg-yellow-100 text-yellow-700"
+                                    : "bg-gray-100 text-gray-600"
+                                }`}
+                              >
+                                {completedStages.includes(stage.id)
+                                  ? "Completed"
+                                  : STAGES.find((s) => !completedStages.includes(s.id))?.id === stage.id
+                                  ? "In Progress"
+                                  : "Not Started"}
+                              </span>
+                            </div>
 
-        <p className="text-sm text-gray-600">
-          {stage.description}
-        </p>
-      </div>
-    </div>
+                            <p className="text-sm text-gray-600">
+                              {stage.description}
+                            </p>
+                          </div>
+                        </div>
 
-  <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-      {completedStages.includes(stage.id) ? (
-        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/></svg>Completed</span>
-      ) : (
-        <button onClick={() => handleMarkStageComplete(stage.id)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 text-xs font-medium hover:border-emerald-300 hover:text-emerald-700 hover:bg-emerald-50 transition-all duration-200">Mark as Complete</button>
-      )}
-    </div>
-  </div>
-</div>
-                  {isExpanded && (
-                    <div className="px-6 pb-6 border-t border-gray-200 pt-6">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                          {completedStages.includes(stage.id) ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/></svg>Completed</span>
+                          ) : (
+                            <button onClick={() => handleMarkStageComplete(stage.id)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 text-xs font-medium hover:border-emerald-300 hover:text-emerald-700 hover:bg-emerald-50 transition-all duration-200">Mark as Complete</button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    {isExpanded && (
+                      <div className="px-6 pb-6 border-t border-gray-200 pt-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {(STAGE_TEMPLATES[stage.id] || []).map((template) => {
                           const TemplateIcon = template.icon;
                           const link = prototypeLinks[`${stage.id}-${template.id}`] || "";
@@ -3481,5 +3487,6 @@ const handleDownloadBrdDoc = async () => {
         }
       `}</style>
     </div>
+  </div>
   );
 }

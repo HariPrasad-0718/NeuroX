@@ -686,43 +686,44 @@ await fetch("/api/save-generated-persona", {
   );
 
   return (
-    <div className="min-h-screen bg-[#f0f0f5]" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
-      <div className="bg-white border-b border-gray-200 px-8 py-5 flex items-center gap-4 sticky top-0 z-10">
-        <button
-          onClick={() => router.push(`/projects/${projectId}`)}
-          className="w-9 h-9 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-50 transition flex-shrink-0"
-        >
-          <ArrowLeft className="w-4 h-4 text-gray-700" />
-        </button>
+    <div className="min-h-screen bg-[#f5f5f7]" style={{ fontFamily: "Inter, system-ui, sans-serif", padding: "10px" }}>
+      <div className="bg-white rounded-2xl shadow-lg overflow-hidden flex flex-col" style={{ minHeight: "calc(100vh - 20px)" }}>
+        <div className="bg-white border-b border-gray-200 px-8 py-5 flex items-center gap-4 sticky top-0 z-10">
+          <button
+            onClick={() => router.push(`/projects/${projectId}`)}
+            className="w-9 h-9 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-50 transition flex-shrink-0"
+          >
+            <ArrowLeft className="w-4 h-4 text-gray-700" />
+          </button>
 
-        <div className="flex-1">
-          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Define Phase</p>
-          <h1 className="text-xl font-semibold text-gray-900 mt-0.5">Problem Definition</h1>
-          {projectName ? <p className="text-sm text-gray-500 mt-0.5">{projectName}</p> : null}
+          <div className="flex-1">
+            <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Define Phase</p>
+            <h1 className="text-xl font-semibold text-gray-900 mt-0.5">Problem Definition</h1>
+            {projectName ? <p className="text-sm text-gray-500 mt-0.5">{projectName}</p> : null}
+          </div>
+
+          {!loading && !loadedFromDb ? (
+           <button
+    onClick={handleGenerate}
+    disabled={generating || !personas.length}
+    className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+  >
+    {generating ? (
+      <>
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Generating...
+      </>
+    ) : (
+      <>
+        <Sparkles className="w-4 h-4" />
+        {generated ? "Regenerate" : "Generate Problem Definition"}
+      </>
+    )}
+  </button>
+          ) : null}
         </div>
 
-        {!loading && !loadedFromDb ? (
-         <button
-  onClick={handleGenerate}
-  disabled={generating || !personas.length}
-  className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
->
-  {generating ? (
-    <>
-      <Loader2 className="w-4 h-4 animate-spin" />
-      Generating...
-    </>
-  ) : (
-    <>
-      <Sparkles className="w-4 h-4" />
-      {generated ? "Regenerate" : "Generate Problem Definition"}
-    </>
-  )}
-</button>
-        ) : null}
-      </div>
-
-      <div className="max-w-6xl mx-auto px-3 py-5">
+        <div className="max-w-6xl mx-auto px-3 py-5 flex-1">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-32">
             <Loader2 className="w-10 h-10 text-indigo-500 animate-spin mb-4" />
@@ -885,6 +886,7 @@ await fetch("/api/save-generated-persona", {
           </>
         ) : null}
       </div>
+    </div>
     </div>
   );
 }

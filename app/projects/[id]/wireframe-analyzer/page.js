@@ -39,6 +39,8 @@ const [promptProgress, setPromptProgress] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [viewingPageId, setViewingPageId] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [pageNameExists, setPageNameExists] = useState(false);
+  
 
   const handleUpload = async () => {
     try {
@@ -120,6 +122,16 @@ const handleViewAnalysis = (pageId) => {
   } catch (_) {}
   setViewingPageId(pageId);
   router.push(`/projects/${projectId}/wireframe-result?pageId=${pageId}`);
+};
+
+const checkPageName = (value) => {
+  const exists = history.some(
+    (item) =>
+      item.page_name?.trim().toLowerCase() ===
+      value.trim().toLowerCase()
+  );
+
+  setPageNameExists(exists);
 };
 
 const handleGeneratePrompt = async () => {
@@ -234,13 +246,13 @@ const handleGeneratePrompt = async () => {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search pages..."
-              className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-10 pr-4 text-sm outline-none focus:border-indigo-500"
+              className="w-full rounded-xl border border-slate-300 bg-white py-3 pl-10 pr-4 text-sm outline-none focus:border-indigo-500"
             />
           </div>
 
           <button
             onClick={() => setShowUploadModal(true)}
-            className="flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-3 font-medium text-white transition hover:bg-indigo-700"
+            className="flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 py-2 font-medium text-white transition hover:bg-indigo-700"
           >
             <Plus className="h-5 w-5" />
             Upload Image
@@ -391,31 +403,68 @@ const handleGeneratePrompt = async () => {
 
             <div className="space-y-5">
               <div>
-                <label className="mb-2 block text-sm font-medium">
+                <label className="mb-2 block text-medium font-medium">
                   Page Name
                 </label>
 
                 <input
                   type="text"
                   value={pageName}
-                  onChange={(e) => setPageName(e.target.value)}
+                  onChange={(e) => {
+  const value = e.target.value;
+  setPageName(value);
+  checkPageName(value);
+}}
                   placeholder="Example: Home Page"
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-indigo-500"
+                  className={`w-full rounded-xl px-3 py-2 outline-none
+  ${
+    pageNameExists
+      ? "border border-red-500 focus:border-red-500"
+      : "border border-slate-300 focus:border-indigo-500"
+  }`}
                 />
+                {pageNameExists && (
+  <p className="mt-1 text-sm text-red-600">
+    This page has already been analyzed. Enter a new page name.
+  </p>
+)}
               </div>
 
-              <div>
-                <label className="mb-2 block text-sm font-medium">
-                  Upload Image
-                </label>
+            <div>
+  <label className="block text-medium font-medium mb-2">
+    Upload Image
+  </label>
 
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => setSelectedFile(e.target.files?.[0])}
-                  className="w-full rounded-xl border border-slate-300 p-3"
-                />
-              </div>
+  <div className="flex items-center gap-3">
+    <label
+  htmlFor={!selectedFile ? "wireframe-upload" : undefined}
+  className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 font-medium transition
+    ${
+      selectedFile
+        ? "cursor-not-allowed bg-green-100 text-green-700 border border-green-300"
+        : "cursor-pointer bg-[#6D28D9] text-white hover:bg-[#5B21B6]"
+    }`}
+>
+  {selectedFile ? "Image Selected ✓" : "Choose File"}
+</label>
+
+    
+  </div>
+
+  <input
+    id="wireframe-upload"
+    type="file"
+    accept="image/*"
+    className="hidden"
+    disabled={!!selectedFile}
+    onChange={(e) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        setSelectedFile(file);
+      }
+    }}
+  />
+</div>
 
               {selectedFile && (
                 <div className="rounded-xl bg-slate-100 p-3 text-sm">
@@ -425,7 +474,7 @@ const handleGeneratePrompt = async () => {
 
               <button
                 onClick={handleUpload}
-                disabled={!pageName || !selectedFile || uploading}
+                disabled={!pageName || !selectedFile || uploading || pageNameExists}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {uploading ? (

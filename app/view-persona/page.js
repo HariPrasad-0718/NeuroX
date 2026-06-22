@@ -440,13 +440,14 @@ const [editingSections, setEditingSections] = useState({
 
   return (
     <div className="page">
-      <h1 className="page-title">{projectName || "User Persona"}</h1>
+      <div className="page-inner">
+        <h1 className="page-title">{projectName || "User Persona"}</h1>
 
-      {isLoading ? (
-        <p>Loading...</p>
-      ) : (
-        <div className="content">
-          <div className="tabs">
+        {isLoading ? (
+          <p>Loading...</p>
+        ) : (
+          <div className="content">
+            <div className="tabs">
              
   {personaGroups.map((p) => (
     <button
@@ -674,8 +675,8 @@ const [editingSections, setEditingSections] = useState({
           )}
         </div>
       )}{/* PAIN POINTS */}
-{activeInterviewee && (
-  <div className="summary-box empathy-shell strategic-shell">
+      {activeInterviewee && (
+        <div className="summary-box empathy-shell strategic-shell">
     <div className="strategic-heading-wrap">
       <h3 className="strategic-heading">Strategic Signals</h3>
       <p className="strategic-subtitle">
@@ -829,16 +830,28 @@ const [editingSections, setEditingSections] = useState({
           Go to Define Stage Problem Definition
         </button>
       </div>
+    </div>
       <style jsx>{`
 
       .page-title {
   font-size: 28px;      /* 🔥 bigger heading */
   font-weight: 700;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .page {
-  padding: 10px 10px;   /* 🔥 space under heading */
+  padding: 10px;
+  min-height: 100vh;
+  background: #f3f4f6;
+}
+
+.page-inner {
+  width: min(100%, 1280px);
+  margin: 0 auto;
+  background: #ffffff;
+  border-radius: 24px;
+  padding: 28px;
+  box-shadow: 0 24px 50px rgba(15, 23, 42, 0.08);
 }
   
       .tabs {

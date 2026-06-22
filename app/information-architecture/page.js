@@ -484,51 +484,7 @@ const inputRef = useRef(null);
       setRegenerating(false);
     }
   };
-  const handleWireframeUpload = async (file) => {
-
-  if (!file) return;
-
-  setIsWireframeModalOpen(false);
-  setIsAnalyzingWireframe(true);
-  setWireframeError("");
-
-  try {
-    const formData = new FormData();
-    formData.append("image", file);
-
-    const res = await fetch("/api/analyze-wireframe", {
-      method: "POST",
-      body: formData,
-    });
-
-    const data = await res.json();
-    console.log("Wireframe API Response:", data);
-
-    if (!data.success) {
-      throw new Error(data.error || "Analysis failed");
-    }
-    console.log("Agent Response:", data.result);
-
-    sessionStorage.setItem(
-  "wireframeResult",
-  data.result
-);
-console.log(
-  "Stored value:",
-  sessionStorage.getItem("wireframeResult")
-);
-
-    router.push(
-      `/projects/${projectId}/wireframe-result`
-    );
-  } catch (err) {
-    setWireframeError(err.message);
-  } finally {
-    setIsAnalyzingWireframe(false);
-  }
-};
   
-
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -680,30 +636,6 @@ return (
           <h3 className="mb-4 text-xl font-semibold">
             Wireframe Analyzer
           </h3>
-
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            disabled={isAnalyzingWireframe}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-200 transition duration-200 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <Upload className="h-4 w-4" />
-            Upload Image
-          </button>
-
-          <input
-            ref={inputRef}
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            className="hidden"
-            disabled={isAnalyzingWireframe}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) {
-                handleWireframeUpload(file);
-              }
-            }}
-          />
         </div>
       </div>
     )}
@@ -825,7 +757,9 @@ className="rounded-2xl border border-slate-200 bg-white p-4 shadow-inner" style=
       </div>
       <div className="flex justify-end mt-6">
   <button
-    onClick={() => setIsWireframeModalOpen(true)}
+    onClick={() =>
+  router.push(`/projects/${projectId}/wireframe-analyzer`)
+}
     className="px-6 py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition cursor-pointer"
   >
     Wireframe Analyzer
