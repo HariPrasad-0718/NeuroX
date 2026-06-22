@@ -1,8 +1,20 @@
 import { NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { withAuth } from "@/lib/withAuth";
-import path from "path";
-import fs from "fs/promises";
+import {
+  BlobServiceClient,
+  StorageSharedKeyCredential,
+} from "@azure/storage-blob";
+
+const accountName =
+  process.env.AZURE_STORAGE_ACCOUNT_NAME;
+
+const accountKey =
+  process.env.AZURE_STORAGE_ACCOUNT_KEY;
+
+const containerName =
+  process.env.AZURE_STORAGE_CONTAINER_NAME ||
+  "de-ux-governance";
 
 
 export const GET = withAuth(async (request, _ctx, user) => {
@@ -197,39 +209,59 @@ export async function POST(req) {
     // ---------------------------------
     // SAVE IMAGE
     // ---------------------------------
+     // ---------------------------------
+// SAVE IMAGE TO AZURE BLOB STORAGE
+// ---------------------------------
 
-    const bytes =
-      await image.arrayBuffer();
+if (!accountName || !accountKey) {
+  return NextResponse.json({
+    success: false,
+    error: "Azure Storage credentials are missing",
+  });
+}
 
-    const buffer =
-      Buffer.from(bytes);
+const bytes = await image.arrayBuffer();
 
-    const fileName =
-      `${Date.now()}-${image.name}`;
+const buffer = Buffer.from(bytes);
 
-    const uploadDir = path.join(
-      process.cwd(),
-      "public",
-      "uploads",
-      "wireframes"
-    );
+const fileName =
+  `wireframes/${Date.now()}-${image.name}`;
 
-    await fs.mkdir(uploadDir, {
-      recursive: true,
-    });
+const credential =
+  new StorageSharedKeyCredential(
+    accountName,
+    accountKey
+  );
 
-    const filePath = path.join(
-      uploadDir,
-      fileName
-    );
+const blobServiceClient =
+  new BlobServiceClient(
+    `https://${accountName}.blob.core.windows.net`,
+    credential
+  );
 
-    await fs.writeFile(
-      filePath,
-      buffer
-    );
+const containerClient =
+  blobServiceClient.getContainerClient(
+    containerName
+  );
 
-    const imageUrl =
-      `/uploads/wireframes/${fileName}`;
+const blockBlobClient =
+  containerClient.getBlockBlobClient(
+    fileName
+  );
+
+await blockBlobClient.uploadData(
+  buffer,
+  {
+    blobHTTPHeaders: {
+      blobContentType:
+        image.type,
+    },
+  }
+);
+
+const imageUrl =
+  blockBlobClient.url;
+    
 
     // ---------------------------------
     // CALL EXISTING AGENT API
@@ -243,8 +275,12 @@ export async function POST(req) {
       image
     );
 
-    const agentResponse = await fetch(
-  "http://localhost:3000/api/analyze-wireframe",
+    const baseUrl =
+  process.env.NEXT_PUBLIC_APP_URL ||
+  "http://localhost:3000";
+
+const agentResponse = await fetch(
+  `${baseUrl}/api/analyze-wireframe`,
   {
     method: "POST",
     body: agentFormData,
