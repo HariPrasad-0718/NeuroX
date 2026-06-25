@@ -117,7 +117,6 @@ async function callAgent(pfInput) {
 
   let flow = extractFlowFromMessages(parsed?.response?.messages);
   if (!flow?.nodes) flow = extractFlow(parsed);
-  if (!flow?.nodes || !flow?.edges) throw new Error("Unable to extract process flow from agent response");
 
   return normalizeFlow(flow);
 }

@@ -544,6 +544,7 @@ const pageId = searchParams.get("pageId");
 const [prdProgress, setPrdProgress] = useState([]);
 const [promptProgress, setPromptProgress] = useState([]);
 const [analysis, setAnalysis] = useState(null);
+const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(true);
 useEffect(() => {
   if (analysis?.analysis_output) {
     setRaw(analysis.analysis_output);
@@ -609,6 +610,7 @@ const PROMPT_STEPS = [
   if (!pageId) return;
 
   const fetchAnalysis = async () => {
+      setIsLoadingAnalysis(true);
     try {
       const res = await fetch(
         `/api/wireframe-pages?pageId=${pageId}`
@@ -1283,11 +1285,22 @@ await generatePrd();
           </div>
         )}
 
-        {!hasContent ? (
-          <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-16 text-center">
-            <p className="text-sm text-gray-400">No analysis result found.</p>
-          </div>
-        ) : (
+        {isLoadingAnalysis ? (
+  <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-16 text-center">
+    <div className="flex flex-col items-center gap-3">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
+      <p className="text-sm text-gray-500">
+        Loading analysis...
+      </p>
+    </div>
+  </div>
+) : !hasContent ? (
+  <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-16 text-center">
+    <p className="text-sm text-gray-400">
+      No analysis result found.
+    </p>
+  </div>
+) : (
           <>
             {/* WIREFRAME SUMMARY */}
             {summary && (

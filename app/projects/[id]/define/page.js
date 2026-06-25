@@ -425,6 +425,7 @@ export default function DefinePhasePage() {
   const [isGeneratingIA, setIsGeneratingIA] = useState(false);
   const [loadedFromDb, setLoadedFromDb] = useState(false);
   const [iaError, setIaError] = useState("");
+  const [isGeneratingProcessFlow, setIsGeneratingProcessFlow] = useState(false);
 
   useEffect(() => {
     if (!projectId) return;
@@ -855,10 +856,43 @@ await fetch("/api/save-generated-persona", {
     <div className="mt-5 flex justify-end gap-3">
       
       <button
-  onClick={() => router.push(`/process-flow?projectId=${projectId}`)}
-  className="px-5 py-2.5 rounded-xl font-semibold transition-all duration-200 cursor-pointer border border-[#702dff] text-[#702dff] hover:bg-[#702dff] hover:text-white hover:scale-[1.02]"
+  disabled={isGeneratingProcessFlow}
+  onClick={() => {
+    setIsGeneratingProcessFlow(true);
+
+    router.push(
+      `/process-flow?projectId=${encodeURIComponent(projectId)}`
+    );
+  }}
+  className="px-5 py-2.5 rounded-xl font-semibold transition-all duration-200 border border-[#702dff] text-[#702dff] hover:bg-[#702dff] hover:text-white hover:scale-[1.02] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
 >
-  Generate Process Flow
+  {isGeneratingProcessFlow ? (
+    <>
+      <svg
+        className="h-4 w-4 animate-spin"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          strokeWidth="4"
+          className="opacity-25"
+        />
+        <path
+          fill="currentColor"
+          className="opacity-75"
+          d="M4 12a8 8 0 018-8v8H4z"
+        />
+      </svg>
+      Opening Process Flow...
+    </>
+  ) : (
+    "Generate Process Flow"
+  )}
 </button>
       <button
   onClick={handleDownloadPDF}

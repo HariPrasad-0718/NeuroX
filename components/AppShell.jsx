@@ -138,7 +138,6 @@ console.log(
         if (response.success) {
           refetchProjects();
           window.dispatchEvent(new Event("neurox:projects-updated"));
-          alert("Project created successfully!");
         }
       } catch (error) {
         alert(`Error creating project: ${error.message}`);

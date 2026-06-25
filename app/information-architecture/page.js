@@ -349,6 +349,7 @@ const [wireframeImage, setWireframeImage] = useState(null);
 const [isAnalyzingWireframe, setIsAnalyzingWireframe] = useState(false);
 const [wireframeError, setWireframeError] = useState("");
 const inputRef = useRef(null);
+const [isOpeningWireframe, setIsOpeningWireframe] = useState(false);
 
   useEffect(() => {
     if (!projectId) { setLoading(false); return; }
@@ -595,7 +596,7 @@ return (
             className="w-full max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-900 px-5 py-4">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-indigo-600 px-5 py-4">
               <h3 className="text-base font-semibold text-white">Agent Response</h3>
               <button
                 type="button"
@@ -757,13 +758,23 @@ className="rounded-2xl border border-slate-200 bg-white p-4 shadow-inner" style=
       </div>
       <div className="flex justify-end mt-6">
   <button
-    onClick={() =>
-  router.push(`/projects/${projectId}/wireframe-analyzer`)
-}
-    className="px-6 py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition cursor-pointer"
-  >
-    Wireframe Analyzer
-  </button>
+  onClick={() => {
+    setIsOpeningWireframe(true);
+
+    router.push(`/projects/${projectId}/wireframe-analyzer`);
+  }}
+  disabled={isOpeningWireframe}
+  className="px-6 py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-90"
+>
+  {isOpeningWireframe ? (
+    <span className="flex items-center gap-2">
+      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+      Opening...
+    </span>
+  ) : (
+    "Wireframe Analyzer"
+  )}
+</button>
 </div>
     </div>
     </div>

@@ -897,6 +897,7 @@ const [prdRawResponse, setPrdRawResponse] = useState("");
 const [isDownloadingPrd, setIsDownloadingPrd] = useState(false);
 const [brdProgress, setBrdProgress] = useState([]);
 const [prdProgress, setPrdProgress] = useState([]);
+const [isOpeningPrd, setIsOpeningPrd] = useState(false);
 const BRD_STEPS = [
   "Analyzing requirements",
   "Extracting business requirements",
@@ -1694,14 +1695,41 @@ const renderIdeateTemplateCard = (template, isCompleted) => {
 
       <div className="mt-auto p-5 space-y-2">
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            handleGenerateInformationArchitecture();
-          }}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700"
-        >
-          Generate IA
-        </button>
+  onClick={(e) => {
+    e.stopPropagation();
+    handleGenerateInformationArchitecture();
+  }}
+  disabled={isGeneratingIA}
+  className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
+>
+  {isGeneratingIA ? (
+    <>
+      <svg
+        className="h-4 w-4 animate-spin"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          strokeWidth="4"
+          className="opacity-25"
+        />
+        <path
+          fill="currentColor"
+          className="opacity-75"
+          d="M4 12a8 8 0 018-8v8H4z"
+        />
+      </svg>
+      Generating...
+    </>
+  ) : (
+    "Generate IA"
+  )}
+</button>
 
         {informationArchitectureError && (
           <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">
@@ -1824,19 +1852,49 @@ const generatePrd = async (forceRegenerate = false) => {
 
 
 const handleRegeneratePrd = async () => {
+  setPrdHtml("");
+  setPrdError("");
   setPrdProgress([]);
-  runProgressSteps(PRD_STEPS, setPrdProgress);
 
-  await generatePrd(true);
+  const progressInterval = runProgressSteps(
+    PRD_STEPS,
+    setPrdProgress
+  );
+
+  try {
+    await generatePrd(true);
+
+    clearInterval(progressInterval);
+
+    setPrdProgress(
+      PRD_STEPS.map((step) => ({
+        label: step,
+        done: true,
+      }))
+    );
+  } catch (err) {
+    clearInterval(progressInterval);
+    console.error(err);
+  }
 };
 
  const handleOpenPrdModal = async () => {
-  setIsPrdModalOpen(true);
+   setIsPrdModalOpen(true);
 
-  if (!projectId ) {
+  // setPrdLoading(true);   // ADD THIS
+  setPrdHtml("");        // ADD THIS
+  setPrdError("");
+  setPrdProgress([]);
+
+  if (!projectId) {
     setPrdError("Project id is missing.");
     return;
   }
+
+  const progressInterval = runProgressSteps(
+    PRD_STEPS,
+    setPrdProgress
+  );
 
   try {
     const existingRes = await fetch(
@@ -1845,20 +1903,40 @@ const handleRegeneratePrd = async () => {
 
     const existingData = await existingRes.json();
 
+    // Existing PRD found
     if (existingData?.prd_content) {
+      clearInterval(progressInterval);
+
+      setPrdProgress(
+        PRD_STEPS.map((step) => ({
+          label: step,
+          done: true,
+        }))
+      );
+
       setPrdHtml(existingData.prd_content);
       return;
     }
+
+    // Generate new PRD
+    await generatePrd();
+
+    clearInterval(progressInterval);
+
+    setPrdProgress(
+      PRD_STEPS.map((step) => ({
+        label: step,
+        done: true,
+      }))
+    );
   } catch (err) {
+    clearInterval(progressInterval);
     console.error("Failed to fetch existing PRD", err);
+    setPrdError(err.message || "Failed to load PRD");
   }
-
- // No PRD found -> generate new one
-setPrdProgress([]);
-runProgressSteps(PRD_STEPS, setPrdProgress);
-
-await generatePrd();
 };
+
+
   const handleDownloadPrdDoc = async () => {
     if (!prdHtml || isDownloadingPrd) return;
 
@@ -2492,11 +2570,46 @@ const handleDownloadBrdDoc = async () => {
           </button>
 
           <button
-            onClick={handleOpenPrdModal}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            Generate PRD
-          </button>
+  onClick={async () => {
+    setIsOpeningPrd(true);
+
+    try {
+      await handleOpenPrdModal();
+    } finally {
+      setIsOpeningPrd(false);
+    }
+  }}
+  disabled={isOpeningPrd}
+  className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
+>
+  {isOpeningPrd ? (
+    <>
+      <svg
+        className="h-4 w-4 animate-spin"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          strokeWidth="4"
+          className="opacity-25"
+        />
+        <path
+          fill="currentColor"
+          className="opacity-75"
+          d="M4 12a8 8 0 018-8v8H4z"
+        />
+      </svg>
+      Opening PRD...
+    </>
+  ) : (
+    "Generate PRD"
+  )}
+</button>
 
         </div>
 
@@ -2870,10 +2983,13 @@ const handleDownloadBrdDoc = async () => {
                     {brdProgress.map((step, index) => (
                       <div key={index} className="flex items-center gap-3 text-sm">
                         {step.done ? (
-                          <span className="text-green-600 font-bold">✓</span>
-                        ) : (
-                          <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-indigo-500" />
-                        )}
+  <span className="text-green-600 font-bold">✓</span>
+) : (
+  <div className="relative flex h-5 w-5 items-center justify-center">
+    <div className="absolute h-5 w-5 animate-ping rounded-full bg-indigo-200 opacity-50" />
+    <div className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
+  </div>
+)}
 
                         <span className={step.done ? "text-green-700" : "text-slate-600"}>
                           {step.label}

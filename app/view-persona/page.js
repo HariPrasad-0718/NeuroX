@@ -105,6 +105,7 @@ const [editingSections, setEditingSections] = useState({
   needs: false,
   keyInsights: false,
 });
+const [isNavigatingToDefine, setIsNavigatingToDefine] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -811,24 +812,63 @@ const [editingSections, setEditingSections] = useState({
 )}
       <div className="bottom-nav-wrap">
         <button
-          className="go-define-btn"
-          disabled={!projectId}
-          onClick={async () => {
-            if (!projectId) return;
-            try {
-              await fetch(`/api/projects/${projectId}/progress`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ stage: "empathize", progress: 100 }),
-              });
-            } catch (e) {
-              console.error("Failed to update empathize progress", e);
-            }
-            router.push(`/projects/${encodeURIComponent(projectId)}/define#problem-definition-card`);
-          }}
-        >
-          Go to Define Stage Problem Definition
-        </button>
+            className="go-define-btn disabled:cursor-not-allowed disabled:opacity-70"
+            disabled={!projectId || isNavigatingToDefine}
+            onClick={async () => {
+              if (!projectId) return;
+
+              try {
+                setIsNavigatingToDefine(true);
+
+                await fetch(`/api/projects/${projectId}/progress`, {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    stage: "empathize",
+                    progress: 100,
+                  }),
+                });
+
+                router.push(
+                  `/projects/${encodeURIComponent(
+                    projectId
+                  )}/define#problem-definition-card`
+                );
+              } catch (e) {
+                console.error("Failed to update empathize progress", e);
+                setIsNavigatingToDefine(false);
+              }
+            }}
+          >
+            {isNavigatingToDefine ? (
+              <>
+                <svg
+                  className="mr-2 h-4 w-4 animate-spin"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8v8H4z"
+                  />
+                </svg>
+
+                Opening Define Stage...
+              </>
+            ) : (
+              "Go to Define Stage Problem Definition"
+            )}
+          </button>
       </div>
     </div>
       <style jsx>{`
