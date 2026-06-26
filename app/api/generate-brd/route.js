@@ -389,14 +389,48 @@ export const POST = withAuth(async (request, _ctx, user) => {
       processFlow: processFlowResult.recordset?.[0] || null,
     });
 
+    const stakeholderInfo = `
+
+Business Owner:
+${input.businessOwner || "N/A"}
+
+Product Owner:
+${input.productOwner || "N/A"}
+
+Engineering Lead:
+${input.engineeringLead || "N/A"}
+
+Compliance Owner:
+${input.complianceOwner || "N/A"}
+
+End Users:
+${input.endUsers || "N/A"}
+
+Budget Range:
+${input.budgetRange || "N/A"}
+
+Expected Timeline:
+${input.expectedTimeline || "N/A"}
+
+Regulatory / Compliance Requirements:
+${input.regulatoryRequirements || "N/A"}
+`;
+
+const finalProjectBrief =
+  projectBrief + stakeholderInfo;
+
     const payload = {
-      name: BRD_AGENT_NAME,
-      project_brief: projectBrief,
-      user_input: projectBrief,
-      rules: [],
-      username: USERNAME,
-      password: PASSWORD,
-    };
+  name: BRD_AGENT_NAME,
+    project_brief: projectBrief + stakeholderInfo,
+  user_input: projectBrief + stakeholderInfo,
+  rules: [],
+  username: USERNAME,
+  password: PASSWORD,
+};
+
+console.log("========== BRD PAYLOAD ==========");
+console.log(JSON.stringify(payload, null, 2));
+console.log("=================================");
     agentInput = sanitizeAgentInput(payload);
 
     const response = await fetch(WEBHOOK_URL, {
@@ -410,8 +444,8 @@ export const POST = withAuth(async (request, _ctx, user) => {
     });
 
     const text = await response.text();
-    console.log("🔥 RAW BRD AGENT RESPONSE:");
-console.log(text);
+//     console.log("🔥 RAW BRD AGENT RESPONSE:");
+// console.log(text);
     const data = tryParseJson(text);
     const agentResponse = sanitizeAgentResponse(data);
 

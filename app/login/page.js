@@ -8,7 +8,6 @@ import { api } from "@/services/api";
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function LoginPage() {
-  const [role, setRole] = useState("designer");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -34,7 +33,6 @@ export default function LoginPage() {
       const response = await api.login({
         email: email.trim().toLowerCase(),
         password,
-        role,
       });
 
       if (response?.success && response?.data?.userId) {
@@ -44,8 +42,11 @@ export default function LoginPage() {
 
       setError(response?.error?.message || "Login failed");
     } catch (err) {
-      setError(err.message.includes("401") ? "Invalid email or password" : err.message.includes("403") ? "Selected role does not match your account" : "Unable to login. Please try again.");
-    } finally {
+setError(
+  err.message.includes("401")
+    ? "Invalid email or password"
+    : "Unable to login. Please try again."
+);    } finally {
       setIsLoading(false);
     }
   };
@@ -98,39 +99,7 @@ export default function LoginPage() {
               />
             </div>
 
-            <div>
-              <label className="mb-3 block text-sm font-medium text-slate-700">Choose your role</label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setRole("designer")}
-                  className={`rounded-xl border px-4 py-4 text-left transition ${
-                    role === "designer"
-                      ? "border-indigo-500 bg-indigo-50 shadow-sm"
-                      : "border-slate-200 bg-white hover:border-slate-300"
-                  }`}
-                >
-                  <span className={`block text-sm font-semibold ${role === "designer" ? "text-indigo-700" : "text-slate-800"}`}>
-                    Designer
-                  </span>
-                  <span className="mt-1 block text-xs text-slate-500">Create and manage project outputs</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole("manager")}
-                  className={`rounded-xl border px-4 py-4 text-left transition ${
-                    role === "manager"
-                      ? "border-indigo-500 bg-indigo-50 shadow-sm"
-                      : "border-slate-200 bg-white hover:border-slate-300"
-                  }`}
-                >
-                  <span className={`block text-sm font-semibold ${role === "manager" ? "text-indigo-700" : "text-slate-800"}`}>
-                    Manager
-                  </span>
-                  <span className="mt-1 block text-xs text-slate-500">Oversee teams, clients, and outcomes</span>
-                </button>
-              </div>
-            </div>
+           
 
             {error && <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
@@ -139,7 +108,7 @@ export default function LoginPage() {
               disabled={isLoading}
               className="w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {isLoading ? "Signing in..." : `Continue as ${role === "manager" ? "Manager" : "Designer"}`}
+              {isLoading ? "Signing in..." : "Continue"}
             </button>
 
             <p className="text-center text-sm text-slate-600">

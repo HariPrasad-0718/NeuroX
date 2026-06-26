@@ -898,6 +898,16 @@ const [isDownloadingPrd, setIsDownloadingPrd] = useState(false);
 const [brdProgress, setBrdProgress] = useState([]);
 const [prdProgress, setPrdProgress] = useState([]);
 const [isOpeningPrd, setIsOpeningPrd] = useState(false);
+const [businessOwner, setBusinessOwner] = useState("");
+const [productOwner, setProductOwner] = useState("");
+const [engineeringLead, setEngineeringLead] = useState("");
+const [complianceOwner, setComplianceOwner] = useState("");
+const [endUsers, setEndUsers] = useState("");
+const [budgetRange, setBudgetRange] = useState("");
+const [expectedTimeline, setExpectedTimeline] = useState("");
+const [regulatoryRequirements, setRegulatoryRequirements] = useState("");
+const [isBrdInputModalOpen, setIsBrdInputModalOpen] = useState(false);
+
 const BRD_STEPS = [
   "Analyzing requirements",
   "Extracting business requirements",
@@ -1757,10 +1767,21 @@ const handleOpenBrdModal = async () => {
 
   try {
     const res = await fetch("/api/generate-brd", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId: Number(projectId) }),
-    });
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    projectId: Number(projectId),
+
+    businessOwner,
+    productOwner,
+    engineeringLead,
+    complianceOwner,
+    endUsers,
+    budgetRange,
+    expectedTimeline,
+    regulatoryRequirements,
+  }),
+});
 
     const bodyText = await res.text();
     const data = parseApiJson(bodyText);
@@ -1856,45 +1877,29 @@ const handleRegeneratePrd = async () => {
   setPrdError("");
   setPrdProgress([]);
 
-  const progressInterval = runProgressSteps(
-    PRD_STEPS,
-    setPrdProgress
-  );
+runProgressSteps(PRD_STEPS, setPrdProgress);
 
-  try {
+try {
     await generatePrd(true);
-
-    clearInterval(progressInterval);
-
-    setPrdProgress(
-      PRD_STEPS.map((step) => ({
-        label: step,
-        done: true,
-      }))
-    );
-  } catch (err) {
-    clearInterval(progressInterval);
+} catch (err) {
     console.error(err);
-  }
+}
 };
 
- const handleOpenPrdModal = async () => {
-   setIsPrdModalOpen(true);
+const handleOpenPrdModal = async () => {
+  setIsPrdModalOpen(true);
 
-  // setPrdLoading(true);   // ADD THIS
-  setPrdHtml("");        // ADD THIS
-  setPrdError("");
+  // Start loader (same as BRD)
   setPrdProgress([]);
+  runProgressSteps(PRD_STEPS, setPrdProgress);
+
+  setPrdHtml("");
+  setPrdError("");
 
   if (!projectId) {
     setPrdError("Project id is missing.");
     return;
   }
-
-  const progressInterval = runProgressSteps(
-    PRD_STEPS,
-    setPrdProgress
-  );
 
   try {
     const existingRes = await fetch(
@@ -1905,37 +1910,17 @@ const handleRegeneratePrd = async () => {
 
     // Existing PRD found
     if (existingData?.prd_content) {
-      clearInterval(progressInterval);
-
-      setPrdProgress(
-        PRD_STEPS.map((step) => ({
-          label: step,
-          done: true,
-        }))
-      );
-
       setPrdHtml(existingData.prd_content);
       return;
     }
 
     // Generate new PRD
     await generatePrd();
-
-    clearInterval(progressInterval);
-
-    setPrdProgress(
-      PRD_STEPS.map((step) => ({
-        label: step,
-        done: true,
-      }))
-    );
   } catch (err) {
-    clearInterval(progressInterval);
     console.error("Failed to fetch existing PRD", err);
     setPrdError(err.message || "Failed to load PRD");
   }
 };
-
 
   const handleDownloadPrdDoc = async () => {
     if (!prdHtml || isDownloadingPrd) return;
@@ -2563,7 +2548,7 @@ const handleDownloadBrdDoc = async () => {
         <div className="space-y-2 mt-auto">
           
           <button
-            onClick={handleOpenBrdModal}
+            onClick={() => setIsBrdInputModalOpen(true)}
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
           >
             Generate BRD
@@ -2937,6 +2922,152 @@ const handleDownloadBrdDoc = async () => {
         </div>
       )}
 
+     {isBrdInputModalOpen && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+    <div className="w-full max-w-3xl rounded-2xl bg-white shadow-xl">
+
+      {/* Header */}
+      <div className="border-b px-6 py-4">
+        <h2 className="text-xl font-semibold text-gray-900">
+          BRD Additional Details
+        </h2>
+        <p className="mt-1 text-sm text-gray-500">
+          Provide additional business and project information to improve the
+          generated Business Requirements Document.
+        </p>
+      </div>
+
+      {/* Form Body */}
+      <div className="max-h-[70vh] overflow-y-auto px-6 py-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Business Owner
+            </label>
+            <input
+              value={businessOwner}
+              onChange={(e) => setBusinessOwner(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 p-2.5"
+              placeholder="Enter business owner"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Product Owner
+            </label>
+            <input
+              value={productOwner}
+              onChange={(e) => setProductOwner(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 p-2.5"
+              placeholder="Enter product owner"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Engineering Lead
+            </label>
+            <input
+              value={engineeringLead}
+              onChange={(e) => setEngineeringLead(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 p-2.5"
+              placeholder="Enter engineering lead"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Compliance Owner
+            </label>
+            <input
+              value={complianceOwner}
+              onChange={(e) => setComplianceOwner(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 p-2.5"
+              placeholder="Enter compliance owner"
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              End Users
+            </label>
+            <textarea
+              value={endUsers}
+              onChange={(e) => setEndUsers(e.target.value)}
+              rows={3}
+              className="w-full rounded-lg border border-gray-300 p-2.5"
+              placeholder="Describe target users"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Budget Range
+            </label>
+            <input
+              value={budgetRange}
+              onChange={(e) => setBudgetRange(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 p-2.5"
+              placeholder="₹10,00,000 - ₹20,00,000"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Expected Timeline
+            </label>
+            <input
+              value={expectedTimeline}
+              onChange={(e) => setExpectedTimeline(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 p-2.5"
+              placeholder="6 Months"
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Regulatory Requirements
+            </label>
+            <textarea
+              value={regulatoryRequirements}
+              onChange={(e) => setRegulatoryRequirements(e.target.value)}
+              rows={4}
+              className="w-full rounded-lg border border-gray-300 p-2.5"
+              placeholder="Enter compliance, legal, security or regulatory requirements"
+            />
+          </div>
+
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="flex justify-end gap-3 border-t px-6 py-4">
+        <button
+          type="button"
+          onClick={() => setIsBrdInputModalOpen(false)}
+          className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setIsBrdInputModalOpen(false);
+            handleOpenBrdModal();
+          }}
+          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+        >
+          Generate BRD
+        </button>
+      </div>
+
+    </div>
+  </div>
+)}
+
       {isBrdModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 px-4 pb-10 pt-8"
@@ -2973,6 +3104,8 @@ const handleDownloadBrdDoc = async () => {
             </div>
 
             <div className="max-h-[84vh] overflow-y-auto bg-[#e8ebf0] px-6 py-6">
+            
+
               {brdLoading ? (
                               <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white px-8 py-8 shadow-sm">
                   <p className="text-sm font-semibold text-slate-700">

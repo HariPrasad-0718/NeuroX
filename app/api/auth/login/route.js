@@ -10,14 +10,14 @@ export async function POST(request) {
   const { data, error } = await validateBody(request, loginSchema);
   if (error) return error;
 
-  const { email, password, role } = data;
+  const { email, password } = data;
 
   try {
     const pool = await getPool();
     const result = await pool
       .request()
       .input("email", sql.NVarChar, email)
-      .query("SELECT user_id, name, email, password, role FROM userss WHERE email = @email");
+      .query("SELECT user_id, name, email, password FROM userss WHERE email = @email");
 
     if (result.recordset.length === 0) {
       return NextResponse.json(
@@ -36,23 +36,22 @@ export async function POST(request) {
       );
     }
 
-    if (String(user.role).toLowerCase() !== role) {
-      return NextResponse.json(
-        { success: false, error: { message: "Selected role does not match your account" } },
-        { status: 403 }
-      );
-    }
+    // if (String(user.role).toLowerCase() !== role) {
+    //   return NextResponse.json(
+    //     { success: false, error: { message: "Selected role does not match your account" } },
+    //     { status: 403 }
+    //   );
+    // }
 
     const token = await signAuthToken({
       userId: user.user_id,
       email: user.email,
       name: user.name,
-      role: user.role,
     });
 
     const response = NextResponse.json({
       success: true,
-      data: { userId: user.user_id, role: user.role },
+      data: { userId: user.user_id },
     });
 
     response.cookies.set(AUTH_COOKIE_NAME, token, getAuthCookieOptions());
