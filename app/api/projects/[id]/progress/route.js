@@ -19,9 +19,7 @@ export const GET = withAuth(async (req, { params }) => {
           ISNULL(overall_progress,0)    AS overall_progress,
           ISNULL(empathize_progress,0)  AS empathize_progress,
           ISNULL(define_progress,0)     AS define_progress,
-          ISNULL(ideate_progress,0)     AS ideate_progress,
-          ISNULL(prototype_progress,0)  AS prototype_progress,
-          ISNULL(test_progress,0)       AS test_progress
+          ISNULL(ideate_progress,0)     AS ideate_progress
         FROM projectss
         WHERE project_id = @id
       `);
@@ -34,7 +32,7 @@ export const GET = withAuth(async (req, { params }) => {
     }
 
     const project = result.recordset[0];
-    const stages = ["Empathize", "Define", "Ideate", "Prototype", "Test"];
+    const stages = ["Empathize", "Define", "Ideate"];
     const completedStages = stages.filter(
       (s) => project[`${s.toLowerCase()}_progress`] >= 100
     );
@@ -111,9 +109,7 @@ export const PUT = withAuth(async (req, { params }) => {
         SET overall_progress =
           ISNULL(empathize_progress,0) +
           ISNULL(define_progress,0) +
-          ISNULL(ideate_progress,0) +
-          ISNULL(prototype_progress,0) +
-          ISNULL(test_progress,0)
+          ISNULL(ideate_progress,0)
         WHERE project_id = @id
       `);
 

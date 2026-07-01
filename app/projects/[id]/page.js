@@ -22,9 +22,6 @@ const STAGES = [
   { id: "empathize", name: "Empathize", description: "Understand your users through observation and engagement." },
   { id: "define", name: "Define", description: "Define the problem statement and user needs." },
   { id: "ideate", name: "Ideate", description: "Generate creative ideas and solutions." },
-  { id: "prototype", name: "Prototype", description: "Create tangible representations of your ideas." },
-  { id: "test", name: "Test", description: "Validate your prototypes with real users." },
-  { id: "implement", name: "Implement", description: "Bring your solution to life." },
 ];
 
 const STAGE_TEMPLATES = {
@@ -47,18 +44,6 @@ const STAGE_TEMPLATES = {
   icon: FileText
 },
 ],
-  prototype: [
-    { id: "low-fidelity", name: "Low Fidelity Prototype", icon: LinkIcon, type: "link" },
-    { id: "high-fidelity", name: "High Fidelity Prototype", icon: LinkIcon, type: "link" },
-  ],
-  test: [
-    { id: "test-results", name: "Test Results", icon: FileText, type: "file" },
-    { id: "user-feedback", name: "User Feedback", icon: FileText, type: "file" },
-  ],
-  implement: [
-    { id: "implementation-plan", name: "Implementation Plan", icon: FileText, type: "file" },
-    { id: "final-deliverables", name: "Final Deliverables", icon: FileText, type: "file" },
-  ],
 };
 
 const EMPATHIZE_CARD_MEDIA = {
@@ -96,19 +81,6 @@ const IDEATE_CARD_MEDIA = {
   },
 };
 
-const PROTOTYPE_CARD_MEDIA = {
-  "low-fidelity": { image: "https://images.unsplash.com/photo-1586717791821-3f44a563fa4c?w=1200&h=800&fit=crop", eyebrow: "Early Concepts", title: "Low Fidelity Prototype", description: "Sketch and wireframe your ideas to quickly validate concepts with users." },
-  "high-fidelity": { image: "https://images.unsplash.com/photo-1561070791-2526d30994b5?w=1200&h=800&fit=crop", eyebrow: "Polished Design", title: "High Fidelity Prototype", description: "Build a detailed, interactive prototype that closely resembles the final product." },
-};
-const TEST_CARD_MEDIA = {
-  "test-results": { image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1200&h=800&fit=crop", eyebrow: "Validation", title: "Test Results", description: "Document and analyze usability test findings to guide design decisions." },
-  "user-feedback": { image: "https://images.unsplash.com/photo-1516321497487-e288fb19713f?w=1200&h=800&fit=crop", eyebrow: "User Insights", title: "User Feedback", description: "Collect and synthesize feedback from real users to improve your solution." },
-};
-const IMPLEMENT_CARD_MEDIA = {
-  "implementation-plan": { image: "https://images.unsplash.com/photo-1507925921958-8a62f3d1a50d?w=1200&h=800&fit=crop", eyebrow: "Execution", title: "Implementation Plan", description: "Define the roadmap and steps needed to bring your solution to life." },
-  "final-deliverables": { image: "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=1200&h=800&fit=crop", eyebrow: "Delivery", title: "Final Deliverables", description: "Package and present the completed solution and all supporting artifacts." },
-};
-const STAGE_MEDIA_MAP = { prototype: PROTOTYPE_CARD_MEDIA, test: TEST_CARD_MEDIA, implement: IMPLEMENT_CARD_MEDIA };
 
 function formatKeyLabel(key) {
   return String(key || "")
@@ -933,6 +905,20 @@ const PRD_STEPS = [
           setCompletedStages((res.data.completedStages || []).map((s) => s.toLowerCase()));
       })
       .catch(() => {});
+
+    if (typeof window !== "undefined") {
+      try {
+        const storedIa = window.sessionStorage.getItem("informationArchitectureData");
+        if (storedIa) {
+          const parsedIa = JSON.parse(storedIa);
+          if (parsedIa) {
+            setInformationArchitectureData(parsedIa);
+          }
+        }
+      } catch {
+        // Ignore parse errors and keep the buttons disabled.
+      }
+    }
   }, [projectId]);
 
   useEffect(() => {
@@ -2083,23 +2069,57 @@ const toggleBrdSection = (key) =>
   setBrdCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
 
 const getLabelVal = (text, label) => {
-  const match = String(text || "").match(new RegExp(`${label}:\\s*([^.]+)`, "i"));
-  return match ? match[1].trim() : "";
+  const str = String(text || "");
+  
+  // Try different patterns based on the data format
+  const patterns = [
+    new RegExp(`${label}:\\s*([^\\n.]+)(?:\\.|\\n|$)`, "i"),
+    new RegExp(`${label}\\s*:\\s*([^\\n.]+)`, "i"),
+    new RegExp(`${label}\\s+([^\\n.]+)`, "i"),
+  ];
+  
+  for (const pattern of patterns) {
+    const match = str.match(pattern);
+    if (match) {
+      const value = match[1].trim();
+      // If it contains other labels, stop at the next label
+      const nextLabelMatch = value.match(/\s+(?:Metric|Baseline|Target|Measurement|Review):/i);
+      if (nextLabelMatch) {
+        return value.substring(0, nextLabelMatch.index).trim();
+      }
+      return value;
+    }
+  }
+  return "";
 };
 
 const getConstraintVal = (text, label) => {
-  const match = String(text || "").match(
-    new RegExp(`${label}:\\s*(.*?)(?=(?:Constraint|Description|Impact|Mitigation):|$)`, "i")
-  );
-  return match ? match[1].trim() : "";
+  const str = String(text || "");
+  const pattern = new RegExp(`${label}:\\s*(.*?)(?=(?:Constraint|Description|Impact|Mitigation):|$)`, "i");
+  const match = str.match(pattern);
+  if (match) {
+    let value = match[1].trim();
+    // Remove trailing dot if it's not part of a sentence
+    if (value.endsWith('.') && !value.includes(' ')) {
+      value = value.slice(0, -1);
+    }
+    return value;
+  }
+  return "";
 };
-
 const renderBrdContent = (value, type) => {
   if (type === "prose") {
+    const text = String(value || "");
+    // Split by double newlines for paragraphs
+    const paragraphs = text.split(/\n\n+/).filter(p => p.trim());
     return (
-      <p className="whitespace-pre-wrap text-[15px] leading-8 text-slate-700">
-        {String(value || "")}
-      </p>
+      <div className="space-y-4">
+        {paragraphs.map((paragraph, index) => (
+          <p key={index} className="whitespace-pre-wrap text-[15px] leading-8 text-slate-700">
+            {paragraph.trim()}
+          </p>
+        ))}
+      </div>
     );
   }
 
@@ -2107,144 +2127,231 @@ const renderBrdContent = (value, type) => {
     if (!Array.isArray(value)) return null;
     return (
       <ul className="space-y-2">
-        {value.map((item, index) => (
-          <li
-            key={index}
-            className="flex items-start gap-3 rounded-md border border-slate-200 bg-slate-50 px-3.5 py-2.5"
-          >
-            <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-500" />
-            <span className="text-[14px] leading-7 text-slate-700">{String(item)}</span>
-          </li>
-        ))}
+        {value.map((item, index) => {
+          let displayText = String(item);
+          // If it's an object with name and description
+          if (typeof item === 'object' && item !== null) {
+            if (item.name && item.description) {
+              displayText = `${item.name}: ${item.description}`;
+            } else if (item.name) {
+              displayText = item.name;
+            } else if (item.description) {
+              displayText = item.description;
+            } else {
+              displayText = JSON.stringify(item);
+            }
+          }
+          return (
+            <li
+              key={index}
+              className="flex items-start gap-3 rounded-md border border-slate-200 bg-slate-50 px-3.5 py-2.5"
+            >
+              <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-500" />
+              <span className="text-[14px] leading-7 text-slate-700">{displayText}</span>
+            </li>
+          );
+        })}
       </ul>
     );
   }
 
-  if (type === "requirements") {
-    if (!Array.isArray(value)) return null;
-    return (
-      <div className="overflow-x-auto rounded-md border border-slate-200">
-        <table className="w-full border-collapse text-left text-[13px] text-slate-700">
-          <thead>
-            <tr className="bg-slate-800 text-[11px] uppercase tracking-[0.14em] text-slate-100">
-              <th className="px-4 py-2.5">Requirement ID</th>
-              <th className="px-4 py-2.5">Requirement Statement</th>
-              <th className="px-4 py-2.5">Priority</th>
-            </tr>
-          </thead>
-          <tbody>
-        {value.map((line, index) => {
-          const parts = String(line || "").split("|").map((part) => part.trim());
-          const id = parts[0] || `BR-${String(index + 1).padStart(3, "0")}`;
-          const desc = parts[1] || "";
-          const pri = (parts[2] || "").replace(/priority:/i, "").trim();
-          const priColor =
-            pri.toLowerCase() === "high"
-              ? "bg-red-100 text-red-700"
-              : pri.toLowerCase() === "medium"
-                ? "bg-amber-100 text-amber-700"
-                : "bg-emerald-100 text-emerald-700";
+ if (type === "requirements") {
+  if (!Array.isArray(value)) return null;
+  
+  // Transform the data if it's in object format
+  const formattedData = value.map(item => {
+    if (typeof item === 'object' && item !== null) {
+      // If it has id, statement, priority fields
+      if (item.id && item.statement) {
+        return `${item.id} | ${item.statement} | Priority: ${item.priority || ''}`;
+      }
+      // If it has requirement_id, requirement_statement, priority
+      if (item.requirement_id && item.requirement_statement) {
+        return `${item.requirement_id} | ${item.requirement_statement} | Priority: ${item.priority || ''}`;
+      }
+    }
+    return item; // Keep as is for string format
+  });
 
-          return (
-            <tr
-              key={index}
-              className={index % 2 === 0 ? "bg-white" : "bg-slate-50/60"}
-            >
-              <td className="border-t border-slate-200 px-4 py-3 font-semibold text-slate-800">{id}</td>
-              <td className="border-t border-slate-200 px-4 py-3 leading-7">{desc || "-"}</td>
-              <td className="border-t border-slate-200 px-4 py-3">
-                {pri ? (
-                  <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase ${priColor}`}>
-                    {pri}
-                  </span>
-                ) : (
-                  "-"
-                )}
-              </td>
-            </tr>
-          );
-        })}
-          </tbody>
-        </table>
-      </div>
-    );
-  }
+  return (
+    <div className="overflow-x-auto rounded-md border border-slate-200">
+      <table className="w-full border-collapse text-left text-[13px] text-slate-700">
+        <thead>
+          <tr className="bg-slate-800 text-[11px] uppercase tracking-[0.14em] text-slate-100">
+            <th className="px-4 py-2.5">Requirement ID</th>
+            <th className="px-4 py-2.5">Requirement Statement</th>
+            <th className="px-4 py-2.5">Priority</th>
+          </tr>
+        </thead>
+        <tbody>
+          {formattedData.map((line, index) => {
+            // Handle the pipe-separated format
+            let id = `BR-${String(index + 1).padStart(3, "0")}`;
+            let desc = String(line || "");
+            let pri = "";
+            
+            // Check if it's pipe-separated
+            if (typeof line === 'string' && line.includes('|')) {
+              const parts = line.split('|').map(p => p.trim());
+              id = parts[0] || id;
+              desc = parts[1] || desc;
+              pri = (parts[2] || "").replace(/priority:/i, "").trim();
+            }
+            
+            const priColor =
+              pri.toLowerCase() === "critical" || pri.toLowerCase() === "high"
+                ? "bg-red-100 text-red-700"
+                : pri.toLowerCase() === "medium"
+                  ? "bg-amber-100 text-amber-700"
+                  : pri.toLowerCase() === "low"
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-gray-100 text-gray-700";
 
-  if (type === "metrics_table") {
-    if (!Array.isArray(value)) return null;
-    const cols = ["Metric", "Baseline", "Target", "Measurement", "Review"];
-    return (
-      <div className="overflow-x-auto rounded-md border border-slate-200">
-        <table className="w-full border-collapse text-left text-[13px] text-slate-700">
-          <thead className="bg-slate-800 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-100">
-            <tr>
-              {cols.map((head) => (
-                <th key={head} className="px-4 py-2.5">{head}</th>
+            return (
+              <tr key={index} className={index % 2 === 0 ? "bg-white" : "bg-slate-50/60"}>
+                <td className="border-t border-slate-200 px-4 py-3 font-semibold text-slate-800">{id}</td>
+                <td className="border-t border-slate-200 px-4 py-3 leading-7">{desc || "-"}</td>
+                <td className="border-t border-slate-200 px-4 py-3">
+                  {pri ? (
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase ${priColor}`}>
+                      {pri}
+                    </span>
+                  ) : (
+                    "-"
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+ if (type === "metrics_table") {
+  if (!Array.isArray(value)) return null;
+  const cols = ["Metric", "Baseline", "Target", "Measurement", "Review"];
+  
+  // Parse each metric item
+  const parsedData = value.map(item => {
+    const str = String(item || "");
+    const result = {};
+    cols.forEach(label => {
+      const match = str.match(new RegExp(`${label}:\\s*([^\\n.]+)`, "i"));
+      result[label] = match ? match[1].trim() : "";
+    });
+    return result;
+  });
+  
+  return (
+    <div className="overflow-x-auto rounded-md border border-slate-200">
+      <table className="w-full border-collapse text-left text-[13px] text-slate-700">
+        <thead className="bg-slate-800 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-100">
+          <tr>
+            {cols.map((head) => (
+              <th key={head} className="px-4 py-2.5">{head}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {parsedData.map((row, rowIndex) => (
+            <tr key={rowIndex} className={rowIndex % 2 === 0 ? "bg-white" : "bg-slate-50/60"}>
+              {cols.map((label) => (
+                <td key={label} className="border-t border-slate-200 px-4 py-3">
+                  {row[label] || "-"}
+                </td>
               ))}
             </tr>
-          </thead>
-          <tbody>
-            {value.map((item, rowIndex) => (
-              <tr key={rowIndex} className={rowIndex % 2 === 0 ? "bg-white" : "bg-slate-50/60"}>
-                {cols.map((label) => (
-                  <td key={label} className="border-t border-slate-200 px-4 py-3">
-                    {getLabelVal(item, label)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  }
-
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
   if (type === "constraints_table") {
-    if (!Array.isArray(value)) return null;
-    const cols = ["Constraint", "Description", "Impact", "Mitigation"];
-    return (
-      <div className="overflow-x-auto rounded-md border border-slate-200">
-        <table className="w-full border-collapse text-left text-[13px] text-slate-700">
-          <thead className="bg-slate-800 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-100">
-            <tr>
-              {cols.map((head) => (
-                <th key={head} className="px-4 py-2.5">{head}</th>
+  if (!Array.isArray(value)) return null;
+  const cols = ["Constraint", "Description", "Impact", "Mitigation"];
+  
+  // Parse each constraint item
+  const parsedData = value.map(item => {
+    const str = String(item || "");
+    const result = {};
+    cols.forEach(label => {
+      const match = str.match(new RegExp(`${label}:\\s*([^\\n.]+)`, "i"));
+      result[label] = match ? match[1].trim() : "";
+    });
+    return result;
+  });
+  
+  return (
+    <div className="overflow-x-auto rounded-md border border-slate-200">
+      <table className="w-full border-collapse text-left text-[13px] text-slate-700">
+        <thead className="bg-slate-800 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-100">
+          <tr>
+            {cols.map((head) => (
+              <th key={head} className="px-4 py-2.5">{head}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {parsedData.map((row, rowIndex) => (
+            <tr key={rowIndex} className={rowIndex % 2 === 0 ? "bg-white" : "bg-slate-50/60"}>
+              {cols.map((label) => (
+                <td key={label} className="border-t border-slate-200 px-4 py-3">
+                  {row[label] || "-"}
+                </td>
               ))}
             </tr>
-          </thead>
-          <tbody>
-            {value.map((item, rowIndex) => (
-              <tr key={rowIndex} className={rowIndex % 2 === 0 ? "bg-white" : "bg-slate-50/60"}>
-                {cols.map((label) => (
-                  <td key={label} className="border-t border-slate-200 px-4 py-3">
-                    {getConstraintVal(item, label)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  }
-
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
   if (type === "editable") {
-    if (!Array.isArray(value)) return null;
-    return (
-      <div className="space-y-2.5">
-        {value.map((item, index) => (
+  if (!Array.isArray(value)) return null;
+  return (
+    <div className="space-y-2.5">
+      {value.map((item, index) => {
+        let displayText = String(item || "-");
+        // Try to extract name and role if it's in the format "Name: X. Role: Y."
+        const nameMatch = displayText.match(/Name:\s*([^.]+)\./i);
+        const roleMatch = displayText.match(/Role:\s*([^.]+)\./i);
+        if (nameMatch && roleMatch) {
+          displayText = `${nameMatch[1].trim()} — ${roleMatch[1].trim()}`;
+        } else if (nameMatch) {
+          displayText = nameMatch[1].trim();
+        }
+        return (
           <p
             key={index}
             className="rounded-md border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-[14px] leading-7 text-slate-700"
           >
-            {String(item || "-")}
+            {displayText}
           </p>
-        ))}
-      </div>
-    );
-  }
-
+        );
+      })}
+    </div>
+  );
+}
   if (type === "costtable") {
+  if (!Array.isArray(value)) return null;
+  
+  // Parse cost-benefit items
+  const costItems = value.filter(item => 
+    typeof item === 'string' && item.includes('Cost:') && item.includes('Benefit:') &&
+    !item.toLowerCase().includes('total cost') && !item.toLowerCase().includes('expected roi')
+  );
+  
+  // Find total cost and ROI
+  const totalCost = value.find(item => 
+    typeof item === 'string' && 
+    (item.toLowerCase().includes('total cost') || item.toLowerCase().includes('expected roi'))
+  );
+  
+  if (costItems.length === 0 && !totalCost) {
+    // Fallback: try to parse all items
     return (
       <div className="overflow-x-auto rounded-md border border-slate-200">
         <table className="w-full border-collapse text-left text-[13px] text-slate-700">
@@ -2255,21 +2362,63 @@ const renderBrdContent = (value, type) => {
             </tr>
           </thead>
           <tbody>
-            {[0, 1, 2].map((row) => (
-              <tr key={row} className={row % 2 === 0 ? "bg-white" : "bg-slate-50/60"}>
-                <td className="border-t border-slate-200 px-4 py-3">-</td>
-                <td className="border-t border-slate-200 px-4 py-3">-</td>
-              </tr>
-            ))}
-            <tr className="border-t border-slate-200 bg-slate-100">
-              <td className="px-4 py-2.5 font-semibold">Total Cost:</td>
-              <td className="px-4 py-2.5 font-semibold">Expected ROI:</td>
-            </tr>
+            {value.map((item, rowIndex) => {
+              if (typeof item === 'string') {
+                const parts = item.split('|').map(p => p.trim());
+                const cost = parts.find(p => p.toLowerCase().includes('cost'))?.replace(/cost:/i, '').trim() || "-";
+                const benefit = parts.find(p => p.toLowerCase().includes('benefit'))?.replace(/benefit:/i, '').trim() || "-";
+                return (
+                  <tr key={rowIndex} className={rowIndex % 2 === 0 ? "bg-white" : "bg-slate-50/60"}>
+                    <td className="border-t border-slate-200 px-4 py-3">{cost}</td>
+                    <td className="border-t border-slate-200 px-4 py-3">{benefit}</td>
+                  </tr>
+                );
+              }
+              return null;
+            }).filter(Boolean)}
           </tbody>
         </table>
       </div>
     );
   }
+  
+  return (
+    <div className="overflow-x-auto rounded-md border border-slate-200">
+      <table className="w-full border-collapse text-left text-[13px] text-slate-700">
+        <thead className="bg-slate-800 text-[11px] uppercase tracking-[0.14em] text-slate-100">
+          <tr>
+            <th className="px-4 py-2.5 font-semibold">Cost</th>
+            <th className="px-4 py-2.5 font-semibold">Benefit</th>
+          </tr>
+        </thead>
+        <tbody>
+          {costItems.map((item, rowIndex) => {
+            const cost = item.match(/Cost:\s*([^|]+)/)?.[1]?.trim() || "-";
+            const benefit = item.match(/Benefit:\s*([^|]+)/)?.[1]?.trim() || "-";
+            return (
+              <tr key={rowIndex} className={rowIndex % 2 === 0 ? "bg-white" : "bg-slate-50/60"}>
+                <td className="border-t border-slate-200 px-4 py-3">{cost}</td>
+                <td className="border-t border-slate-200 px-4 py-3">{benefit}</td>
+              </tr>
+            );
+          })}
+          {totalCost && (
+            <tr className="border-t border-slate-200 bg-slate-100">
+              <td className="px-4 py-2.5 font-semibold">
+                {totalCost.match(/Total Cost:\s*([^|]+)/i)?.[1]?.trim() || 
+                 totalCost.match(/Cost:\s*([^|]+)/i)?.[1]?.trim() || "-"}
+              </td>
+              <td className="px-4 py-2.5 font-semibold">
+                {totalCost.match(/Expected ROI:\s*([^|]+)/i)?.[1]?.trim() || 
+                 totalCost.match(/Benefit:\s*([^|]+)/i)?.[1]?.trim() || "-"}
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
   return (
     <p className="whitespace-pre-wrap text-[15px] leading-8 text-slate-700">
@@ -2277,7 +2426,6 @@ const renderBrdContent = (value, type) => {
     </p>
   );
 };
-
 const handleDownloadBrdDoc = async () => {
   if (!brdDoc || isDownloadingBrd) return;
 
@@ -2367,9 +2515,10 @@ const handleDownloadBrdDoc = async () => {
   const isProjectCompleted = project.status === "Completed";
   const activePersonaCard =
     personaCards.find((card) => card.personaId === activePersonaCardId) || null;
+  const canGenerateDocuments = Boolean(informationArchitectureData);
 
   return (
-    <div className="bg-[#fafafa] px-3 py-3">
+    <div className="bg-[#fafafa] px-3 py-3 pb-40 md:pb-48">
       <div className="mx-auto max-w-[1600px] overflow-hidden rounded-[32px] bg-white shadow-sm">
         <div className="border-b border-gray-200 px-6 py-6 md:px-8 md:py-8">
           <div className="flex items-start gap-6">
@@ -2520,88 +2669,8 @@ const handleDownloadBrdDoc = async () => {
                         );
                       }
                       if (template.id === "brd-prd-generator") {
-  const media = IDEATE_CARD_MEDIA[template.id] || IDEATE_CARD_MEDIA["information-architecture"];
-  return (
-    <div key={template.id} className="h-full">
-      
-      <div className="h-full rounded-xl border border-gray-200 bg-white p-5 shadow-sm hover:shadow-md transition flex flex-col">
-
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
-            <FileText className="w-5 h-5 text-indigo-600" />
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold tracking-widest text-indigo-500 ">
-              Document Generation
-            </p>
-            <h3 className="text-base font-semibold text-gray-900">
-              {template.name}
-            </h3>
-          </div>
-        </div>
-
-        <p className="text-sm text-gray-600 mb-4">
-          {template.description}
-        </p>
-
-        <div className="space-y-2 mt-auto">
-          
-          <button
-            onClick={() => setIsBrdInputModalOpen(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            Generate BRD
-          </button>
-
-          <button
-  onClick={async () => {
-    setIsOpeningPrd(true);
-
-    try {
-      await handleOpenPrdModal();
-    } finally {
-      setIsOpeningPrd(false);
-    }
-  }}
-  disabled={isOpeningPrd}
-  className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
->
-  {isOpeningPrd ? (
-    <>
-      <svg
-        className="h-4 w-4 animate-spin"
-        xmlns="http://www.w3.org/2000/svg"
-        fill="none"
-        viewBox="0 0 24 24"
-      >
-        <circle
-          cx="12"
-          cy="12"
-          r="10"
-          stroke="currentColor"
-          strokeWidth="4"
-          className="opacity-25"
-        />
-        <path
-          fill="currentColor"
-          className="opacity-75"
-          d="M4 12a8 8 0 018-8v8H4z"
-        />
-      </svg>
-      Opening PRD...
-    </>
-  ) : (
-    "Generate PRD"
-  )}
-</button>
-
-        </div>
-
-      </div>
-    </div>
-  );
-}
+                        return null;
+                      }
 
                           return renderGenericCard(template, stage.id, downloadableTemplateId, link, completedStages.includes(stage.id));
                         })}
@@ -2613,6 +2682,42 @@ const handleDownloadBrdDoc = async () => {
             })}
           </div>
         )}
+      </div>
+
+      <div className="fixed bottom-0 left-[240px] right-0 z-40 border-t border-gray-200 bg-white/95 shadow-[0_-12px_35px_rgba(15,23,42,0.08)] backdrop-blur">
+        <div className="mx-auto flex max-w-[1600px] flex-col gap-4 px-6 py-4 md:flex-row md:items-center md:justify-between md:px-8">
+          <div className="max-w-2xl">
+            <p className="mt-1 text-sm text-gray-600">
+              Complete the Information Architecture to enable BRD and PRD generation.
+            </p>
+            
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <button
+              onClick={() => setIsBrdInputModalOpen(true)}
+              disabled={!canGenerateDocuments}
+              className="flex min-w-[140px] items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition-all hover:bg-indigo-700 hover:shadow-lg hover:shadow-indigo-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-indigo-600 disabled:hover:shadow-none"
+            >
+              Generate BRD
+            </button>
+
+            <button
+              onClick={async () => {
+                setIsOpeningPrd(true);
+                try {
+                  await handleOpenPrdModal();
+                } finally {
+                  setIsOpeningPrd(false);
+                }
+              }}
+              disabled={!canGenerateDocuments || isOpeningPrd}
+              className="flex min-w-[140px] items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition-all hover:bg-indigo-700 hover:shadow-lg hover:shadow-indigo-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-indigo-600 disabled:hover:shadow-none"
+            >
+              {isOpeningPrd ? "Opening PRD..." : "Generate PRD"}
+            </button>
+          </div>
+        </div>
       </div>
 
       {showPersonaSection && (

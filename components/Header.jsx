@@ -47,15 +47,11 @@ export default function Header({
     pathname.includes("/process-flow") ||
     pathname.includes("/information-architecture");
 
-  // FALLBACK STATIC DATA
-  // Later replace using backend API data
-   // WORKFLOW STAGES
+  // WORKFLOW STAGES
   const stages = [
     "Empathize",
     "Define",
     "Ideate",
-    "Prototype",
-    
   ];
 
   // BACKEND VALUES
@@ -63,10 +59,19 @@ export default function Header({
     projectProgressData?.completedStages || [];
 
   const rawProgress = projectProgressData?.progress || 0;
-  const pct = Math.min(100, Math.round((rawProgress / 500) * 100));
+  const pct = Math.min(100, Math.round((rawProgress / 300) * 100));
 
   const currentStage =
     projectProgressData?.currentStage || "Empathize";
+
+  const activeStageIndex =
+    stages.findIndex((stage) => stage === currentStage);
+  const resolvedActiveStageIndex =
+    activeStageIndex >= 0
+      ? activeStageIndex
+      : completedStages.length >= stages.length
+      ? stages.length - 1
+      : completedStages.length;
 
   return (
     <header className="bg-white border-b border-[#e5e7eb] px-8 py-4 fixed top-0 left-[240px] right-0 z-20">
@@ -88,7 +93,7 @@ export default function Header({
                 <div className="relative flex justify-between">
                   {stages.map((stage, index) => {
                     const isCompleted = completedStages.includes(stage);
-                    const isActive = stages.indexOf(currentStage) === index;
+                    const isActive = resolvedActiveStageIndex === index;
                     return (
                       <div key={stage} className="flex flex-col items-center min-w-[60px]">
                         <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px] font-semibold transition-all ${

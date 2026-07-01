@@ -550,7 +550,6 @@ useEffect(() => {
     setRaw(analysis.analysis_output);
   }
 }, [analysis]);
-const [loading, setLoading] = useState(true);
 
 
 const BRD_STEPS = [
@@ -631,7 +630,7 @@ const PROMPT_STEPS = [
       try {
         sessionStorage.removeItem("wireframeResultLoading");
       } catch (_) {}
-      setLoading(false);
+      setIsLoadingAnalysis(false);  // ← THIS LINE IS MISSING — add it
     }
   };
 
@@ -1270,12 +1269,7 @@ await generatePrd();
         </div>
       </div>
 
-      {loading && (
-        <div className="flex flex-col items-center justify-center py-20">
-          <div className="h-12 w-12 rounded-full border-4 border-indigo-200 border-t-indigo-600 animate-spin" />
-          <p className="mt-4 text-gray-500">Loading analysis…</p>
-        </div>
-      )}
+      
 
       <div className="space-y-6">
         {isFallback && (

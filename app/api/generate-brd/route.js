@@ -194,15 +194,33 @@ function buildProjectBrief({
     )}`
   );
 
-  sections.push(
-    `Persona Insights:\n${formatList(
-      insights,
-      (row, index) =>
-        `Insight ${index + 1}:\nMotivations: ${normalizeText(row.motivations) || "N/A"}\nFrustrations: ${
-          normalizeText(row.frustrations) || "N/A"
-        }\nGoals: ${normalizeText(row.goals) || "N/A"}\nNeeds: ${normalizeText(row.needs) || "N/A"}`
-    )}`
-  );
+  // Use persona_insightss if available, otherwise fall back to generated_personass
+const insightSource =
+  Array.isArray(insights) && insights.length > 0
+    ? insights.map((row) => ({
+        name: "N/A",
+        motivations: row.motivations,
+        frustrations: row.frustrations,
+        goals: row.goals,
+        needs: row.needs,
+      }))
+    : (generatedPersonas || []).map((row) => ({
+        name: row.persona_name,
+        motivations: row.motivations,
+        frustrations: row.frustrations,
+        goals: row.goals,
+        needs: row.needs_expectations, // note: different field name
+      }));
+
+sections.push(
+  `Persona Insights:\n${formatList(
+    insightSource,
+    (row, index) =>
+      `Insight ${index + 1} (${normalizeText(row.name)}):\nMotivations: ${normalizeText(row.motivations) || "N/A"}\nFrustrations: ${
+        normalizeText(row.frustrations) || "N/A"
+      }\nGoals: ${normalizeText(row.goals) || "N/A"}\nNeeds: ${normalizeText(row.needs) || "N/A"}`
+  )}`
+);
 
   sections.push(
     `Generated Personas:\n${formatList(generatedPersonas, (row, index) => {
@@ -368,6 +386,18 @@ export const POST = withAuth(async (request, _ctx, user) => {
           ORDER BY processflow_id DESC
         `),
     ]);
+    console.log("========== DB QUERY RESULTS ==========");
+console.log("Project:", projectResult.recordset?.[0]?.project_name);
+console.log("Personas count:", personasResult.recordset?.length);
+console.log("Interviewees count:", intervieweesResult.recordset?.length);
+console.log("Interviews count:", interviewsResult.recordset?.length);
+console.log("Insights count:", insightsResult.recordset?.length);
+console.log("Problem Statement:", problemStatementResult.recordset?.[0]?.problem_statement?.slice(0, 100));
+console.log("Generated Personas count:", generatedPersonasResult.recordset?.length);
+console.log("IA:", iaResult.recordset?.[0]?.ia?.slice(0, 100));
+console.log("Process Flow:", processFlowResult.recordset?.[0]?.process_flow?.slice(0, 100));
+console.log("======================================");
+
 
     const project = projectResult.recordset?.[0];
     if (!project) {
@@ -416,22 +446,41 @@ Regulatory / Compliance Requirements:
 ${input.regulatoryRequirements || "N/A"}
 `;
 
-const finalProjectBrief =
-  projectBrief + stakeholderInfo;
+const finalProjectBrief = projectBrief + stakeholderInfo;
 
-    const payload = {
+console.log("========== PROJECT BRIEF SECTIONS ==========");
+console.log("--- INSIGHTS SOURCE ---");
+console.log("insights length:", insightsResult.recordset?.length);
+console.log("generatedPersonas length:", generatedPersonasResult.recordset?.length);
+console.log("First generated persona motivations:", generatedPersonasResult.recordset?.[0]?.motivations?.slice(0, 100));
+console.log("First generated persona frustrations:", generatedPersonasResult.recordset?.[0]?.frustrations?.slice(0, 100));
+console.log("First generated persona goals:", generatedPersonasResult.recordset?.[0]?.goals?.slice(0, 100));
+console.log("First generated persona needs:", generatedPersonasResult.recordset?.[0]?.needs_expectations?.slice(0, 100));
+console.log("--- STAKEHOLDER INPUT ---");
+console.log("businessOwner:", input.businessOwner);
+console.log("productOwner:", input.productOwner);
+console.log("engineeringLead:", input.engineeringLead);
+console.log("budgetRange:", input.budgetRange);
+console.log("expectedTimeline:", input.expectedTimeline);
+console.log("regulatoryRequirements:", input.regulatoryRequirements);
+console.log("============================================");
+
+const payload = {
   name: BRD_AGENT_NAME,
-    project_brief: projectBrief + stakeholderInfo,
-  user_input: projectBrief + stakeholderInfo,
+  project_brief: finalProjectBrief,
+  user_input: finalProjectBrief,
   rules: [],
   username: USERNAME,
   password: PASSWORD,
 };
 
-console.log("========== BRD PAYLOAD ==========");
-console.log(JSON.stringify(payload, null, 2));
-console.log("=================================");
-    agentInput = sanitizeAgentInput(payload);
+agentInput = sanitizeAgentInput(payload);
+
+console.log("========== SENDING TO AGENT ==========");
+console.log("URL:", WEBHOOK_URL);
+console.log("Username present:", Boolean(USERNAME));
+console.log("Password present:", Boolean(PASSWORD));
+console.log("======================================");
 
     const response = await fetch(WEBHOOK_URL, {
       method: "POST",
@@ -443,9 +492,16 @@ console.log("=================================");
       signal: AbortSignal.timeout(180_000),
     });
 
+    console.log("========== AGENT RESPONDED ==========");
+console.log("HTTP Status:", response.status);
+console.log("HTTP Status Text:", response.statusText);
+console.log("======================================");
+
+
     const text = await response.text();
-//     console.log("🔥 RAW BRD AGENT RESPONSE:");
-// console.log(text);
+console.log("========== RAW AGENT RESPONSE ==========");
+console.log(text.slice(0, 3000));
+console.log("========================================");
     const data = tryParseJson(text);
     const agentResponse = sanitizeAgentResponse(data);
 
