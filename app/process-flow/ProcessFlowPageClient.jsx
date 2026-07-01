@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { generateProcessFlow } from "@/services/processFlowService";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, RotateCcw } from "lucide-react";
 import UXJourneyFlow from "@/components/UXJourneyFlow";
@@ -24,12 +25,7 @@ export default function ProcessFlowPageClient() {
     const load = async () => {
       setLoading(true);
       try {
-        const res = await fetch("/api/generate-process-flow", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectId }),
-        });
-        const data = await res.json();
+        const { data } = await generateProcessFlow({ projectId });
         if (data.success) {
           setFlowData(data.process_flow);
           fetch(`/api/projects/${projectId}/progress`, {
@@ -57,12 +53,7 @@ export default function ProcessFlowPageClient() {
     setRegenerating(true);
     setError("");
     try {
-      const res = await fetch("/api/generate-process-flow", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, regenerate: true }),
-      });
-      const data = await res.json();
+      const { data } = await generateProcessFlow({ projectId, regenerate: true });
       if (data.success) setFlowData(data.process_flow);
       else setError(data.error || "Regeneration failed");
     } catch (err) {

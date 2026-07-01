@@ -4,6 +4,12 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, ChevronDown, Upload, Download, Share2, Trash2, FileText, Link as LinkIcon, Loader2, AlertTriangle, HandHeart, Lightbulb, X } from "lucide-react";
 import { api } from "@/services/api";
+import { useProgressSteps } from "@/hooks/useProgressSteps";
+import { generatePersonaCard } from "@/services/personaService";
+import { generateProcessFlow } from "@/services/processFlowService";
+import { generateInformationArchitecture } from "@/services/informationArchitectureService";
+import { generateBrd } from "@/services/brdService";
+import { generatePrd as generatePrdDocument, getExistingPrd } from "@/services/prdService";
 import {
   AlignmentType,
   Document,
@@ -17,6 +23,10 @@ import {
   WidthType,
 } from "docx";
 import { saveAs } from "file-saver";
+import ProjectHeader from "./components/ProjectHeader";
+import DocumentActionBar from "./components/DocumentActionBar";
+import PersonaSectionPanel from "./components/PersonaSectionPanel";
+import StageAccordion from "./components/StageAccordion";
 
 const STAGES = [
   { id: "empathize", name: "Empathize", description: "Understand your users through observation and engagement." },
@@ -826,6 +836,7 @@ export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id;
+  const { runProgressSteps } = useProgressSteps();
 
   const [project, setProject] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -1033,29 +1044,7 @@ const PRD_STEPS = [
   return Math.round((completed / totalStages) * 100);
 };
 
- const Section = ({ title, items }) => {
-    const safeItems = Array.isArray(items)
-      ? items
-      : typeof items === "string"
-      ? items.split("\n")
-      : [];
 
-    return (
-      <div>
-        <h4 className="font-semibold mb-2">{title}</h4>
-
-        {safeItems.length > 0 ? (
-          <ul className="list-disc ml-5 text-sm space-y-1">
-            {safeItems.map((item, i) => (
-              <li key={i}>{item}</li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-gray-400">No data available</p>
-        )}
-      </div>
-    );
-  };
 
   const getFileName = (path) => {
     if (!path) return "Document";
@@ -1233,13 +1222,7 @@ const handleGenerateProcessFlow = async () => {
 
   try {
     console.log("Sending generate process flow request:", { projectId });
-    const agentRes = await fetch("/api/generate-process-flow", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId }),
-    });
-
-    const agentData = await agentRes.json();
+    const { data: agentData } = await generateProcessFlow({ projectId });
 
     if (!agentData?.success) {
       console.error("PROCESS FLOW AGENT RAW RESPONSE:", JSON.stringify(agentData?.raw, null, 2));
@@ -1290,16 +1273,10 @@ const handleGenerateInformationArchitecture = async () => {
       }
     }
 
-    const agentRes = await fetch("/api/generate-information-architecture", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId,
-        combinedPersonaOutput: combinedOutput,
-      }),
+    const { data: agentData } = await generateInformationArchitecture({
+      projectId,
+      combinedPersonaOutput: combinedOutput,
     });
-
-    const agentData = await agentRes.json();
 
     if (!agentData?.success) {
       throw new Error(
@@ -1415,19 +1392,6 @@ const handleGenerateInformationArchitecture = async () => {
       </div>
     );
   };
-  const runProgressSteps = async (steps, setProgress) => {
-  setProgress([]);
-
-  for (let i = 0; i < steps.length; i++) {
-    await new Promise((res) => setTimeout(res, 2000));
-
-    setProgress((prev) => [
-      ...prev,
-      { label: steps[i], done: i !== steps.length - 1 },
-    ]);
-  }
-};
-
   const renderDefineTemplateCard = (template, downloadableTemplateId, isCompleted) => {
   const media = DEFINE_CARD_MEDIA[template.id] || DEFINE_CARD_MEDIA["problem-statement"];
   const workspaceUrl = getWorkspaceUrl(template.name);
@@ -1752,25 +1716,17 @@ const handleOpenBrdModal = async () => {
   setBrdCollapsed({});
 
   try {
-    const res = await fetch("/api/generate-brd", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    projectId: Number(projectId),
-
-    businessOwner,
-    productOwner,
-    engineeringLead,
-    complianceOwner,
-    endUsers,
-    budgetRange,
-    expectedTimeline,
-    regulatoryRequirements,
-  }),
-});
-
-    const bodyText = await res.text();
-    const data = parseApiJson(bodyText);
+    const { res, data } = await generateBrd({
+      projectId,
+      businessOwner,
+      productOwner,
+      engineeringLead,
+      complianceOwner,
+      endUsers,
+      budgetRange,
+      expectedTimeline,
+      regulatoryRequirements,
+    });
 
     if (!data) {
       throw new Error("API returned invalid JSON.");
@@ -1789,7 +1745,7 @@ const handleOpenBrdModal = async () => {
   }
 };
 
-const generatePrd = async (forceRegenerate = false) => {
+const generatePrdDocumentHandler = async (forceRegenerate = false) => {
     console.log("🔥 GENERATE PRD CALLED");
 
   if (!projectId) {
@@ -1802,19 +1758,10 @@ const generatePrd = async (forceRegenerate = false) => {
   setPrdRawResponse("");
 
   try {
-    const res = await fetch("/api/generate-prd", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        projectId: Number(projectId),
-        forceRegenerate,
-      }),
+    const { res, data } = await generatePrdDocument({
+      projectId,
+      forceRegenerate,
     });
-
-    const bodyText = await res.text();
-    const data = parseApiJson(bodyText);
     console.log("POST Response:", data);
 
     setPrdRawResponse(formatApiResponse(data?.agent_response || ""));
@@ -1866,7 +1813,7 @@ const handleRegeneratePrd = async () => {
 runProgressSteps(PRD_STEPS, setPrdProgress);
 
 try {
-    await generatePrd(true);
+    await generatePrdDocumentHandler(true);
 } catch (err) {
     console.error(err);
 }
@@ -1888,11 +1835,7 @@ const handleOpenPrdModal = async () => {
   }
 
   try {
-    const existingRes = await fetch(
-      `/api/generate-prd?projectId=${projectId}`
-    );
-
-    const existingData = await existingRes.json();
+    const { data: existingData } = await getExistingPrd({ projectId });
 
     // Existing PRD found
     if (existingData?.prd_content) {
@@ -1901,7 +1844,7 @@ const handleOpenPrdModal = async () => {
     }
 
     // Generate new PRD
-    await generatePrd();
+    await generatePrdDocumentHandler();
   } catch (err) {
     console.error("Failed to fetch existing PRD", err);
     setPrdError(err.message || "Failed to load PRD");
@@ -2520,104 +2463,35 @@ const handleDownloadBrdDoc = async () => {
   return (
     <div className="bg-[#fafafa] px-3 py-3 pb-40 md:pb-48">
       <div className="mx-auto max-w-[1600px] overflow-hidden rounded-[32px] bg-white shadow-sm">
-        <div className="border-b border-gray-200 px-6 py-6 md:px-8 md:py-8">
-          <div className="flex items-start gap-6">
-            <button onClick={() => router.push("/projects")} className="w-10 h-10 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-50 flex-shrink-0 mt-1"><ArrowLeft className="w-5 h-5 text-gray-700" /></button>
-            <div className="flex-1 min-w-0">
-              <h1 className="text-2xl font-semibold text-gray-900 mb-2">{project.projectName}</h1>
-              <p
-                className={`text-sm text-gray-600 leading-relaxed max-w-3xl cursor-pointer ${
-                  showFullDesc ? "" : "line-clamp-2"
-                }`}
-                onClick={() => setShowFullDesc(!showFullDesc)}
-              >
-                {project.projectDescription || "No description"}
-                {!showFullDesc && "..."}
-              </p>
-
-              <div className="flex flex-col gap-3 mt-4 sm:flex-row sm:items-center sm:gap-8">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs uppercase tracking-wide text-gray-500 font-medium">Client:</span>
-                  <span className="text-sm text-gray-900 font-medium">{project.client || "N/A"}</span>
-                </div>
-                <div className="hidden h-4 w-px bg-gray-300 sm:block" />
-                <div className="flex items-center gap-2">
-                  <span className="text-xs uppercase tracking-wide text-gray-400 font-medium">Target Date:</span>
-                  <span className="text-sm text-gray-900 font-medium">{project.targetCompletionDate ? new Date(project.targetCompletionDate).toLocaleDateString() : "N/A"}</span>
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-col items-end gap-2">
-              <label className="flex items-center gap-2.5 cursor-pointer rounded-lg border border-gray-200 bg-white px-4 py-2.5 hover:bg-gray-50">
-                <input type="checkbox" checked={projectCompleted} onChange={(e) => setProjectCompleted(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-[#702dff] focus:ring-[#702dff]" />
-                <span className="text-sm text-gray-700 font-medium whitespace-nowrap">Mark as Complete</span>
-              </label>
-            </div>
-          </div>
-        </div>
+          <ProjectHeader
+          project={project}
+          showFullDesc={showFullDesc}
+          setShowFullDesc={setShowFullDesc}
+          projectCompleted={projectCompleted}
+          setProjectCompleted={setProjectCompleted}
+          onBack={() => router.push("/projects")}
+        />
 
         <div className="px-6 py-6 md:px-8 md:py-8">
           {isLoadingDocs ? (
             <div className="flex flex-col items-center justify-center h-64"><Loader2 className="w-12 h-12 text-[#702dff] animate-spin mb-4" /><p className="text-gray-600">Loading documents...</p></div>
           ) : (
             <div className="space-y-4">
-              {STAGES.map((stage ,index ) => {
+              {STAGES.map((stage) => {
                 const isExpanded = expandedStage === stage.id;
+                const isCompleted = completedStages.includes(stage.id);
+
                 return (
-                  <div key={stage.id} className={`rounded-lg border bg-white overflow-hidden transition-all duration-200 hover:shadow-sm ${completedStages.includes(stage.id) ? "border-emerald-300 ring-1 ring-emerald-100 shadow-emerald-50" : "border-gray-200"}`}>
-                    <div
-                      className="p-6 cursor-pointer"
-                      onClick={() => setExpandedStage(isExpanded ? null : stage.id)}
-                    >
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3 flex-1">
-                          <div className={`transform transition-transform ${isExpanded ? "rotate-180" : ""}`}>
-                            <ChevronDown className="w-5 h-5 text-gray-600" />
-                          </div>
-
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-1">
-                              <h3 className="text-lg font-semibold text-gray-900">
-                                {stage.name}
-                              </h3>
-
-                              <span
-                                className={`text-xs px-2 py-1 rounded ${
-                                  completedStages.includes(stage.id)
-                                    ? "bg-green-100 text-green-700"
-                                    : STAGES.find((s) => !completedStages.includes(s.id))?.id === stage.id
-                                    ? "bg-yellow-100 text-yellow-700"
-                                    : "bg-gray-100 text-gray-600"
-                                }`}
-                              >
-                                {completedStages.includes(stage.id)
-                                  ? "Completed"
-                                  : STAGES.find((s) => !completedStages.includes(s.id))?.id === stage.id
-                                  ? "In Progress"
-                                  : "Not Started"}
-                              </span>
-                            </div>
-
-                            <p className="text-sm text-gray-600">
-                              {stage.description}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                          {completedStages.includes(stage.id) ? (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/></svg>Completed</span>
-                          ) : (
-                            <button onClick={() => handleMarkStageComplete(stage.id)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 text-xs font-medium hover:border-emerald-300 hover:text-emerald-700 hover:bg-emerald-50 transition-all duration-200">Mark as Complete</button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    {isExpanded && (
-                      <div className="px-6 pb-6 border-t border-gray-200 pt-6">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <StageAccordion
+                    key={stage.id}
+                    stage={stage}
+                    isExpanded={isExpanded}
+                    isCompleted={isCompleted}
+                    onToggle={() => setExpandedStage(isExpanded ? null : stage.id)}
+                    onMarkComplete={() => handleMarkStageComplete(stage.id)}
+                    renderContent={() => (
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                         {(STAGE_TEMPLATES[stage.id] || []).map((template) => {
-                          const TemplateIcon = template.icon;
                           const link = prototypeLinks[`${stage.id}-${template.id}`] || "";
                           const templateMap = templateDownloadMapByStage[stage.id] || {};
                           const templateKey = `${stage.id}::${String(template.name || "").toLowerCase().trim()}`;
@@ -2626,17 +2500,39 @@ const handleDownloadBrdDoc = async () => {
                           if (stage.id === "empathize") {
                             return (
                               <div key={template.id} className="space-y-3">
-                                {renderEmpathizeTemplateCard(template, downloadableTemplateId, completedStages.includes(stage.id))}
+                                {renderEmpathizeTemplateCard(template, downloadableTemplateId, isCompleted)}
                                 {documents.length > 0 && (
                                   <div className="space-y-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
                                     {documents.map((doc) => (
                                       <div key={doc.documentId} className="rounded-lg border border-gray-200 bg-white p-2.5">
-                                        <div className="mb-1 flex items-center gap-2"><FileText className="h-4 w-4 text-blue-500" /><span className="truncate text-xs text-gray-900">{getFileName(doc.blobPath)}</span></div>
+                                        <div className="mb-1 flex items-center gap-2">
+                                          <FileText className="h-4 w-4 text-blue-500" />
+                                          <span className="truncate text-xs text-gray-900">{getFileName(doc.blobPath)}</span>
+                                        </div>
                                         <div className="flex items-center justify-between">
-                                          <span className="text-xs text-gray-500">{doc.status} • {new Date(doc.createdAt).toLocaleDateString()}</span>
+                                          <span className="text-xs text-gray-500">
+                                            {doc.status} • {new Date(doc.createdAt).toLocaleDateString()}
+                                          </span>
                                           <div className="flex items-center gap-2">
-                                            <button className="text-blue-600 hover:text-blue-800"><Download className="h-3 w-3" /></button>
-                                            <button onClick={async () => { if (window.confirm("Delete this document?")) { try { await api.deleteDocument(doc.documentId); await fetchDocuments(); alert("Document deleted"); } catch (err) { alert("Delete failed: " + err.message); } } }} className="text-red-500 hover:text-red-700"><Trash2 className="h-3 w-3" /></button>
+                                            <button className="text-blue-600 hover:text-blue-800">
+                                              <Download className="h-3 w-3" />
+                                            </button>
+                                            <button
+                                              onClick={async () => {
+                                                if (window.confirm("Delete this document?")) {
+                                                  try {
+                                                    await api.deleteDocument(doc.documentId);
+                                                    await fetchDocuments();
+                                                    alert("Document deleted");
+                                                  } catch (err) {
+                                                    alert("Delete failed: " + err.message);
+                                                  }
+                                                }
+                                              }}
+                                              className="text-red-500 hover:text-red-700"
+                                            >
+                                              <Trash2 className="h-3 w-3" />
+                                            </button>
                                           </div>
                                         </div>
                                       </div>
@@ -2647,384 +2543,70 @@ const handleDownloadBrdDoc = async () => {
                             );
                           }
                           if (stage.id === "define") {
-                        return (
-                          <div key={template.id} className="space-y-3">
-                            {renderDefineTemplateCard(template, downloadableTemplateId, completedStages.includes(stage.id))}
-                          </div>
-                        );
-                      }
+                            return (
+                              <div key={template.id} className="space-y-3">
+                                {renderDefineTemplateCard(template, downloadableTemplateId, isCompleted)}
+                              </div>
+                            );
+                          }
 
-                               if (stage.id === "ideate" && template.id === "wireframe-reviewer") {
-                        return (
-                                  <div key={template.id} className="h-full">
-                            <WireframeReviewerCard />
-                          </div>
-                        );
-                      }
+                          if (stage.id === "ideate" && template.id === "wireframe-reviewer") {
+                            return (
+                              <div key={template.id} className="h-full">
+                                <WireframeReviewerCard />
+                              </div>
+                            );
+                          }
                           if (stage.id === "ideate" && template.id === "information-architecture") {
-                        return (
-                                  <div key={template.id} className="h-full">
-                            {renderIdeateTemplateCard(template, completedStages.includes(stage.id))}
-                          </div>
-                        );
-                      }
-                      if (template.id === "brd-prd-generator") {
-                        return null;
-                      }
+                            return (
+                              <div key={template.id} className="h-full">
+                                {renderIdeateTemplateCard(template, isCompleted)}
+                              </div>
+                            );
+                          }
+                          if (template.id === "brd-prd-generator") {
+                            return null;
+                          }
 
-                          return renderGenericCard(template, stage.id, downloadableTemplateId, link, completedStages.includes(stage.id));
+                          return renderGenericCard(template, stage.id, downloadableTemplateId, link, isCompleted);
                         })}
                       </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                    )}
+                  />
+                );
+              })}
           </div>
         )}
       </div>
 
-      <div className="fixed bottom-0 left-[240px] right-0 z-40 border-t border-gray-200 bg-white/95 shadow-[0_-12px_35px_rgba(15,23,42,0.08)] backdrop-blur">
-        <div className="mx-auto flex max-w-[1600px] flex-col gap-4 px-6 py-4 md:flex-row md:items-center md:justify-between md:px-8">
-          <div className="max-w-2xl">
-            <p className="mt-1 text-sm text-gray-600">
-              Complete the Information Architecture to enable BRD and PRD generation.
-            </p>
-            
-          </div>
-
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <button
-              onClick={() => setIsBrdInputModalOpen(true)}
-              disabled={!canGenerateDocuments}
-              className="flex min-w-[140px] items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition-all hover:bg-indigo-700 hover:shadow-lg hover:shadow-indigo-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-indigo-600 disabled:hover:shadow-none"
-            >
-              Generate BRD
-            </button>
-
-            <button
-              onClick={async () => {
-                setIsOpeningPrd(true);
-                try {
-                  await handleOpenPrdModal();
-                } finally {
-                  setIsOpeningPrd(false);
-                }
-              }}
-              disabled={!canGenerateDocuments || isOpeningPrd}
-              className="flex min-w-[140px] items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition-all hover:bg-indigo-700 hover:shadow-lg hover:shadow-indigo-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-indigo-600 disabled:hover:shadow-none"
-            >
-              {isOpeningPrd ? "Opening PRD..." : "Generate PRD"}
-            </button>
-          </div>
-        </div>
-      </div>
+      <DocumentActionBar
+        canGenerateDocuments={canGenerateDocuments}
+        isOpeningPrd={isOpeningPrd}
+        onGenerateBrd={() => setIsBrdInputModalOpen(true)}
+        onGeneratePrd={async () => {
+          setIsOpeningPrd(true);
+          try {
+            await handleOpenPrdModal();
+          } finally {
+            setIsOpeningPrd(false);
+          }
+        }}
+      />
 
       {showPersonaSection && (
-        <div className="px-8 pb-10 bg-[#f5f7fa]">
-          <div className="border-t border-gray-200 pt-8">
-            <div className="mb-5 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Empathize Stage</p>
-                <h2 className="mt-1 text-xl font-semibold text-gray-900">User Persona Output</h2>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleCombinePersonaOutputs}
-                  disabled={isCombiningPersonaOutput}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-sm text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-300"
-                >
-                  {isCombiningPersonaOutput ? "Combining..." : "Combine All Persona Outputs"}
-                </button>
-                <button
-                  onClick={() => setShowPersonaSection(false)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-600 transition hover:bg-gray-50"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                  Close
-                </button>
-              </div>
-            </div>
-            {finalPersonaCard && (
-  <div className="mt-10">
-    <div className="mb-6">
-      <h2 className="text-xl font-semibold text-gray-900">
-        Final AI Generated Persona
-      </h2>
-      <p className="text-sm text-gray-600">
-        Combined insights from all personas
-      </p>
-    </div>
-
-    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-
-      <div className="border-b pb-4 mb-6">
-        <h3 className="text-2xl font-bold text-[#702dff]">
-          {finalPersonaCard.name || "Persona"}
-        </h3>
-
-        <p className="italic text-gray-600 mt-1">
-          {finalPersonaCard.quote || "No quote available"}
-        </p>
-
-        <p className="text-sm text-gray-700 mt-3">
-          {finalPersonaCard.background || "No description"}
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-        <Section title="Goals" items={finalPersonaCard.goals} />
-
-        <Section title="Needs" items={finalPersonaCard.needs} />
-
-        <Section title="Pain Points" items={finalPersonaCard.frustrations} />
-
-        <Section title="Motivations" items={finalPersonaCard.motivations} />
-
-        <Section title="Personality" items={finalPersonaCard.personality} />
-
-        <Section title="Behaviours & Habits" items={finalPersonaCard.behaviours} />
-
-        <Section title="Positive Themes" items={finalPersonaCard.positiveThemes} />
-
-        <Section title="Negative Themes" items={finalPersonaCard.negativeThemes} />
-
-      </div>
-
-      <div className="mt-6">
-        <h4 className="font-semibold mb-2">Scenario</h4>
-        <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
-          {finalPersonaCard.scenario || "No scenario available"}
-        </p>
-      </div>
-
-      <div className="mt-6">
-  <h4 className="font-semibold mb-2">Demographics</h4>
-  <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
-
-    {typeof finalPersonaCard.demographics === "object" ? (
-      Object.entries(finalPersonaCard.demographics).map(([key, value]) => (
-        <p key={key}>
-          <b>{key}:</b> {value}
-        </p>
-      ))
-    ) : (
-      <p>{finalPersonaCard.demographics || "No demographics available"}</p>
-    )}
-
-  </div>
-</div>
-
-<div className="mt-4">
-  <h4 className="font-semibold mb-2">Problem Statement</h4>
-  <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
-    {finalPersonaCard.problemStatement || "No problem statement available"}
-  </p>
-</div>
-
-    </div>
-  </div>
-)}
-
-{processFlowData && (
-  <div className="mt-1">
-    <div className="mb-3">
-      <h2 className="text-xl font-semibold text-gray-900">
-        AI Generated Process Flow
-      </h2>
-
-      <p className="text-sm text-gray-600">
-        Generated from persona insights
-      </p>
-    </div>
-
-    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-      <pre className="whitespace-pre-wrap text-sm text-gray-700">
-        {JSON.stringify(processFlowData, null, 2)}
-      </pre>
-    </div>
-  </div>
-)}
-
-            {isPersonaCardsLoading ? (
-              <p className="rounded-lg border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500">Loading persona output...</p>
-            ) : personaCardsError ? (
-              <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{personaCardsError}</p>
-            ) : personaCards.length === 0 ? (
-              <p className="rounded-lg border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500">No personas found for this project.</p>
-            ) : (
-              <>
-                <div className="mb-4 border-b border-gray-200 pb-0 flex gap-2 flex-wrap">
-                  {personaCards.map((card) => (
-                    <button
-                      key={card.personaId}
-                      onClick={() => setActivePersonaCardId(card.personaId)}
-                      className={`px-4 py-2 rounded-t-md text-sm font-medium transition ${
-                        activePersonaCardId === card.personaId
-                          ? "bg-indigo-500 text-white shadow"
-                          : "bg-gray-100 hover:bg-gray-200 text-gray-700"
-                      }`}
-                    >
-                      {card.personaName}
-                    </button>
-                  ))}
-                </div>
-
-                {!activePersonaCard?.hasGeneratedOutput ? (
-                  <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
-                    No persona output available for <b>{activePersonaCard?.personaName}</b> yet. Complete the interview transcript in the workspace to generate it.
-                  </p>
-                ) : (
-                  <div className="persona-container">
-                    <div className="persona-sidebar">
-                      <div className="persona-avatar" />
-
-                      <div className="persona-section-title">Demographics</div>
-                      <p><b>Gender:</b> {activePersonaCard.demographics.gender}</p>
-                      <p><b>Age:</b> {activePersonaCard.demographics.age}</p>
-                      <p><b>Location:</b> {activePersonaCard.demographics.location}</p>
-                      <p><b>Relationship Status:</b> {activePersonaCard.demographics.relationshipStatus}</p>
-                      <p><b>Title:</b> {activePersonaCard.demographics.title}</p>
-                      <p><b>Education:</b> {activePersonaCard.demographics.education}</p>
-
-                      <div className="persona-section-title">Goals</div>
-                      <ul>
-                        {(activePersonaCard.parsed.goals.length
-                          ? activePersonaCard.parsed.goals
-                          : ["No goals extracted yet."]
-                        ).map((item, idx) => (
-                          <li key={`goal-${idx}`}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    <div className="persona-main">
-                      <div className="persona-header">
-                        <h1>Name: {activePersonaCard.parsed.name}</h1>
-                        <div className="persona-quote">
-                          {activePersonaCard.parsed.quote
-                            ? `"${activePersonaCard.parsed.quote}"`
-                            : "No quote available."}
-                        </div>
-                      </div>
-
-                      <div className="persona-content">
-                        <div className="persona-block">
-                          <h3>Background Description</h3>
-                          <p>{activePersonaCard.parsed.background}</p>
-                        </div>
-
-                        <div className="persona-grid-2">
-  <div className="persona-block">
-    <h3>Says</h3>
-    <ul>
-      {(activePersonaCard.parsed.says.length
-        ? activePersonaCard.parsed.says
-        : ["No data extracted yet."]
-      ).map((item, idx) => (
-        <li key={`says-${idx}`}>{item}</li>
-      ))}
-    </ul>
-  </div>
-
-  <div className="persona-block">
-    <h3>Thinks</h3>
-    <ul>
-      {(activePersonaCard.parsed.thinks.length
-        ? activePersonaCard.parsed.thinks
-        : ["No data extracted yet."]
-      ).map((item, idx) => (
-        <li key={`thinks-${idx}`}>{item}</li>
-      ))}
-    </ul>
-  </div>
-</div>
-
-<div className="persona-grid-2">
-  <div className="persona-block">
-    <h3>Does</h3>
-    <ul>
-      {(activePersonaCard.parsed.does.length
-        ? activePersonaCard.parsed.does
-        : ["No data extracted yet."]
-      ).map((item, idx) => (
-        <li key={`does-${idx}`}>{item}</li>
-      ))}
-    </ul>
-  </div>
-
-  <div className="persona-block">
-    <h3>Feels</h3>
-    <ul>
-      {(activePersonaCard.parsed.feels.length
-        ? activePersonaCard.parsed.feels
-        : ["No data extracted yet."]
-      ).map((item, idx) => (
-        <li key={`feels-${idx}`}>{item}</li>
-      ))}
-    </ul>
-  </div>
-</div>
-
-<div className="persona-insight-grid">
-  <div className="insight-tile pain-points">
-    <div className="insight-head">
-      <span className="insight-icon"><AlertTriangle className="w-4 h-4" /></span>
-      <h3>Pain Points</h3>
-    </div>
-    <div className="insight-body">
-      {(activePersonaCard.parsed.frustrations.length
-        ? activePersonaCard.parsed.frustrations
-        : ["No pain points extracted yet."]
-      ).map((item, idx) => (
-        <span key={`pain-${idx}`} className="insight-chip">{item}</span>
-      ))}
-    </div>
-  </div>
-
-  <div className="insight-tile needs">
-    <div className="insight-head">
-      <span className="insight-icon"><HandHeart className="w-4 h-4" /></span>
-      <h3>Needs</h3>
-    </div>
-    <div className="insight-body">
-      {(activePersonaCard.parsed.needs.length
-        ? activePersonaCard.parsed.needs
-        : activePersonaCard.parsed.goals.length
-          ? activePersonaCard.parsed.goals
-          : ["No needs extracted yet."]
-      ).map((item, idx) => (
-        <span key={`need-${idx}`} className="insight-chip">{item}</span>
-      ))}
-    </div>
-  </div>
-
-  <div className="insight-tile key-insights">
-    <div className="insight-head">
-      <span className="insight-icon"><Lightbulb className="w-4 h-4" /></span>
-      <h3>Key Insights</h3>
-    </div>
-    <div className="insight-body">
-      {(activePersonaCard.parsed.keyInsights.length
-        ? activePersonaCard.parsed.keyInsights
-        : activePersonaCard.parsed.motivations.length
-          ? activePersonaCard.parsed.motivations
-          : ["No key insights extracted yet."]
-      ).map((item, idx) => (
-        <span key={`insight-${idx}`} className="insight-chip">{item}</span>
-      ))}
-    </div>
-  </div>
-</div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
+        <PersonaSectionPanel
+          finalPersonaCard={finalPersonaCard}
+          processFlowData={processFlowData}
+          personaCards={personaCards}
+          activePersonaCardId={activePersonaCardId}
+          activePersonaCard={activePersonaCard}
+          isPersonaCardsLoading={isPersonaCardsLoading}
+          personaCardsError={personaCardsError}
+          isCombiningPersonaOutput={isCombiningPersonaOutput}
+          onCombinePersonaOutputs={handleCombinePersonaOutputs}
+          onClose={() => setShowPersonaSection(false)}
+          onSelectPersonaCard={(id) => setActivePersonaCardId(id)}
+        />
       )}
 
      {isBrdInputModalOpen && (

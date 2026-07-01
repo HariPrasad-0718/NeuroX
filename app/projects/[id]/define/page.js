@@ -5,6 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, AlertTriangle, Loader2, Sparkles } from "lucide-react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import { generatePersonaCard } from "@/services/personaService";
+import { generateInformationArchitecture } from "@/services/informationArchitectureService";
+import { useProgressSteps } from "@/hooks/useProgressSteps";
 
 function toList(value) {
   if (!value) return [];
@@ -413,6 +416,7 @@ export default function DefinePhasePage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
+  const { runProgressSteps } = useProgressSteps();
   const [generating, setGenerating] = useState(false);
   const [personas, setPersonas] = useState([]);
   const [projectName, setProjectName] = useState("");
@@ -485,13 +489,7 @@ export default function DefinePhasePage() {
       for (const persona of personas) {
         const personaContext = buildPersonaContext(persona, projectName);
 
-        const res = await fetch("/api/generate-persona-card", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ empathy_data_and_context: personaContext }),
-        });
-
-        const data = await res.json();
+        const { data } = await generatePersonaCard({ empathyDataAndContext: personaContext });
         if (!data.success) {
           throw new Error(data.error || `Agent failed for ${persona.personaName}`);
         }
@@ -618,13 +616,7 @@ await fetch("/api/save-generated-persona", {
     setIaError("");
 
     try {
-      const agentRes = await fetch("/api/generate-information-architecture", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId }),
-      });
-
-      const agentData = await agentRes.json();
+      const { data: agentData } = await generateInformationArchitecture({ projectId });
 
       if (!agentData?.success) {
         throw new Error(agentData?.error || "Information Architecture generation failed");

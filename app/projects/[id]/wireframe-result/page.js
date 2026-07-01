@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react"
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Download, LayoutDashboard, Sparkles, X } from "lucide-react";
+import { useProgressSteps } from "@/hooks/useProgressSteps";
+import { generateBrd } from "@/services/brdService";
+import { generatePrd as generatePrdDocument, getExistingPrd } from "@/services/prdService";
 import {
   AlignmentType,
   Document,
@@ -540,6 +543,7 @@ const pageId = searchParams.get("pageId");
   const [prdHtml, setPrdHtml] = useState("");
   const [prdRawResponse, setPrdRawResponse] = useState("");
   const [isDownloadingPrd, setIsDownloadingPrd] = useState(false);
+  const { runProgressSteps } = useProgressSteps();
   const [brdProgress, setBrdProgress] = useState([]);
 const [prdProgress, setPrdProgress] = useState([]);
 const [promptProgress, setPromptProgress] = useState([]);
@@ -693,14 +697,7 @@ const PROMPT_STEPS = [
     setBrdCollapsed({});
 
     try {
-      const res = await fetch("/api/generate-brd", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: Number(id) }),
-      });
-
-      const bodyText = await res.text();
-      const data = parseApiJson(bodyText);
+      const { res, data } = await generateBrd({ projectId: id });
 
       if (!data) {
         throw new Error("API returned invalid JSON.");
@@ -719,19 +716,7 @@ const PROMPT_STEPS = [
     }
   };
 
-  const runProgressSteps = async (steps, setProgress) => {
-  setProgress([]);
-
-  for (let i = 0; i < steps.length; i++) {
-    await new Promise((res) => setTimeout(res, 2000)); // adjust speed
-
-    setProgress((prev) => [
-      ...prev,
-      { label: steps[i], done: i !== steps.length - 1 },
-    ]);
-  }
-};
-const generatePrd = async (forceRegenerate = false) => {
+const generatePrdDocumentHandler = async (forceRegenerate = false) => {
     console.log("🔥 GENERATE PRD CALLED");
 
   if (!id) {
@@ -744,19 +729,7 @@ const generatePrd = async (forceRegenerate = false) => {
   setPrdRawResponse("");
 
   try {
-    const res = await fetch("/api/generate-prd", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        projectId: Number(id),
-        forceRegenerate,
-      }),
-    });
-
-    const bodyText = await res.text();
-    const data = parseApiJson(bodyText);
+    const { res, data } = await generatePrdDocument({ projectId: id, forceRegenerate });
     console.log("POST Response:", data);
 
     setPrdRawResponse(formatApiResponse(data?.agent_response || ""));
@@ -804,7 +777,7 @@ const handleRegeneratePrd = async () => {
   setPrdProgress([]);
   runProgressSteps(PRD_STEPS, setPrdProgress);
 
-  await generatePrd(true);
+  await generatePrdDocumentHandler(true);
 };
 
  const handleOpenPrdModal = async () => {
@@ -816,11 +789,7 @@ const handleRegeneratePrd = async () => {
   }
 
   try {
-    const existingRes = await fetch(
-      `/api/generate-prd?projectId=${id}`
-    );
-
-    const existingData = await existingRes.json();
+    const { data: existingData } = await getExistingPrd({ projectId: id });
 
     if (existingData?.prd_content) {
       setPrdHtml(existingData.prd_content);
@@ -834,7 +803,7 @@ const handleRegeneratePrd = async () => {
 setPrdProgress([]);
 runProgressSteps(PRD_STEPS, setPrdProgress);
 
-await generatePrd();
+await generatePrdDocumentHandler();
 };
   const handleDownloadPrdDoc = async () => {
     if (!prdHtml || isDownloadingPrd) return;
