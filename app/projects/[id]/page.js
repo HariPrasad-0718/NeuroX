@@ -23,10 +23,17 @@ import {
   WidthType,
 } from "docx";
 import { saveAs } from "file-saver";
+import { appendWordValue, cleanPrdHtml, cleanPrdOutput, decodeEscapedText, formatApiResponse, formatKeyLabel, sanitizePrdText } from "@/utils/stringUtils";
+import { buildPersonaContext, normalizeAgentCard } from "@/utils/objectUtils";
+import { parseLooseJson, toObjectIfPossible, tryParseJsonString } from "@/utils/responseParsers";
 import ProjectHeader from "./components/ProjectHeader";
 import DocumentActionBar from "./components/DocumentActionBar";
 import PersonaSectionPanel from "./components/PersonaSectionPanel";
 import StageAccordion from "./components/StageAccordion";
+import BRDSection from "./components/BRDSection";
+import PRDSection from "./components/PRDSection";
+import WireframeSection from "./components/WireframeSection";
+import StageTemplateCard from "./components/StageTemplateCard";
 
 const STAGES = [
   { id: "empathize", name: "Empathize", description: "Understand your users through observation and engagement." },
@@ -91,324 +98,19 @@ const IDEATE_CARD_MEDIA = {
   },
 };
 
-
-function formatKeyLabel(key) {
-  return String(key || "")
-    .replace(/_/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function appendWordValue(paragraphs, value, depth = 0) {
-  if (value === null || value === undefined) {
-    paragraphs.push(new Paragraph({ text: "-", spacing: { after: 120 } }));
-    return;
-  }
-
-  if (typeof value === "string") {
-    const lines = value
-      .split(/\n+/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-
-    if (!lines.length) {
-      paragraphs.push(new Paragraph({ text: "-", spacing: { after: 120 } }));
-      return;
-    }
-
-    lines.forEach((line) => {
-      paragraphs.push(new Paragraph({ text: line, spacing: { after: 120 } }));
-    });
-    return;
-  }
-
-  if (Array.isArray(value)) {
-    if (!value.length) {
-      paragraphs.push(new Paragraph({ text: "-", spacing: { after: 120 } }));
-      return;
-    }
-
-    value.forEach((item, index) => {
-      if (item && typeof item === "object") {
-        paragraphs.push(
-          new Paragraph({
-            text: `Item ${index + 1}`,
-            bullet: { level: Math.min(depth, 2) },
-            spacing: { after: 80 },
-          })
-        );
-        appendWordValue(paragraphs, item, depth + 1);
-      } else {
-        paragraphs.push(
-          new Paragraph({
-            text: String(item),
-            bullet: { level: Math.min(depth, 2) },
-            spacing: { after: 120 },
-          })
-        );
-      }
-    });
-    return;
-  }
-
-  if (typeof value === "object") {
-    Object.entries(value).forEach(([key, nested]) => {
-      paragraphs.push(
-        new Paragraph({
-          children: [new TextRun({ text: `${formatKeyLabel(key)}:`, bold: true })],
-          spacing: { after: 80 },
-        })
-      );
-      appendWordValue(paragraphs, nested, depth + 1);
-    });
-    return;
-  }
-
-  paragraphs.push(new Paragraph({ text: String(value), spacing: { after: 120 } }));
-}
-
-function cleanPrdHtml(value) {
-  const text = String(value || "").trim();
-
-  // Remove script tags
-  let cleaned = text.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "");
-
-  // Remove inline event handlers
-  cleaned = cleaned.replace(/\son\w+\s*=\s*"[^"]*"/gi, "");
-  cleaned = cleaned.replace(/\son\w+\s*=\s*'[^']*'/gi, "");
-
-  // Remove javascript: URLs
-  cleaned = cleaned.replace(/\sjavascript:/gi, " ");
-
-  // Ensure the content has proper HTML structure
-  if (!cleaned.startsWith("<") && !cleaned.includes("<h1")) {
-    // If it's plain text, wrap in paragraphs
-    cleaned = cleaned.split(/\n+/).filter(line => line.trim()).map(line =>
-      `<p>${line.trim()}</p>`
-    ).join("");
-  }
-
-  return cleaned;
-}
-// Helper: Convert markdown to HTML
-const convertMarkdownToHtml = (text) => {
-  if (!text) return "";
-  
-  let html = text;
-  
-  // Convert headers
-  html = html.replace(/^#\s+(.+)$/gm, '<h1>$1</h1>');
-  html = html.replace(/^##\s+(.+)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^####\s+(.+)$/gm, '<h4>$1</h4>');
-  
-  // Convert bold and italic
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  
-  // Convert horizontal rules
-  html = html.replace(/^---$/gm, '<hr />');
-  
-  // Convert bullet lists
-  html = html.replace(/^-\s+(.+)$/gm, '<li>$1</li>');
-  html = html.replace(/(<li>.*?<\/li>)+/g, '<ul>$&</ul>');
-  
-  // Convert numbered lists
-  html = html.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>');
-  html = html.replace(/(<li>.*?<\/li>)+/g, function(match) {
-    if (match.includes('<ol>')) return match;
-    return `<ol>${match}</ol>`;
-  });
-  
-  // Convert paragraphs
-  const lines = html.split('\n');
-  let result = [];
-  
-  for (let line of lines) {
-    line = line.trim();
-    if (!line) {
-      result.push('<br />');
-      continue;
-    }
-    
-    // Skip if already wrapped in HTML tags
-    if (/^<[hH][1-6]/.test(line) || /^<ul>/.test(line) || /^<ol>/.test(line) || 
-        /^<li>/.test(line) || /^<table>/.test(line) || /^<hr \/>/.test(line)) {
-      result.push(line);
-      continue;
-    }
-    
-    result.push(`<p>${line}</p>`);
-  }
-  
-  html = result.join('\n');
-  
-  return html;
-};
-// Final sanitizer: strips only what Python's clean_prd_output + normalize_text strip.
-// Run this once, right before setPrdHtml / before rendering.
-function sanitizePrdText(value) {
-  if (!value) return "";
-
-  let text = String(value).trim();
-
-  // Remove markdown code fences (```html ... ```)
-  text = text.replace(/```html/g, "");
-  text = text.replace(/```/g, "");
-
-  // Remove a single pair of wrapping outer quotes, if present
-  if (text.startsWith('"') && text.endsWith('"')) {
-    text = text.slice(1, -1);
-  }
-
-  // Normalize literal unicode-escape sequences that leaked through as text
-  // (these are LITERAL strings like backslash-u-2013, not real unicode chars)
-  const escapeReplacements = {
-    "\\u2013": "–",
-    "\\u2014": "—",
-    "\\u2018": "'",
-    "\\u2019": "'",
-    "\\u201c": '"',
-    "\\u201d": '"',
-    "\\u2192": "→",
-    "\\u2265": "≥",
-    "\\u2264": "≤",
-    "\\u2022": "•",
-    "\\n": "\n",
-    "\\t": " ",
-  };
-
-  for (const [bad, good] of Object.entries(escapeReplacements)) {
-    const escaped = bad.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    text = text.replace(new RegExp(escaped, "g"), good);
-  }
-
-  // Collapse excessive whitespace
-  text = text.replace(/[ \t]+/g, " ");
-  text = text.replace(/\n{3,}/g, "\n\n");
-
-  // Strip unsafe HTML before it's ever rendered with dangerouslySetInnerHTML
-  text = text.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "");
-  text = text.replace(/\son\w+\s*=\s*"[^"]*"/gi, "");
-  text = text.replace(/\son\w+\s*=\s*'[^']*'/gi, "");
-  text = text.replace(/\sjavascript:/gi, " ");
-
-  // If it's not HTML at all, wrap plain lines in paragraphs
-  if (!text.startsWith("<") && !text.includes("<h1") && !text.includes("<h2")) {
-    text = text
-      .split(/\n+/)
-      .filter((line) => line.trim())
-      .map((line) => `<p>${line.trim()}</p>`)
-      .join("");
-  }
-
-  return text.trim();
-}
-// Helper: Decode escaped text (single definition)
-function decodeEscapedText(value) {
-  return String(value || "")
-    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/\\n/g, "\n")
-    .replace(/\\r/g, "\r")
-    .replace(/\\t/g, "\t")
-    .replace(/\\\//g, "/")
-    .replace(/\\"/g, '"');
-}
-
-// Helper: Try to parse JSON string (mirrors Python backend)
-const tryParseJsonString = (s) => {
-  if (!s) return null;
-  
-  let cleaned = s.trim();
-  
-  // Remove markdown code fences
-  if (cleaned.startsWith("```json")) {
-    cleaned = cleaned.replace("```json", "").trim();
-  }
-  if (cleaned.startsWith("```")) {
-    cleaned = cleaned.replace("```", "").trim();
-  }
-  if (cleaned.endsWith("```")) {
-    cleaned = cleaned.slice(0, -3).trim();
-  }
-  
-  try {
-    return JSON.parse(cleaned);
-  } catch (e) {
-    // Try with unicode escape
-    try {
-      return JSON.parse(cleaned.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => 
-        String.fromCharCode(parseInt(hex, 16))
-      ));
-    } catch (e2) {
-      return null;
-    }
-  }
-};
-
-// Helper: Clean PRD output (mirrors Python backend)
-// Helper: Clean PRD output (mirrors Python backend)
-const cleanPrdOutput = (text) => {
-  if (!text) return "";
-
-  let cleaned = text.trim();
-
-  // Remove markdown code fences
-  cleaned = cleaned.replace(/```html/g, "");
-  cleaned = cleaned.replace(/```/g, "");
-
-  // Remove outer quotes if present
-  if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
-    cleaned = cleaned.slice(1, -1);
-  }
-
-  // Normalize Unicode characters
-  const replacements = {
-    "\\u2013": "–",
-    "\\u2014": "—",
-    "\\u2018": "'",
-    "\\u2019": "'",
-    "\\u201c": '"',
-    "\\u201d": '"',
-    "\\u2192": "→",
-    "\\u2265": "≥",
-    "\\u2264": "≤",
-    "\\u2022": "•",
-    "\\n": "\n",
-    "\\t": " "
-  };
-
-  for (const [bad, good] of Object.entries(replacements)) {
-    cleaned = cleaned.replace(new RegExp(bad.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), good);
-  }
-
-  // Remove excessive whitespace
-  cleaned = cleaned.replace(/[ \t]+/g, ' ');
-  cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
-
-  return cleaned.trim();
-};
-// Helper: Extract PRD output (mirrors Python backend)
-const extractPrdOutput = (result) => {
-  // 1. Check for messages in response
+function extractPrdOutput(result) {
   const messages = result?.response?.messages || [];
-  
-  // Prefer full assistant HTML output from messages
-  for (let i = messages.length - 1; i >= 0; i--) {
+
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
     const msg = messages[i];
     if (typeof msg !== "string") continue;
 
-    // Try to extract content from the message string
     const match = msg.match(/content='(.*?)'\s+additional_kwargs=/s);
     if (!match) continue;
 
     const content = match[1];
-    
-    // Check if it contains HTML headers
     if (content.includes("<h1>") && content.includes("<h2>")) {
       const cleaned = cleanPrdOutput(content);
-      // Avoid truncated output
       if (!cleaned.includes("...") && cleaned.length > 1000) {
         return cleaned;
       }
@@ -418,23 +120,23 @@ const extractPrdOutput = (result) => {
     }
   }
 
-  // 2. Fallback: Check top-level prd_output
   const topMessage = result?.message || "";
   if (topMessage) {
     const parsed = tryParseJsonString(topMessage);
     if (parsed && typeof parsed === "object") {
       const prd = parsed.prd_output || "";
-      if (typeof prd === "string" && 
-          prd.includes("<h1>") && 
-          prd.includes("<h2>") && 
-          !prd.includes("...") && 
-          prd.length > 1000) {
+      if (
+        typeof prd === "string" &&
+        prd.includes("<h1>") &&
+        prd.includes("<h2>") &&
+        !prd.includes("...") &&
+        prd.length > 1000
+      ) {
         return cleanPrdOutput(prd);
       }
     }
   }
 
-  // 3. Check data.prd_output directly
   if (result?.data?.prd_output) {
     const prd = result.data.prd_output;
     if (typeof prd === "string" && prd.includes("<h1>") && prd.includes("<h2>")) {
@@ -442,7 +144,6 @@ const extractPrdOutput = (result) => {
     }
   }
 
-  // 4. Check result.prd_output directly
   if (result?.prd_output) {
     const prd = result.prd_output;
     if (typeof prd === "string" && prd.includes("<h1>") && prd.includes("<h2>")) {
@@ -450,7 +151,6 @@ const extractPrdOutput = (result) => {
     }
   }
 
-  // 5. Try to extract from final_response
   if (result?.final_response) {
     if (typeof result.final_response === "object" && result.final_response.prd_output) {
       return cleanPrdOutput(result.final_response.prd_output);
@@ -460,7 +160,6 @@ const extractPrdOutput = (result) => {
       if (parsed && parsed.prd_output) {
         return cleanPrdOutput(parsed.prd_output);
       }
-      // Check if it's HTML directly
       if (result.final_response.includes("<h1>") && result.final_response.includes("<h2>")) {
         return cleanPrdOutput(result.final_response);
       }
@@ -468,7 +167,7 @@ const extractPrdOutput = (result) => {
   }
 
   return null;
-};
+}
 
 function extractPrdMarkup(value, depth = 0) {
   if (depth > 8 || value === null || value === undefined) return "";
@@ -574,12 +273,6 @@ function extractPrdMarkup(value, depth = 0) {
   }
 
   return "";
-}
-
-function formatApiResponse(value) {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "string") return value;
-  return JSON.stringify(value, null, 2);
 }
 
 function isHtmlLike(value) {
@@ -739,90 +432,6 @@ function buildApiResponseSnapshot(response, bodyText, body) {
     bodyText,
     body,
   };
-}
-
-function toObjectIfPossible(value) {
-  if (value && typeof value === "object") return value;
-  if (typeof value !== "string") return null;
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === "object" ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function stripFence(value) {
-  return String(value || "")
-    .trim()
-    .replace(/^```json/i, "")
-    .replace(/^```/, "")
-    .replace(/```$/, "")
-    .trim();
-}
-
-function extractJsonObjectString(value) {
-  const text = String(value || "");
-  const match = text.match(/\{[\s\S]*\}/);
-  return match ? match[0] : null;
-}
-
-function parseLooseJson(value) {
-  if (value && typeof value === "object") return value;
-  if (typeof value !== "string") return null;
-
-  const cleaned = stripFence(value);
-
-  try {
-    const direct = JSON.parse(cleaned);
-    if (direct && typeof direct === "object") return direct;
-    if (typeof direct === "string") {
-      const nested = parseLooseJson(direct);
-      if (nested) return nested;
-    }
-  } catch {
-    // continue
-  }
-
-  const extracted = extractJsonObjectString(cleaned);
-  if (extracted) {
-    try {
-      const parsed = JSON.parse(extracted);
-      if (parsed && typeof parsed === "object") return parsed;
-    } catch {
-      // continue
-    }
-  }
-
-  const relaxed = cleaned
-    .replace(/\\n/g, "\n")
-    .replace(/\\r/g, "\r")
-    .replace(/\\t/g, "\t")
-    .replace(/\\"/g, '"');
-  if (relaxed !== cleaned) {
-    try {
-      const parsed = JSON.parse(relaxed);
-      if (parsed && typeof parsed === "object") return parsed;
-      if (typeof parsed === "string") {
-        const nested = parseLooseJson(parsed);
-        if (nested) return nested;
-      }
-    } catch {
-      // continue
-    }
-
-    const extractedRelaxed = extractJsonObjectString(relaxed);
-    if (extractedRelaxed) {
-      try {
-        const parsed = JSON.parse(extractedRelaxed);
-        if (parsed && typeof parsed === "object") return parsed;
-      } catch {
-        // continue
-      }
-    }
-  }
-
-  return null;
 }
 
 function normalizeLooseText(value) {
@@ -1335,118 +944,7 @@ const handleGenerateInformationArchitecture = async () => {
       window.dispatchEvent(new Event("neurox:progress-updated"));
     } catch (err) { console.error("Failed to mark stage complete:", err); }
   };
-  const renderUploadButton = (label) => (
-    <label className="block w-full cursor-pointer">
-      <input type="file" className="hidden" onChange={() => alert("Upload will connect to document API")} />
-      <span className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 transition-all hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700">
-        <Upload className="h-4 w-4" />
-        {label}
-      </span>
-    </label>
-  );
-
-  const renderEmpathizeTemplateCard = (template, downloadableTemplateId, isCompleted) => {
-    const media = EMPATHIZE_CARD_MEDIA[template.id] || EMPATHIZE_CARD_MEDIA["other-files"];
-    const workspaceUrl = getWorkspaceUrl(template.name);
-    const topActionLabel = template.id === "empathy-map"
-      ? "Get Started"
-      : template.id === "other-files"
-      ? "Upload"
-      : "Generate Empathy Map";
-    const primaryFooterLabel = template.id === "user-persona" ? "Use Basic Template" : "Use Standard Template";
-    const uploadLabel = template.id === "empathy-map" ? "Upload Standard Template" : "Upload Templates";
-    return (
-      <div key={template.id} className={`group relative overflow-hidden rounded-2xl bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-100 ${isCompleted ? "border border-indigo-300 shadow-md shadow-indigo-100 ring-1 ring-indigo-200" : "border border-gray-100 shadow-sm"}`}>
-        {isCompleted && (
-          <div className="absolute top-3 right-3 z-10 flex items-center gap-1 bg-indigo-600 text-white text-[10px] font-semibold px-2.5 py-1 rounded-full shadow-lg shadow-indigo-200">
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/></svg>
-            Completed
-          </div>
-        )}
-        <div className="p-5">
-          <div className="flex items-start gap-4">
-            <div className={`flex-shrink-0 w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center ${media.iconColor} group-hover:bg-indigo-100 transition-colors`} dangerouslySetInnerHTML={{ __html: media.icon.replace('width="48" height="48"', 'width="24" height="24"') }} />
-            <div className="flex-1 min-w-0 pt-0.5">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-indigo-400 mb-0.5">{media.eyebrow}</p>
-              <h4 className="text-sm font-semibold text-gray-900 leading-snug">{media.title}</h4>
-              <p className="mt-1 text-xs text-gray-500 leading-relaxed line-clamp-2">{media.description}</p>
-            </div>
-          </div>
-          <div className="mt-4 flex flex-col gap-2">
-            <button
-              onClick={(e) => { e.stopPropagation(); if (template.id === "user-persona") { router.push(`/view-persona?projectId=${encodeURIComponent(projectId)}&projectName=${encodeURIComponent(project?.projectName || "")}`); return; } router.push(workspaceUrl); }}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-200 active:scale-[0.98]"
-            >
-              {topActionLabel} 
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); if (!downloadableTemplateId) return; window.location.assign(`/api/templates/download/${downloadableTemplateId}`); }}
-              disabled={!downloadableTemplateId}
-              className="flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-700 transition-all hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Download className="h-4 w-4" />{primaryFooterLabel}
-            </button>
-            {renderUploadButton(uploadLabel)}
-          </div>
-        </div>
-      </div>
-    );
-  };
-  const renderDefineTemplateCard = (template, downloadableTemplateId, isCompleted) => {
-  const media = DEFINE_CARD_MEDIA[template.id] || DEFINE_CARD_MEDIA["problem-statement"];
-  const workspaceUrl = getWorkspaceUrl(template.name);
-  return (
-    <div key={template.id} className={`group relative overflow-hidden rounded-2xl bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-100 ${isCompleted ? "border border-indigo-300 shadow-md shadow-indigo-100 ring-1 ring-indigo-200" : "border border-gray-100 shadow-sm"}`}>
-      {isCompleted && (
-        <div className="absolute top-3 right-3 z-10 flex items-center gap-1 bg-indigo-600 text-white text-[10px] font-semibold px-2.5 py-1 rounded-full shadow-lg shadow-indigo-200">
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/></svg>
-          Completed
-        </div>
-      )}
-      <div className="p-5">
-        <div className="flex items-start gap-4">
-          <div className={`flex-shrink-0 w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center ${media.iconColor} group-hover:bg-indigo-100 transition-colors`} dangerouslySetInnerHTML={{ __html: media.icon.replace('width="48" height="48"', 'width="24" height="24"') }} />
-          <div className="flex-1 min-w-0 pt-0.5">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-indigo-400 mb-0.5">{media.eyebrow}</p>
-            <h4 className="text-sm font-semibold text-gray-900 leading-snug">{media.title}</h4>
-            <p className="mt-1 text-xs text-gray-500 leading-relaxed line-clamp-2">{media.description}</p>
-          </div>
-        </div>
-        <div className="mt-4 flex flex-col gap-2">
-          {template.id === "process-flow" ? (
-            <>
-              <button
-                onClick={(e) => { e.stopPropagation(); handleGenerateProcessFlow(); }}
-                disabled={isGeneratingProcessFlow}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {isGeneratingProcessFlow ? "Generating..." : "Generate"}
-              </button>
-              {processFlowError && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600">{processFlowError}</p>}
-            </>
-          ) : (
-            <button
-              onClick={(e) => { e.stopPropagation(); router.push(`/projects/${projectId}/define#problem-definition-card`); }}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-200 active:scale-[0.98]"
-            >
-              Define 
-            </button>
-          )}
-          <button
-            onClick={(e) => { e.stopPropagation(); if (!downloadableTemplateId) return; window.location.assign(`/api/templates/download/${downloadableTemplateId}`); }}
-            disabled={!downloadableTemplateId}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-700 transition-all hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Download className="h-4 w-4" />Use Standard Template
-          </button>
-          {renderUploadButton("Upload Template")}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const renderGenericCard = (template, stageId, downloadableTemplateId, link, isCompleted) => {
+  const renderGenericCard = (template, stageId, downloadableTemplateId, link, isCompleted) => {
   const mediaMap = STAGE_MEDIA_MAP[stageId] || {};
   const media = mediaMap[template.id] || { image: "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=1200&h=800&fit=crop", eyebrow: stageId, title: template.name, description: "" };
   return (
@@ -1486,221 +984,12 @@ const renderGenericCard = (template, stageId, downloadableTemplateId, link, isCo
   );
 };
 const WireframeReviewerCard = () => {
-  const [image, setImage] = useState(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [wireframeError, setWireframeError] = useState("");
-  const inputRef = useRef(null);
   const media = IDEATE_CARD_MEDIA["wireframe-reviewer"];
 
-  const normalizeWireframeError = (value) => {
-    const text = String(value || "").trim();
-    if (!text) return "Analysis failed. Please try again.";
-    if (/<\/?[a-z][\s\S]*>/i.test(text)) {
-      return "Wireframe service returned an unexpected error page. Please try again.";
-    }
-    return text;
-  };
-
-  const handleFile = async (file) => {
-    if (!file || isGenerating) return;
-
-    setWireframeError("");
-    setIsGenerating(true);
-    setImage({ name: file.name, url: URL.createObjectURL(file) });
-
-    try {
-      const formData = new FormData();
-      formData.append("image", file);
-
-      const response = await fetch("/api/analyze-wireframe", { method: "POST", body: formData });
-      const contentType = response.headers.get("content-type") || "";
-
-      if (!contentType.includes("application/json")) {
-        const text = await response.text();
-        throw new Error(normalizeWireframeError(text));
-      }
-
-      const data = await response.json();
-
-      if (!response.ok || !data?.success) {
-        throw new Error(normalizeWireframeError(data?.error));
-      }
-
-      sessionStorage.setItem("wireframeResult", data.result);
-      if (data._fallback) {
-        sessionStorage.setItem("wireframeResultFallback", "1");
-      } else {
-        sessionStorage.removeItem("wireframeResultFallback");
-      }
-      router.push(`/projects/${projectId}/wireframe-result`);
-    } catch (error) {
-      console.warn("[WireframeReviewer]", error?.message || error);
-      setWireframeError(normalizeWireframeError(error?.message));
-      setIsGenerating(false);
-    }
-  };
-
-  const onDrop = (e) => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); };
-
-  const handleRemove = () => {
-    setImage(null);
-    setWireframeError("");
-    if (inputRef.current) inputRef.current.value = "";
-  };
-
   return (
-   <div className="relative flex flex-col rounded-2xl bg-white border border-gray-100 transition-all hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-100">
-
-  {isGenerating && (
-    <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-white/85 backdrop-blur-sm px-4 py-4">
-      <div className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        Analyzing wireframe...
-      </div>
-    </div>
-  )}
-
-  <div className="p-5 flex items-start gap-3">
-    <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
-      <FileText className="w-5 h-5 text-indigo-600" />
-    </div>
-
-    <div>
-      <p className="text-xs font-semibold tracking-widest text-indigo-500 uppercase">
-        Design Review
-      </p>
-      <h3 className="text-base font-semibold text-gray-900">
-        Wireframe Reviewer
-      </h3>
-    </div>
-  </div>
-
-  <p className="px-5 text-sm text-gray-600">
-    Upload a wireframe image for AI-powered review and analysis.
-  </p>
-
-  <div className="px-5 mt-3">
-    {wireframeError && (
-      <div className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
-        <p className="text-xs text-red-700">{wireframeError}</p>
-      </div>
-    )}
-
-    {!wireframeError && image && (
-      <div className="flex items-center justify-between rounded-lg bg-green-50 border border-green-200 px-3 py-2">
-        <span className="text-xs text-green-700 truncate">
-          {image.name}
-        </span>
-
-        {!isGenerating && (
-          <button
-            onClick={handleRemove}
-            className="text-xs text-red-500 hover:text-red-700"
-          >
-            Remove
-          </button>
-        )}
-      </div>
-    )}
-  </div>
-
-  <div className="mt-auto p-5">
-    <button
-  onClick={() => router.push(`/projects/${projectId}/wireframe-analyzer`)}
-  className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 disabled:opacity-60"
->
-  Get Started
-</button>
-
-    
-  </div>
-</div>
+    <WireframeSection projectId={projectId} router={router} media={media} />
   );
 };
-const renderIdeateTemplateCard = (template, isCompleted) => {
-  const media = IDEATE_CARD_MEDIA[template.id] || IDEATE_CARD_MEDIA["information-architecture"];
-
-  return (
-    <div className={`group relative flex flex-col rounded-2xl bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-100 ${
-      isCompleted ? "border border-indigo-300 ring-1 ring-indigo-200" : "border border-gray-100"
-    }`}>
-
-      {isCompleted && (
-        <div className="absolute top-3 right-3 z-10 flex items-center gap-1 bg-indigo-600 text-white text-[10px] font-semibold px-2.5 py-1 rounded-full">
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/>
-          </svg>
-          Completed
-        </div>
-      )}
-
-      <div className="p-5 flex items-start gap-3">
-        <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
-      <FileText className="w-5 h-5 text-indigo-600" />
-    </div>
-
-        <div>
-          <p className="text-xs font-semibold tracking-widest text-indigo-500 uppercase">
-            {media.eyebrow}
-          </p>
-          <h3 className="text-base font-semibold text-gray-900">
-            {media.title}
-          </h3>
-        </div>
-      </div>
-
-      <p className="px-5 text-sm text-gray-600">
-        {media.description}
-      </p>
-
-      <div className="mt-auto p-5 space-y-2">
-        <button
-  onClick={(e) => {
-    e.stopPropagation();
-    handleGenerateInformationArchitecture();
-  }}
-  disabled={isGeneratingIA}
-  className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
->
-  {isGeneratingIA ? (
-    <>
-      <svg
-        className="h-4 w-4 animate-spin"
-        xmlns="http://www.w3.org/2000/svg"
-        fill="none"
-        viewBox="0 0 24 24"
-      >
-        <circle
-          cx="12"
-          cy="12"
-          r="10"
-          stroke="currentColor"
-          strokeWidth="4"
-          className="opacity-25"
-        />
-        <path
-          fill="currentColor"
-          className="opacity-75"
-          d="M4 12a8 8 0 018-8v8H4z"
-        />
-      </svg>
-      Generating...
-    </>
-  ) : (
-    "Generate IA"
-  )}
-</button>
-
-        {informationArchitectureError && (
-          <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">
-            {informationArchitectureError}
-          </p>
-        )}
-      </div>
-    </div>
-  );
-};
-
 const handleOpenBrdModal = async () => {
   setIsBrdModalOpen(true);
   setBrdProgress([]);
@@ -2500,52 +1789,56 @@ const handleDownloadBrdDoc = async () => {
                           if (stage.id === "empathize") {
                             return (
                               <div key={template.id} className="space-y-3">
-                                {renderEmpathizeTemplateCard(template, downloadableTemplateId, isCompleted)}
-                                {documents.length > 0 && (
-                                  <div className="space-y-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
-                                    {documents.map((doc) => (
-                                      <div key={doc.documentId} className="rounded-lg border border-gray-200 bg-white p-2.5">
-                                        <div className="mb-1 flex items-center gap-2">
-                                          <FileText className="h-4 w-4 text-blue-500" />
-                                          <span className="truncate text-xs text-gray-900">{getFileName(doc.blobPath)}</span>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                          <span className="text-xs text-gray-500">
-                                            {doc.status} • {new Date(doc.createdAt).toLocaleDateString()}
-                                          </span>
-                                          <div className="flex items-center gap-2">
-                                            <button className="text-blue-600 hover:text-blue-800">
-                                              <Download className="h-3 w-3" />
-                                            </button>
-                                            <button
-                                              onClick={async () => {
-                                                if (window.confirm("Delete this document?")) {
-                                                  try {
-                                                    await api.deleteDocument(doc.documentId);
-                                                    await fetchDocuments();
-                                                    alert("Document deleted");
-                                                  } catch (err) {
-                                                    alert("Delete failed: " + err.message);
-                                                  }
-                                                }
-                                              }}
-                                              className="text-red-500 hover:text-red-700"
-                                            >
-                                              <Trash2 className="h-3 w-3" />
-                                            </button>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
+                                <StageTemplateCard
+                                  stageId={stage.id}
+                                  template={template}
+                                  isCompleted={isCompleted}
+                                  downloadableTemplateId={downloadableTemplateId}
+                                  documents={documents}
+                                  getFileName={getFileName}
+                                  workspaceUrl={getWorkspaceUrl(template.name)}
+                                  projectName={project?.projectName || ""}
+                                  router={router}
+                                  onDeleteDocument={(documentId) => api.deleteDocument(documentId)}
+                                  onRefreshDocuments={() => fetchDocuments()}
+                                  onGenerateProcessFlow={handleGenerateProcessFlow}
+                                  isGeneratingProcessFlow={isGeneratingProcessFlow}
+                                  processFlowError={processFlowError}
+                                  onGenerateInformationArchitecture={handleGenerateInformationArchitecture}
+                                  isGeneratingIA={isGeneratingIA}
+                                  informationArchitectureError={informationArchitectureError}
+                                  empathizeCardMedia={EMPATHIZE_CARD_MEDIA}
+                                  defineCardMedia={DEFINE_CARD_MEDIA}
+                                  ideateCardMedia={IDEATE_CARD_MEDIA}
+                                />
                               </div>
                             );
                           }
                           if (stage.id === "define") {
                             return (
                               <div key={template.id} className="space-y-3">
-                                {renderDefineTemplateCard(template, downloadableTemplateId, isCompleted)}
+                                <StageTemplateCard
+                                  stageId={stage.id}
+                                  template={template}
+                                  isCompleted={isCompleted}
+                                  downloadableTemplateId={downloadableTemplateId}
+                                  documents={documents}
+                                  getFileName={getFileName}
+                                  workspaceUrl={getWorkspaceUrl(template.name)}
+                                  projectName={project?.projectName || ""}
+                                  router={router}
+                                  onDeleteDocument={(documentId) => api.deleteDocument(documentId)}
+                                  onRefreshDocuments={() => fetchDocuments()}
+                                  onGenerateProcessFlow={handleGenerateProcessFlow}
+                                  isGeneratingProcessFlow={isGeneratingProcessFlow}
+                                  processFlowError={processFlowError}
+                                  onGenerateInformationArchitecture={handleGenerateInformationArchitecture}
+                                  isGeneratingIA={isGeneratingIA}
+                                  informationArchitectureError={informationArchitectureError}
+                                  empathizeCardMedia={EMPATHIZE_CARD_MEDIA}
+                                  defineCardMedia={DEFINE_CARD_MEDIA}
+                                  ideateCardMedia={IDEATE_CARD_MEDIA}
+                                />
                               </div>
                             );
                           }
@@ -2560,7 +1853,28 @@ const handleDownloadBrdDoc = async () => {
                           if (stage.id === "ideate" && template.id === "information-architecture") {
                             return (
                               <div key={template.id} className="h-full">
-                                {renderIdeateTemplateCard(template, isCompleted)}
+                                <StageTemplateCard
+                                  stageId={stage.id}
+                                  template={template}
+                                  isCompleted={isCompleted}
+                                  downloadableTemplateId={downloadableTemplateId}
+                                  documents={documents}
+                                  getFileName={getFileName}
+                                  workspaceUrl={getWorkspaceUrl(template.name)}
+                                  projectName={project?.projectName || ""}
+                                  router={router}
+                                  onDeleteDocument={(documentId) => api.deleteDocument(documentId)}
+                                  onRefreshDocuments={() => fetchDocuments()}
+                                  onGenerateProcessFlow={handleGenerateProcessFlow}
+                                  isGeneratingProcessFlow={isGeneratingProcessFlow}
+                                  processFlowError={processFlowError}
+                                  onGenerateInformationArchitecture={handleGenerateInformationArchitecture}
+                                  isGeneratingIA={isGeneratingIA}
+                                  informationArchitectureError={informationArchitectureError}
+                                  empathizeCardMedia={EMPATHIZE_CARD_MEDIA}
+                                  defineCardMedia={DEFINE_CARD_MEDIA}
+                                  ideateCardMedia={IDEATE_CARD_MEDIA}
+                                />
                               </div>
                             );
                           }
@@ -2609,436 +1923,58 @@ const handleDownloadBrdDoc = async () => {
         />
       )}
 
-     {isBrdInputModalOpen && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-    <div className="w-full max-w-3xl rounded-2xl bg-white shadow-xl">
+      <BRDSection
+        isBrdInputModalOpen={isBrdInputModalOpen}
+        onCloseBrdInputModal={() => setIsBrdInputModalOpen(false)}
+        onGenerateBrd={() => {
+          setIsBrdInputModalOpen(false);
+          handleOpenBrdModal();
+        }}
+        isBrdModalOpen={isBrdModalOpen}
+        onCloseBrdModal={() => setIsBrdModalOpen(false)}
+        brdLoading={brdLoading}
+        brdError={brdError}
+        brdProgress={brdProgress}
+        brdSteps={BRD_STEPS}
+        brdData={brdData}
+        brdMeta={brdMeta}
+        brdActiveSections={brdActiveSections}
+        brdCollapsed={brdCollapsed}
+        onToggleBrdSection={toggleBrdSection}
+        isDownloadingBrd={isDownloadingBrd}
+        onDownloadBrdDoc={handleDownloadBrdDoc}
+        businessOwner={businessOwner}
+        setBusinessOwner={setBusinessOwner}
+        productOwner={productOwner}
+        setProductOwner={setProductOwner}
+        engineeringLead={engineeringLead}
+        setEngineeringLead={setEngineeringLead}
+        complianceOwner={complianceOwner}
+        setComplianceOwner={setComplianceOwner}
+        endUsers={endUsers}
+        setEndUsers={setEndUsers}
+        budgetRange={budgetRange}
+        setBudgetRange={setBudgetRange}
+        expectedTimeline={expectedTimeline}
+        setExpectedTimeline={setExpectedTimeline}
+        regulatoryRequirements={regulatoryRequirements}
+        setRegulatoryRequirements={setRegulatoryRequirements}
+        renderBrdContent={renderBrdContent}
+        formatKeyLabel={formatKeyLabel}
+      />
 
-      {/* Header */}
-      <div className="border-b px-6 py-4">
-        <h2 className="text-xl font-semibold text-gray-900">
-          BRD Additional Details
-        </h2>
-        <p className="mt-1 text-sm text-gray-500">
-          Provide additional business and project information to improve the
-          generated Business Requirements Document.
-        </p>
-      </div>
-
-      {/* Form Body */}
-      <div className="max-h-[70vh] overflow-y-auto px-6 py-5">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Business Owner
-            </label>
-            <input
-              value={businessOwner}
-              onChange={(e) => setBusinessOwner(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 p-2.5"
-              placeholder="Enter business owner"
-            />
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Product Owner
-            </label>
-            <input
-              value={productOwner}
-              onChange={(e) => setProductOwner(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 p-2.5"
-              placeholder="Enter product owner"
-            />
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Engineering Lead
-            </label>
-            <input
-              value={engineeringLead}
-              onChange={(e) => setEngineeringLead(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 p-2.5"
-              placeholder="Enter engineering lead"
-            />
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Compliance Owner
-            </label>
-            <input
-              value={complianceOwner}
-              onChange={(e) => setComplianceOwner(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 p-2.5"
-              placeholder="Enter compliance owner"
-            />
-          </div>
-
-          <div className="md:col-span-2">
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              End Users
-            </label>
-            <textarea
-              value={endUsers}
-              onChange={(e) => setEndUsers(e.target.value)}
-              rows={3}
-              className="w-full rounded-lg border border-gray-300 p-2.5"
-              placeholder="Describe target users"
-            />
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Budget Range
-            </label>
-            <input
-              value={budgetRange}
-              onChange={(e) => setBudgetRange(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 p-2.5"
-              placeholder="₹10,00,000 - ₹20,00,000"
-            />
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Expected Timeline
-            </label>
-            <input
-              value={expectedTimeline}
-              onChange={(e) => setExpectedTimeline(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 p-2.5"
-              placeholder="6 Months"
-            />
-          </div>
-
-          <div className="md:col-span-2">
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Regulatory Requirements
-            </label>
-            <textarea
-              value={regulatoryRequirements}
-              onChange={(e) => setRegulatoryRequirements(e.target.value)}
-              rows={4}
-              className="w-full rounded-lg border border-gray-300 p-2.5"
-              placeholder="Enter compliance, legal, security or regulatory requirements"
-            />
-          </div>
-
-        </div>
-      </div>
-
-      {/* Footer */}
-      <div className="flex justify-end gap-3 border-t px-6 py-4">
-        <button
-          type="button"
-          onClick={() => setIsBrdInputModalOpen(false)}
-          className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-        >
-          Cancel
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setIsBrdInputModalOpen(false);
-            handleOpenBrdModal();
-          }}
-          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-        >
-          Generate BRD
-        </button>
-      </div>
-
-    </div>
-  </div>
-)}
-
-      {isBrdModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 px-4 pb-10 pt-8"
-          onClick={() => setIsBrdModalOpen(false)}
-        >
-          <div
-            className="w-full max-w-6xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-indigo-500">Generated Document</p>
-                <h3 className="text-sm font-semibold text-gray-900">Business Requirements Document</h3>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleDownloadBrdDoc}
-                  disabled={!brdDoc || isDownloadingBrd}
-                  className="inline-flex h-9 items-center gap-2 rounded-md border border-indigo-600 bg-indigo-600 px-3 text-xs font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Download className="h-4 w-4" />
-                  {isDownloadingBrd ? "Preparing..." : "Download Word"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsBrdModalOpen(false)}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-600 transition hover:bg-gray-50"
-                  aria-label="Close BRD modal"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-
-            <div className="max-h-[84vh] overflow-y-auto bg-[#e8ebf0] px-6 py-6">
-            
-
-              {brdLoading ? (
-                              <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white px-8 py-8 shadow-sm">
-                  <p className="text-sm font-semibold text-slate-700">
-                    Generating BRD Document
-                  </p>
-
-                  <div className="space-y-3">
-                    {brdProgress.map((step, index) => (
-                      <div key={index} className="flex items-center gap-3 text-sm">
-                        {step.done ? (
-  <span className="text-green-600 font-bold">✓</span>
-) : (
-  <div className="relative flex h-5 w-5 items-center justify-center">
-    <div className="absolute h-5 w-5 animate-ping rounded-full bg-indigo-200 opacity-50" />
-    <div className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
-  </div>
-)}
-
-                        <span className={step.done ? "text-green-700" : "text-slate-600"}>
-                          {step.label}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {brdProgress.length < BRD_STEPS.length && (
-                    <p className="text-xs text-slate-400">
-                      AI is structuring your document...
-                    </p>
-                  )}
-                </div>
-                   
-              ) : brdError ? (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
-                  {brdError}
-                </div>
-              ) : brdDoc ? (
-                <article className="formal-doc mx-auto max-w-[920px] overflow-hidden border border-slate-300 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.18)]">
-                  <header className="doc-cover border-b border-slate-200 px-12 py-12">
-                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-                      Business Document
-                    </p>
-                    <h2 className="text-[34px] font-bold leading-tight text-slate-900">
-                      Business Requirements Document
-                    </h2>
-                    <p className="mt-3 text-[18px] text-slate-700">
-                      {brdMeta?.project_name || "Untitled Project"}
-                    </p>
-                    {brdMeta && (
-                      <div className="mt-4 flex flex-wrap gap-3 text-[12px] text-slate-500">
-                        {brdMeta.date_submitted && (
-                          <span>Submitted: {brdMeta.date_submitted}</span>
-                        )}
-                        {brdMeta.version && <span>Version: {brdMeta.version}</span>}
-                        {brdMeta.status && (
-                          <span>Status: {brdMeta.status}</span>
-                        )}
-                      </div>
-                    )}
-                  </header>
-
-                  {brdMeta && (
-                    <section className="border-b border-slate-200 bg-slate-50 px-12 py-7">
-                      <h4 className="mb-4 text-[12px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                        Document Metadata
-                      </h4>
-                      <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
-                        {[
-                          { key: "project_name", label: "Project" },
-                          { key: "project_manager", label: "Project Manager" },
-                          { key: "date_submitted", label: "Submitted" },
-                          { key: "version", label: "Version" },
-                          { key: "status", label: "Status" },
-                          { key: "department", label: "Department" },
-                        ].map((field) => (
-                          <div key={field.key} className="rounded-md border border-slate-200 bg-white px-3.5 py-3">
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-slate-500">
-                              {field.label}
-                            </p>
-                            <p className="mt-1 text-sm font-medium text-slate-700">
-                              {String(brdMeta[field.key] || "Not specified")}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </section>
-                  )}
-
-                  <div className="divide-y divide-slate-100">
-                    {brdActiveSections.length === 0 ? (
-                      <p className="px-12 py-10 text-center text-sm text-slate-400">
-                        No BRD sections found in the agent response.
-                      </p>
-                    ) : (
-                      brdActiveSections.map((section) => {
-                        const collapsed = Boolean(brdCollapsed[section.key]);
-                        return (
-                          <div key={section.key}>
-                            <button
-                              type="button"
-                              onClick={() => toggleBrdSection(section.key)}
-                              className="flex w-full items-center gap-4 px-12 py-5 text-left transition-colors hover:bg-slate-50"
-                            >
-                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-slate-100 text-[11px] font-bold text-slate-700">
-                                {section.num}
-                              </span>
-                              <span className="flex-1 text-[17px] font-semibold tracking-tight text-slate-800">
-                                {section.title}
-                              </span>
-                              <span className="shrink-0 text-xs text-slate-400">
-                                {collapsed ? "▶" : "▼"}
-                              </span>
-                            </button>
-                            {!collapsed && (
-                              <div className="border-t border-slate-100 bg-white px-12 pb-8 pt-5">
-                                {renderBrdContent(brdDoc[section.key], section.type)}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-
-                  <div className="border-t border-slate-200 bg-slate-50 px-12 py-4 text-xs text-slate-500">
-                    Document rendered in stakeholder review format.
-                  </div>
-                </article>
-              ) : (
-                <div className="rounded-xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-400 shadow-sm">
-                  No BRD data available.
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isPrdModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-8"
-          onClick={() => setIsPrdModalOpen(false)}
-        >
-          <div
-            className="w-full max-w-6xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-gray-200 bg-white px-5 py-4">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-indigo-500">Generated Document</p>
-                <h3 className="text-base font-semibold text-gray-900">Product Requirements Document</h3>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                        type="button"
-                        onClick={handleRegeneratePrd}
-                        disabled={prdLoading}
-                        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-indigo-600 bg-indigo-600 px-3 text-xs font-semibold text-white hover:bg-indigo-700"
-                      >
-                        Regenerate
-                      </button>
-                <button
-                  type="button"
-                  onClick={handleDownloadPrdDoc}
-                  disabled={!prdHtml || isDownloadingPrd}
-                  className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-indigo-600 bg-indigo-600 px-3 text-xs font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Download className="h-4 w-4" />
-                  {isDownloadingPrd ? "Preparing..." : "Download Word"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsPrdModalOpen(false)}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-600 transition hover:bg-gray-50"
-                  aria-label="Close PRD modal"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-
-            <div className="max-h-[84vh] overflow-auto bg-[#e8ebf0] p-5">
-              {prdLoading ? (
-                 <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white px-8 py-8 shadow-sm">
-    <p className="text-sm font-semibold text-slate-700">
-      Generating PRD Document
-    </p>
-
-    <div className="space-y-3">
-      {prdProgress.map((step, index) => (
-        <div key={index} className="flex items-center gap-3 text-sm">
-          {step.done ? (
-            <span className="text-green-600 font-bold">✓</span>
-          ) : (
-            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-indigo-500" />
-          )}
-
-          <span className={step.done ? "text-green-700" : "text-slate-600"}>
-            {step.label}
-          </span>
-        </div>
-      ))}
-    </div>
-
-    {prdProgress.length < PRD_STEPS.length && (
-      <p className="text-xs text-slate-400">
-        AI is structuring your product document...
-      </p>
-    )}
-  </div>
-              ) : (
-                <div className="space-y-4">
-                  {prdError && (
-                    <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-                      {prdError}
-                    </div>
-                  )}
-
-                  {prdHtml ? (
-                    <article className="formal-doc mx-auto max-w-[920px] overflow-hidden border border-slate-300 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.18)]">
-                      <header className="doc-cover border-b border-slate-200 px-12 py-12">
-                        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-                          Product Document
-                        </p>
-                        <h2 className="text-[34px] font-bold leading-tight text-slate-900">
-                          Product Requirements Document
-                        </h2>
-                        <p className="mt-3 text-[16px] text-slate-700">
-                          Structured output optimized for stakeholder review and publication.
-                        </p>
-                      </header>
-                      <div className="doc-html px-12 py-10">
-                        <div dangerouslySetInnerHTML={{ __html: prdHtml }} />
-                      </div>
-                    </article>
-                  ) : (
-                    <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
-                      No PRD output available.
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <PRDSection
+        isPrdModalOpen={isPrdModalOpen}
+        onClosePrdModal={() => setIsPrdModalOpen(false)}
+        prdLoading={prdLoading}
+        prdError={prdError}
+        prdProgress={prdProgress}
+        prdSteps={PRD_STEPS}
+        prdHtml={prdHtml}
+        isDownloadingPrd={isDownloadingPrd}
+        onDownloadPrdDoc={handleDownloadPrdDoc}
+        onRegeneratePrd={handleRegeneratePrd}
+      />
 
       <style jsx>{`
         .persona-container {

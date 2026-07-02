@@ -2,78 +2,7 @@
 
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-
-
-function parsePersonaOutput(rawOutput, fallbackName) {
-  const normalized = String(rawOutput || "").replace(/\r\n/g, "\n").trim();
-
-  const getHeadingBlock = (text, heading) => {
-    const regex = new RegExp(
-      `${heading}:?\\s*([\\s\\S]*?)(?=\\n[A-Z][a-zA-Z ]+:|$)`,
-      "i"
-    );
-    return text.match(regex)?.[1]?.trim() || "";
-  };
-
-  const getBullets = (block) => {
-    if (!block) return [];
-    return block
-      .split("\n")
-      .map((l) => l.replace(/^[-•*]\s*/, "").trim())
-      .filter(Boolean);
-  };
-
-  return {
-  name: fallbackName || "Persona",
-  says: getBullets(getHeadingBlock(normalized, "Says")),
-  thinks: getBullets(getHeadingBlock(normalized, "Thinks")),
-  does: getBullets(getHeadingBlock(normalized, "Does")),
-  feels: getBullets(getHeadingBlock(normalized, "Feels")),
-  painPoints: getBullets(getHeadingBlock(normalized, "Pain Points")),
-  needs: getBullets(getHeadingBlock(normalized, "Needs")),
-};
-}
-
-function buildPersonaOutput(data) {
-  return `Says:
-${(data.says || []).map((x) => `- ${x}`).join("\n")}
-
-Thinks:
-${(data.thinks || []).map((x) => `- ${x}`).join("\n")}
-
-Does:
-${(data.does || []).map((x) => `- ${x}`).join("\n")}
-
-Feels:
-${(data.feels || []).map((x) => `- ${x}`).join("\n")}
-
-Pain Points:
-${(data.painPoints || []).map((x) => `- ${x}`).join("\n")}
-
-Needs:
-${(data.needs || []).map((x) => `- ${x}`).join("\n")}`;
-}
-
-function parseSummaryAndInsights(rawText) {
-  const normalized = String(rawText || "").replace(/\\n/g, "\n").trim();
-  const parts = normalized.split(/Key Insights:/i);
-
-  const summaryPart = (parts[0] || "")
-    .replace(/User Summary:/i, "")
-    .trim();
-
-  const insightsPart = parts[1]
-    ? parts[1]
-        .split("\n")
-        .map((line) => line.replace(/^[-•*\d.\s]+/, "").trim())
-        .filter(Boolean)
-    : [];
-
-  return {
-    summaryPart,
-    insightsPart,
-  };
-}
+import { buildPersonaOutput, parsePersonaOutput, parseSummaryAndInsights } from "@/utils/documentParsers";
 
 function ViewPersonaContent() {
   const router = useRouter();

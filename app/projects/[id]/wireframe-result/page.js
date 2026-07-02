@@ -21,60 +21,11 @@ import {
 import { saveAs } from "file-saver";
 import { RefreshCw } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-
-function decodeUnicode(str) {
-  return str.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
-    String.fromCharCode(parseInt(hex, 16))
-  );
-}
+import { parseWireframeResult } from "@/utils/documentParsers";
+import { formatKeyLabel } from "@/utils/stringUtils";
 
 function parseResult(raw) {
-  const text = decodeUnicode(raw || "");
-
-  // Normalize: collapse \r\n
-  const normalized = text.replace(/\r\n/g, "\n");
-
-  // Extract WIREFRAME SUMMARY block
-  const summaryMatch = normalized.match(
-    /WIREFRAME\s+SUMMARY[:\s]*([\s\S]*?)(?=\n\s*(?:##\s*)?UI\s*\/\s*UX\s+ENHANCEMENTS|$)/i
-  );
-  // Extract UI/UX ENHANCEMENTS block
-  const enhancementsMatch = normalized.match(
-    /UI\s*\/\s*UX\s+ENHANCEMENTS[:\s]*([\s\S]*)$/i
-  );
-
-  const summary = summaryMatch ? summaryMatch[1].trim() : "";
-  const enhancementsRaw = enhancementsMatch ? enhancementsMatch[1].trim() : "";
-  const enhancements = [];
-
-  if (enhancementsRaw) {
-    // Split on any line that starts with: "1.", "1)", "**1.", "**1)", "- 1.", etc.
-    const chunks = enhancementsRaw.split(/\n(?=\s*(?:\*{1,2})?\d+[.)]\s)/);
-    for (const chunk of chunks) {
-      const trimmed = chunk.trim();
-      if (!trimmed) continue;
-      // Strip leading bold markers and number
-      const lineMatch = trimmed.match(/^\*{0,2}\d+[.)]\*{0,2}\s+([\s\S]*)/);
-      if (lineMatch) {
-        const body = lineMatch[1].replace(/^\*+|\*+$/g, "").trim();
-        const [title, ...rest] = body.split("\n");
-        enhancements.push({ title: title.trim(), detail: rest.join("\n").trim() });
-      } else if (trimmed) {
-        // Non-numbered line — treat as a plain item
-        enhancements.push({ title: trimmed, detail: "" });
-      }
-    }
-  }
-
-  return { summary, enhancements, raw: normalized };
-}
-
-function formatKeyLabel(key) {
-  return String(key || "")
-    .replace(/_/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+  return parseWireframeResult(raw);
 }
 
 function toObjectIfPossible(value) {
@@ -86,15 +37,6 @@ function toObjectIfPossible(value) {
   } catch {
     return null;
   }
-}
-
-function stripFence(value) {
-  return String(value || "")
-    .trim()
-    .replace(/^```json/i, "")
-    .replace(/^```/, "")
-    .replace(/```$/, "")
-    .trim();
 }
 
 function extractJsonObjectString(value) {
@@ -160,13 +102,6 @@ function parseLooseJson(value) {
   }
 
   return null;
-}
-
-function normalizeLooseText(value) {
-  return stripFence(String(value || ""))
-    .replace(/\\n/g, "\n")
-    .replace(/\\r/g, "\r")
-    .replace(/\\t/g, "\t");
 }
 
 function appendWordValue(paragraphs, value, depth = 0) {
@@ -237,17 +172,6 @@ function appendWordValue(paragraphs, value, depth = 0) {
   paragraphs.push(new Paragraph({ text: String(value), spacing: { after: 120 } }));
 }
 
-function cleanPrdHtml(value) {
-  const text = String(value || "").trim();
-
-  // basic sanitization for display safety
-  return text
-    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
-    .replace(/\son\w+\s*=\s*"[^"]*"/gi, "")
-    .replace(/\son\w+\s*=\s*'[^']*'/gi, "")
-    .replace(/\sjavascript:/gi, " ");
-}
-
 function decodeEscapedText(value) {
   return String(value || "")
     .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
@@ -311,12 +235,6 @@ function extractPrdMarkup(value, depth = 0) {
   }
 
   return "";
-}
-
-function formatApiResponse(value) {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "string") return value;
-  return JSON.stringify(value, null, 2);
 }
 
 function isHtmlLike(value) {
