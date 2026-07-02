@@ -27,6 +27,7 @@ import ProjectHeader from "./components/ProjectHeader";
 import DocumentActionBar from "./components/DocumentActionBar";
 import PersonaSectionPanel from "./components/PersonaSectionPanel";
 import StageAccordion from "./components/StageAccordion";
+import ResearchSummaryModal from "@/components/ResearchSummaryModal";
 
 const STAGES = [
   { id: "empathize", name: "Empathize", description: "Understand your users through observation and engagement." },
@@ -890,7 +891,7 @@ const [budgetRange, setBudgetRange] = useState("");
 const [expectedTimeline, setExpectedTimeline] = useState("");
 const [regulatoryRequirements, setRegulatoryRequirements] = useState("");
 const [isBrdInputModalOpen, setIsBrdInputModalOpen] = useState(false);
-
+const [isResearchSummaryModalOpen, setIsResearchSummaryModalOpen] = useState(false);
 const BRD_STEPS = [
   "Analyzing requirements",
   "Extracting business requirements",
@@ -2580,18 +2581,19 @@ const handleDownloadBrdDoc = async () => {
       </div>
 
       <DocumentActionBar
-        canGenerateDocuments={canGenerateDocuments}
-        isOpeningPrd={isOpeningPrd}
-        onGenerateBrd={() => setIsBrdInputModalOpen(true)}
-        onGeneratePrd={async () => {
-          setIsOpeningPrd(true);
-          try {
-            await handleOpenPrdModal();
-          } finally {
-            setIsOpeningPrd(false);
-          }
-        }}
-      />
+  canGenerateDocuments={canGenerateDocuments}
+  isOpeningPrd={isOpeningPrd}
+  onGenerateBrd={() => setIsBrdInputModalOpen(true)}
+  onGeneratePrd={async () => {
+    setIsOpeningPrd(true);
+    try {
+      await handleOpenPrdModal();
+    } finally {
+      setIsOpeningPrd(false);
+    }
+  }}
+  onResearchSummary={() => setIsResearchSummaryModalOpen(true)}
+/>
 
       {showPersonaSection && (
         <PersonaSectionPanel
@@ -2931,6 +2933,12 @@ const handleDownloadBrdDoc = async () => {
         </div>
       )}
 
+      <ResearchSummaryModal
+    open={isResearchSummaryModalOpen}
+    onClose={() => setIsResearchSummaryModalOpen(false)}
+    projectId={projectId}
+/>
+
       {isPrdModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-8"
@@ -3039,6 +3047,8 @@ const handleDownloadBrdDoc = async () => {
           </div>
         </div>
       )}
+
+      
 
       <style jsx>{`
         .persona-container {
