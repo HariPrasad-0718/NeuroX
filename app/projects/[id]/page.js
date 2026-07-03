@@ -499,7 +499,7 @@ const [budgetRange, setBudgetRange] = useState("");
 const [expectedTimeline, setExpectedTimeline] = useState("");
 const [regulatoryRequirements, setRegulatoryRequirements] = useState("");
 const [isBrdInputModalOpen, setIsBrdInputModalOpen] = useState(false);
-
+const [isResearchSummaryModalOpen, setIsResearchSummaryModalOpen] = useState(false);
 const BRD_STEPS = [
   "Analyzing requirements",
   "Extracting business requirements",
@@ -1894,18 +1894,19 @@ const handleDownloadBrdDoc = async () => {
       </div>
 
       <DocumentActionBar
-        canGenerateDocuments={canGenerateDocuments}
-        isOpeningPrd={isOpeningPrd}
-        onGenerateBrd={() => setIsBrdInputModalOpen(true)}
-        onGeneratePrd={async () => {
-          setIsOpeningPrd(true);
-          try {
-            await handleOpenPrdModal();
-          } finally {
-            setIsOpeningPrd(false);
-          }
-        }}
-      />
+  canGenerateDocuments={canGenerateDocuments}
+  isOpeningPrd={isOpeningPrd}
+  onGenerateBrd={() => setIsBrdInputModalOpen(true)}
+  onGeneratePrd={async () => {
+    setIsOpeningPrd(true);
+    try {
+      await handleOpenPrdModal();
+    } finally {
+      setIsOpeningPrd(false);
+    }
+  }}
+  onResearchSummary={() => setIsResearchSummaryModalOpen(true)}
+/>
 
       {showPersonaSection && (
         <PersonaSectionPanel
@@ -1975,6 +1976,8 @@ const handleDownloadBrdDoc = async () => {
         onDownloadPrdDoc={handleDownloadPrdDoc}
         onRegeneratePrd={handleRegeneratePrd}
       />
+
+      
 
       <style jsx>{`
         .persona-container {
