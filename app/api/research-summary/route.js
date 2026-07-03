@@ -55,6 +55,26 @@ export async function POST(req) {
 
     const pool = await getPool();
 
+    // Check if Research Summary already exists
+const existing = await pool
+  .request()
+  .input("projectId", sql.Int, Number(projectId))
+  .query(`
+      SELECT report
+      FROM research_summary_reports
+      WHERE project_id = @projectId
+`);
+
+if (existing.recordset.length) {
+  return NextResponse.json({
+    success: true,
+    report: cleanResearchSummary(
+    existing.recordset[0].report
+),
+    source: "database",
+  });
+}
+
     const result = await pool
       .request()
       .input("projectId", sql.Int, Number(projectId))
@@ -162,26 +182,53 @@ console.log(Object.keys(parsed));
 console.log("PARSED OBJECT:");
 console.dir(parsed, { depth: null });
 
-    let report = "";
 
-    if (parsed) {
-      report =
+    let reportText = "";
+
+if (parsed) {
+  reportText =
     parsed.output?.content ||
     parsed.output ||
     parsed.content ||
     parsed.message ||
     parsed.final_response ||
     "";
-    } else {
-      report = rawText;
-    }
+} else {
+  reportText = rawText;
+}
+
+// Extract HTML from:
+// user_research_summary_report='<h1>...</h1>'
+const match = reportText.match(
+  /user_research_summary_report\s*=\s*['"]([\s\S]*)['"]$/
+);
+
+if (match) {
+  reportText = match[1];
+}
     console.log("RAW TEXT:");
 console.log(rawText);
 
 console.log("PARSED RESPONSE:");
 console.dir(parsed, { depth: null });
-    report = cleanResearchSummary(report);
+    const report = cleanResearchSummary(reportText);
 
+    await pool
+  .request()
+  .input("projectId", sql.Int, Number(projectId))
+  .input("report", sql.NVarChar(sql.MAX), reportText)
+  .query(`
+      INSERT INTO research_summary_reports
+      (
+          project_id,
+          report
+      )
+      VALUES
+      (
+          @projectId,
+          @report
+      )
+`);
     if (!report) {
       return NextResponse.json(
         {

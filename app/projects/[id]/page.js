@@ -34,6 +34,7 @@ import BRDSection from "./components/BRDSection";
 import PRDSection from "./components/PRDSection";
 import WireframeSection from "./components/WireframeSection";
 import StageTemplateCard from "./components/StageTemplateCard";
+import ResearchSummaryModal from "@/components/ResearchSummaryModal";
 
 const STAGES = [
   { id: "empathize", name: "Empathize", description: "Understand your users through observation and engagement." },
@@ -1906,6 +1907,12 @@ const handleDownloadBrdDoc = async () => {
     }
   }}
   onResearchSummary={() => setIsResearchSummaryModalOpen(true)}
+/>
+
+    <ResearchSummaryModal
+    open={isResearchSummaryModalOpen}
+    onClose={() => setIsResearchSummaryModalOpen(false)}
+    projectId={projectId}
 />
 
       {showPersonaSection && (
