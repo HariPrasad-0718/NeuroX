@@ -1,20 +1,81 @@
-# Node.js
-# Build a general Node.js project with npm.
-# Add steps that analyze code, save build artifacts, deploy, and more:
-# https://docs.microsoft.com/azure/devops/pipelines/languages/javascript
-
-
+trigger:
+  branches:
+    include:
+      - Neurox_Prod
 
 pool:
-  vmImage: ubuntu-latest
+  vmImage: 'ubuntu-latest'
 
-steps:
-- task: NodeTool@0
-  inputs:
-    versionSpec: '20.x'
-  displayName: 'Install Node.js'
+variables:
+  azureSubscription: 'Neurox_Service'
+  webAppName: 'CodeNest'
+  artifactName: 'node-app'
 
-- script: |
-    npm install
-    npm run build
-  displayName: 'npm install and build'
+stages:
+- stage: Build
+  displayName: Build Application
+  jobs:
+  - job: Build
+    steps:
+
+    - checkout: self
+
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '22.x'
+      displayName: 'Install Node.js'
+
+    - script: |
+        npm install
+      displayName: 'Install Dependencies'
+
+    - script: |
+        npm run build
+      displayName: 'Build Next.js'
+
+    - script: |
+        rm -rf deploy
+        mkdir -p deploy
+
+        cp -R .next/standalone/. deploy/
+
+        mkdir -p deploy/.next
+        cp -R .next/static deploy/.next/static
+
+        if [ -d public ]; then
+          cp -R public deploy/public
+        fi
+
+        echo "Deployment Package"
+        ls -la deploy
+      displayName: 'Prepare Deployment Package'
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        PathtoPublish: 'deploy'
+        ArtifactName: '$(artifactName)'
+        publishLocation: 'Container'
+
+- stage: Deploy
+  displayName: Deploy to Azure Web App
+  dependsOn: Build
+
+  jobs:
+  - deployment: DeployWebApp
+    environment: Production
+
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+
+          - download: current
+            artifact: $(artifactName)
+
+          - task: AzureWebApp@1
+            displayName: 'Deploy Azure Web App'
+            inputs:
+              azureSubscription: '$(azureSubscription)'
+              appType: 'webAppLinux'
+              appName: '$(webAppName)'
+              package: '$(Pipeline.Workspace)/$(artifactName)'
