@@ -12,18 +12,25 @@ variables:
   artifactName: 'node-app'
 
 stages:
+
+# =========================
+# Build Stage
+# =========================
 - stage: Build
   displayName: Build Application
+
   jobs:
   - job: Build
+    displayName: Build Next.js App
+
     steps:
 
     - checkout: self
 
     - task: NodeTool@0
+      displayName: 'Install Node.js 24'
       inputs:
-        versionSpec: '22.x'
-      displayName: 'Install Node.js'
+        versionSpec: '24.x'
 
     - script: |
         npm install
@@ -46,22 +53,26 @@ stages:
           cp -R public deploy/public
         fi
 
-        echo "Deployment Package"
+        echo "Deployment package contents:"
         ls -la deploy
       displayName: 'Prepare Deployment Package'
 
-    - task: PublishBuildArtifacts@1
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Pipeline Artifact'
       inputs:
-        PathtoPublish: 'deploy'
-        ArtifactName: '$(artifactName)'
-        publishLocation: 'Container'
+        targetPath: 'deploy'
+        artifact: '$(artifactName)'
 
+# =========================
+# Deploy Stage
+# =========================
 - stage: Deploy
   displayName: Deploy to Azure Web App
   dependsOn: Build
 
   jobs:
   - deployment: DeployWebApp
+    displayName: Deploy
     environment: Production
 
     strategy:
@@ -72,8 +83,13 @@ stages:
           - download: current
             artifact: $(artifactName)
 
+          - script: |
+              echo "Downloaded artifact:"
+              ls -R $(Pipeline.Workspace)/$(artifactName)
+            displayName: 'Verify Download'
+
           - task: AzureWebApp@1
-            displayName: 'Deploy Azure Web App'
+            displayName: 'Deploy to Azure Web App'
             inputs:
               azureSubscription: '$(azureSubscription)'
               appType: 'webAppLinux'
