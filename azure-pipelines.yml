@@ -28,12 +28,12 @@ stages:
     - checkout: self
 
     - task: NodeTool@0
-      displayName: 'Install Node.js 24'
+      displayName: 'Install Node.js 22'
       inputs:
-        versionSpec: '24.x'
+        versionSpec: '22.x'
 
     - script: |
-        npm install
+        npm ci
       displayName: 'Install Dependencies'
 
     - script: |
@@ -95,3 +95,5 @@ stages:
               appType: 'webAppLinux'
               appName: '$(webAppName)'
               package: '$(Pipeline.Workspace)/$(artifactName)'
+              runtimeStack: 'NODE|22-lts'
+              startUpCommand: 'node server.js'
