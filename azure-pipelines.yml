@@ -1,0 +1,99 @@
+trigger:
+  branches:
+    include:
+      - Neurox_Prod
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  azureSubscription: 'Neurox_Service'
+  webAppName: 'CodeNest'
+  artifactName: 'node-app'
+
+stages:
+
+# =========================
+# Build Stage
+# =========================
+- stage: Build
+  displayName: Build Application
+
+  jobs:
+  - job: Build
+    displayName: Build Next.js App
+
+    steps:
+
+    - checkout: self
+
+    - task: NodeTool@0
+      displayName: 'Install Node.js 22'
+      inputs:
+        versionSpec: '22.x'
+
+    - script: |
+        npm ci
+      displayName: 'Install Dependencies'
+
+    - script: |
+        npm run build
+      displayName: 'Build Next.js'
+
+    - script: |
+        rm -rf deploy
+        mkdir -p deploy
+
+        cp -R .next/standalone/. deploy/
+
+        mkdir -p deploy/.next
+        cp -R .next/static deploy/.next/static
+
+        if [ -d public ]; then
+          cp -R public deploy/public
+        fi
+
+        echo "Deployment package contents:"
+        ls -la deploy
+      displayName: 'Prepare Deployment Package'
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
+        targetPath: 'deploy'
+        artifact: '$(artifactName)'
+
+# =========================
+# Deploy Stage
+# =========================
+- stage: Deploy
+  displayName: Deploy to Azure Web App
+  dependsOn: Build
+
+  jobs:
+  - deployment: DeployWebApp
+    displayName: Deploy
+    environment: Production
+
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+
+          - download: current
+            artifact: $(artifactName)
+
+          - script: |
+              echo "Downloaded artifact:"
+              ls -R $(Pipeline.Workspace)/$(artifactName)
+            displayName: 'Verify Download'
+
+          - task: AzureWebApp@1
+            displayName: 'Deploy to Azure Web App'
+            inputs:
+              azureSubscription: '$(azureSubscription)'
+              appType: 'webAppLinux'
+              appName: '$(webAppName)'
+              package: '$(Pipeline.Workspace)/$(artifactName)'
+              runtimeStack: 'NODE|22-lts'
+              startUpCommand: 'node server.js'
