@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, ChevronDown, Upload, Download, Share2, Trash2, FileText, Link as LinkIcon, Loader2, AlertTriangle, HandHeart, Lightbulb, X } from "lucide-react";
-import { FileJson, Users, Target, Zap, Shield, Clock, CheckCircle2, Calendar, User, GitBranch } from "lucide-react";
 import { api } from "@/services/api";
 import { useProgressSteps } from "@/hooks/useProgressSteps";
 import { generatePersonaCard } from "@/services/personaService";
@@ -99,7 +98,12 @@ const IDEATE_CARD_MEDIA = {
     description: "Generate BRD and PRD from project context.",
   },
 };
-
+function stripFence(text) {
+  return String(text || "")
+    .replace(/^```(?:json|html)?\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim();
+}
 function extractPrdOutput(result) {
   // 1. Check agent_response.message first (this is where your data lives)
   if (result?.agent_response?.message) {
@@ -497,6 +501,317 @@ function normalizeLooseText(value) {
     .replace(/\\n/g, "\n")
     .replace(/\\r/g, "\r")
     .replace(/\\t/g, "\t");
+}
+// ---------- PRD OBJECT EXTRACTION ----------
+function getPrdObject(payload) {
+  let cur = payload;
+  for (let i = 0; i < 8; i++) {
+    if (!cur) return null;
+    if (typeof cur === "string") {
+      try { cur = JSON.parse(cur); } catch { return null; }
+      continue;
+    }
+    if (cur.document_meta) return cur; // found the actual prd object
+    if (cur.prd) { cur = cur.prd; continue; }
+    if (cur.data?.prd) { cur = cur.data.prd; continue; }
+    if (cur.prd_output) { cur = cur.prd_output; continue; }
+    if (cur.prd_content) { cur = cur.prd_content; continue; }
+    if (cur.data) { cur = cur.data; continue; }
+    if (cur.agent_response?.message) { cur = cur.agent_response.message; continue; }
+    return null;
+  }
+  return null;
+}
+
+// ---------- PRD HTML BUILDER ----------
+function esc(s) {
+  return String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+}
+function toTitle(key) {
+  return String(key || "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+function pHtml(text) {
+  return text ? `<p>${esc(text)}</p>` : "";
+}
+function ulHtml(arr) {
+  if (!Array.isArray(arr) || !arr.length) return "";
+  return `<ul>${arr
+    .map((i) => `<li>${esc(typeof i === "object" && i !== null ? JSON.stringify(i) : i)}</li>`)
+    .join("")}</ul>`;
+}
+function tableHtml(headers, rows) {
+  if (!rows.length) return "";
+  return `
+    <table>
+      <thead><tr>${headers.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead>
+      <tbody>
+        ${rows
+          .map(
+            (row) =>
+              `<tr>${row.map((cell) => `<td>${esc(cell)}</td>`).join("")}</tr>`
+          )
+          .join("")}
+      </tbody>
+    </table>`;
+}
+
+function buildPrdHtml(prd) {
+  if (!prd || typeof prd !== "object") return "";
+  let html = "";
+
+  // --- Meta / Title ---
+  const meta = prd.document_meta || {};
+  html += `<h1>${esc(meta.project_name || "Product Requirements Document")}</h1>`;
+  if (meta.project_description) html += pHtml(meta.project_description);
+  const metaRows = [
+    ["Version", meta.version],
+    ["Status", meta.document_status],
+    ["Created", meta.created_date],
+    ["Last Updated", meta.last_updated],
+    ["Owner", meta.document_owner],
+    ["Contributors", Array.isArray(meta.contributors) ? meta.contributors.join(", ") : meta.contributors],
+  ].filter(([, v]) => v);
+  if (metaRows.length) html += tableHtml(["Field", "Value"], metaRows);
+
+  // --- Executive Summary ---
+  const exec = prd.executive_summary;
+  if (exec) {
+    html += `<h2>Executive Summary</h2>`;
+    html += pHtml(exec.overview);
+    if (exec.key_objectives) {
+      html += `<h3>Key Objectives</h3>`;
+      html += ulHtml(exec.key_objectives);
+    }
+    if (exec.strategic_alignment) {
+      html += `<h3>Strategic Alignment</h3>${pHtml(exec.strategic_alignment)}`;
+    }
+    if (exec.business_unit) html += pHtml(`Business Unit: ${exec.business_unit}`);
+  }
+
+  // --- Business Problem ---
+  const bp = prd.business_problem;
+  if (bp) {
+    html += `<h2>Business Problem</h2>`;
+    html += pHtml(bp.problem_statement);
+    if (bp.current_state) html += `<h3>Current State</h3>${pHtml(bp.current_state)}`;
+    if (bp.desired_state) html += `<h3>Desired State</h3>${pHtml(bp.desired_state)}`;
+    if (bp.gap_analysis) html += `<h3>Gap Analysis</h3>${pHtml(bp.gap_analysis)}`;
+    if (bp.impact) html += `<h3>Impact</h3>${pHtml(bp.impact)}`;
+    if (bp.affected_users) html += `<h3>Affected Users</h3>${ulHtml(bp.affected_users)}`;
+    if (bp.business_value) html += `<h3>Business Value</h3>${pHtml(bp.business_value)}`;
+  }
+
+  // --- Objectives & Success Metrics ---
+  const obj = prd.objectives_and_success_metrics;
+  if (obj) {
+    html += `<h2>Objectives &amp; Success Metrics</h2>`;
+    if (obj.objectives) {
+      html += `<h3>Objectives</h3>${ulHtml(obj.objectives)}`;
+    }
+    if (Array.isArray(obj.success_metrics) && obj.success_metrics.length) {
+      html += `<h3>Success Metrics</h3>`;
+      html += tableHtml(
+        ["Metric", "Target", "Measurement", "Baseline", "Timeframe"],
+        obj.success_metrics.map((m) => [
+          m.metric, m.target, m.measurement, m.baseline, m.timeframe,
+        ])
+      );
+    }
+    if (Array.isArray(obj.kpis) && obj.kpis.length) {
+      html += `<h3>KPIs</h3>`;
+      html += tableHtml(
+        ["KPI", "Description", "Threshold"],
+        obj.kpis.map((k) => [k.kpi_name, k.description, k.threshold])
+      );
+    }
+  }
+
+  // --- Target Users & Personas ---
+  const users = prd.target_users_and_personas;
+  if (users) {
+    html += `<h2>Target Users &amp; Personas</h2>`;
+    if (users.persona_summary) html += pHtml(users.persona_summary);
+    (users.primary_users || []).forEach((persona) => {
+      html += `<h3>${esc(persona.name)} — ${esc(persona.role)}</h3>`;
+      if (persona.quote && persona.quote !== "Not specified") {
+        html += `<blockquote>${esc(persona.quote)}</blockquote>`;
+      }
+      if (persona.goals) html += `<h4>Goals</h4>${ulHtml(persona.goals)}`;
+      if (persona.needs) html += `<h4>Needs</h4>${ulHtml(persona.needs)}`;
+      if (persona.pain_points) html += `<h4>Pain Points</h4>${ulHtml(persona.pain_points)}`;
+      if (persona.frustrations) html += `<h4>Frustrations</h4>${ulHtml(persona.frustrations)}`;
+    });
+    if (users.secondary_users) {
+      html += `<h3>Secondary Users</h3>${ulHtml(users.secondary_users)}`;
+    }
+  }
+
+  // --- Feature Overview ---
+  const features = prd.feature_overview;
+  if (features) {
+    html += `<h2>Feature Overview</h2>`;
+    html += pHtml(features.description);
+    if (Array.isArray(features.features) && features.features.length) {
+      html += tableHtml(
+        ["ID", "Feature", "Category", "Priority", "MVP", "Description"],
+        features.features.map((f) => [
+          f.feature_id, f.feature_name, f.category, f.priority,
+          f.mvp_inclusion ? "Yes" : "No", f.description,
+        ])
+      );
+    }
+  }
+
+  // --- User Stories ---
+  if (Array.isArray(prd.user_stories) && prd.user_stories.length) {
+    html += `<h2>User Stories</h2>`;
+    html += tableHtml(
+      ["ID", "Story", "Priority", "Release"],
+      prd.user_stories.map((s) => [s.id, s.story, s.priority, s.release])
+    );
+  }
+
+  // --- Acceptance Criteria ---
+  if (Array.isArray(prd.acceptance_criteria) && prd.acceptance_criteria.length) {
+    html += `<h2>Acceptance Criteria</h2>`;
+    html += tableHtml(
+      ["ID", "Criteria", "Scenario"],
+      prd.acceptance_criteria.map((a) => [a.id, a.criteria, a.scenario])
+    );
+  }
+
+  // --- UI / Workflow Expectations ---
+  const ui = prd.ui_workflow_expectations;
+  if (ui) {
+    html += `<h2>UI &amp; Workflow Expectations</h2>`;
+    if (ui.workflow_sequence) html += `<h3>Workflow Sequence</h3>${ulHtml(ui.workflow_sequence)}`;
+    if (Array.isArray(ui.key_screens) && ui.key_screens.length) {
+      html += `<h3>Key Screens</h3>`;
+      html += tableHtml(
+        ["Screen", "Description", "Components"],
+        ui.key_screens.map((s) => [
+          s.screen_name, s.description,
+          Array.isArray(s.components) ? s.components.join(", ") : s.components,
+        ])
+      );
+    }
+  }
+
+  // --- Functional Requirements ---
+  if (Array.isArray(prd.functional_requirements) && prd.functional_requirements.length) {
+    html += `<h2>Functional Requirements</h2>`;
+    html += tableHtml(
+      ["ID", "Requirement", "Category", "Priority"],
+      prd.functional_requirements.map((r) => [
+        r.requirement_id, r.requirement, r.category, r.priority,
+      ])
+    );
+  }
+
+  // --- API / Data Requirements ---
+  if (Array.isArray(prd.api_data_requirements) && prd.api_data_requirements.length) {
+    html += `<h2>API &amp; Data Requirements</h2>`;
+    html += tableHtml(
+      ["Integration", "Type", "Purpose"],
+      prd.api_data_requirements.map((r) => [r.integration, r.type, r.purpose])
+    );
+  }
+
+  // --- Validation Rules ---
+  if (Array.isArray(prd.validation_rules) && prd.validation_rules.length) {
+    html += `<h2>Validation Rules</h2>`;
+    html += tableHtml(
+      ["ID", "Rule", "Field"],
+      prd.validation_rules.map((r) => [r.validation_id, r.rule, r.field])
+    );
+  }
+
+  // --- Error Handling ---
+  if (Array.isArray(prd.error_handling_expectations) && prd.error_handling_expectations.length) {
+    html += `<h2>Error Handling</h2>`;
+    html += tableHtml(
+      ["Scenario", "Expected Behavior", "User Message"],
+      prd.error_handling_expectations.map((e) => [
+        e.scenario, e.expected_behavior, e.user_message,
+      ])
+    );
+  }
+
+  // --- Security Considerations ---
+  if (Array.isArray(prd.security_considerations) && prd.security_considerations.length) {
+    html += `<h2>Security Considerations</h2>`;
+    html += tableHtml(
+      ["Control", "Requirement", "Risk Level"],
+      prd.security_considerations.map((s) => [s.control, s.requirement, s.risk_level])
+    );
+  }
+
+  // --- Technical Dependencies ---
+  if (Array.isArray(prd.technical_dependencies) && prd.technical_dependencies.length) {
+    html += `<h2>Technical Dependencies</h2>`;
+    html += tableHtml(
+      ["Dependency", "Purpose", "Criticality", "Status"],
+      prd.technical_dependencies.map((d) => [
+        d.dependency, d.purpose, d.criticality, d.status,
+      ])
+    );
+  }
+
+  // --- Risks & Dependencies ---
+  if (Array.isArray(prd.risks_and_dependencies) && prd.risks_and_dependencies.length) {
+    html += `<h2>Risks &amp; Dependencies</h2>`;
+    html += tableHtml(
+      ["ID", "Risk", "Impact", "Probability", "Mitigation"],
+      prd.risks_and_dependencies.map((r) => [
+        r.risk_id, r.risk, r.impact, r.probability, r.mitigation,
+      ])
+    );
+  }
+
+  // --- Scope ---
+  const scope = prd.scope;
+  if (scope) {
+    html += `<h2>Scope</h2>`;
+    if (scope.in_scope) html += `<h3>In Scope</h3>${ulHtml(scope.in_scope)}`;
+    if (scope.out_of_scope) html += `<h3>Out of Scope</h3>${ulHtml(scope.out_of_scope)}`;
+    if (scope.assumptions) html += `<h3>Assumptions</h3>${ulHtml(scope.assumptions)}`;
+    if (scope.constraints) html += `<h3>Constraints</h3>${ulHtml(scope.constraints)}`;
+  }
+
+  // --- Release Roadmap ---
+  const roadmap = prd.release_roadmap;
+  if (roadmap && Array.isArray(roadmap.phases)) {
+    html += `<h2>Release Roadmap</h2>`;
+    roadmap.phases.forEach((phase) => {
+      html += `<h3>${esc(phase.phase)}</h3>`;
+      if (phase.success_criteria) html += pHtml(phase.success_criteria);
+      if (phase.deliverables) html += `<h4>Deliverables</h4>${ulHtml(phase.deliverables)}`;
+      if (phase.milestones) html += `<h4>Milestones</h4>${ulHtml(phase.milestones)}`;
+    });
+  }
+
+  // --- Fallback for any unmapped top-level keys, so nothing is silently dropped ---
+  const known = [
+    "document_meta", "executive_summary", "business_problem",
+    "objectives_and_success_metrics", "target_users_and_personas",
+    "feature_overview", "user_stories", "acceptance_criteria",
+    "ui_workflow_expectations", "functional_requirements",
+    "api_data_requirements", "validation_rules",
+    "error_handling_expectations", "security_considerations",
+    "technical_dependencies", "risks_and_dependencies",
+    "scope", "release_roadmap",
+  ];
+  Object.entries(prd).forEach(([key, value]) => {
+    if (known.includes(key) || value == null) return;
+    html += `<h2>${esc(toTitle(key))}</h2>`;
+    if (Array.isArray(value)) html += ulHtml(value);
+    else if (typeof value === "object") html += pHtml(JSON.stringify(value));
+    else html += pHtml(value);
+  });
+
+  return html;
 }
 
 export default function ProjectDetailPage() {
@@ -1113,1467 +1428,6 @@ const handleOpenBrdModal = async () => {
     setBrdLoading(false);
   }
 };
-const renderPrdAsHtml = (prdData) => {
-  if (!prdData || typeof prdData !== 'object') {
-    return `
-      <div style="
-        font-family: Arial, sans-serif;
-        padding: 40px;
-        text-align: center;
-        color: #475569;
-      ">
-        No PRD data available
-      </div>
-    `;
-  }
-
-  // -----------------------------
-  // Helper Functions
-  // -----------------------------
-
-  const escapeHtml = (value) => {
-    if (value === null || value === undefined) return '';
-    return String(value)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  };
-
-  const formatValue = (value, fallback = '') => {
-    return value !== undefined && value !== null && value !== ''
-      ? escapeHtml(value)
-      : fallback;
-  };
-
-  const getPriorityStyle = (priority) => {
-    const value = String(priority || '').toLowerCase();
-
-    if (value === 'critical') {
-      return {
-        background: '#FEE2E2',
-        color: '#991B1B',
-        border: '#FECACA'
-      };
-    }
-
-    if (value === 'high') {
-      return {
-        background: '#FEF3C7',
-        color: '#92400E',
-        border: '#FDE68A'
-      };
-    }
-
-    if (value === 'medium') {
-      return {
-        background: '#DBEAFE',
-        color: '#1E40AF',
-        border: '#BFDBFE'
-      };
-    }
-
-    return {
-      background: '#F1F5F9',
-      color: '#475569',
-      border: '#E2E8F0'
-    };
-  };
-
-  const priorityBadge = (priority, defaultValue = 'Medium') => {
-    const value = priority || defaultValue;
-    const style = getPriorityStyle(value);
-
-    return `
-      <span style="
-        display: inline-block;
-        padding: 4px 10px;
-        background: ${style.background};
-        color: ${style.color};
-        border: 1px solid ${style.border};
-        border-radius: 4px;
-        font-size: 12px;
-        font-weight: 600;
-        line-height: 1.2;
-        white-space: nowrap;
-      ">
-        ${escapeHtml(value)}
-      </span>
-    `;
-  };
-
-  const sectionTitle = (title, number = '') => `
-    <div style="
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin: 0 0 20px;
-      padding-bottom: 10px;
-      border-bottom: 2px solid #E2E8F0;
-    ">
-      ${
-        number
-          ? `
-            <span style="
-              display: inline-flex;
-              align-items: center;
-              justify-content: center;
-              width: 28px;
-              height: 28px;
-              background: #1E3A5F;
-              color: #FFFFFF;
-              border-radius: 4px;
-              font-size: 13px;
-              font-weight: 700;
-            ">
-              ${number}
-            </span>
-          `
-          : ''
-      }
-
-      <h2 style="
-        margin: 0;
-        font-size: 21px;
-        line-height: 1.3;
-        font-weight: 700;
-        color: #1E293B;
-        letter-spacing: -0.2px;
-      ">
-        ${escapeHtml(title)}
-      </h2>
-    </div>
-  `;
-
-  const infoLabel = (label, value) => `
-    <div style="
-      min-width: 160px;
-      flex: 1;
-      padding: 14px 16px;
-      background: #F8FAFC;
-      border: 1px solid #E2E8F0;
-      border-radius: 6px;
-    ">
-      <div style="
-        margin-bottom: 5px;
-        color: #64748B;
-        font-size: 11px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-      ">
-        ${escapeHtml(label)}
-      </div>
-
-      <div style="
-        color: #1E293B;
-        font-size: 14px;
-        font-weight: 600;
-      ">
-        ${formatValue(value, 'Not specified')}
-      </div>
-    </div>
-  `;
-
-  // -----------------------------
-  // Main Document Container
-  // -----------------------------
-
-  let html = `
-    <div
-      class="prd-document"
-      style="
-        width: 100%;
-        max-width: 1100px;
-        margin: 0 auto;
-        padding: 40px;
-        box-sizing: border-box;
-        background: #FFFFFF;
-        color: #334155;
-        font-family:
-          -apple-system,
-          BlinkMacSystemFont,
-          'Segoe UI',
-          Roboto,
-          'Helvetica Neue',
-          Arial,
-          sans-serif;
-        font-size: 14px;
-        line-height: 1.65;
-      "
-    >
-  `;
-
-  // -----------------------------
-  // Document Header
-  // -----------------------------
-
-  if (prdData.document_meta) {
-    const meta = prdData.document_meta;
-
-    html += `
-      <div style="
-        margin-bottom: 36px;
-        border: 1px solid #CBD5E1;
-        border-radius: 8px;
-        overflow: hidden;
-        background: #FFFFFF;
-      ">
-
-        <div style="
-          padding: 36px 40px;
-          background: #1E3A5F;
-          color: #FFFFFF;
-        ">
-          <div style="
-            margin-bottom: 10px;
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 1.2px;
-            color: #CBD5E1;
-          ">
-            Product Requirements Document
-          </div>
-
-          <h1 style="
-            margin: 0 0 10px;
-            font-size: 30px;
-            line-height: 1.25;
-            font-weight: 700;
-            letter-spacing: -0.5px;
-            color: #FFFFFF;
-          ">
-            ${formatValue(meta.project_name, 'Product Requirements Document')}
-          </h1>
-
-          ${
-            meta.project_description
-              ? `
-                <p style="
-                  max-width: 800px;
-                  margin: 0;
-                  font-size: 15px;
-                  line-height: 1.6;
-                  color: #E2E8F0;
-                ">
-                  ${escapeHtml(meta.project_description)}
-                </p>
-              `
-              : ''
-          }
-        </div>
-
-        <div style="
-          display: flex;
-          flex-wrap: wrap;
-          gap: 12px;
-          padding: 20px;
-          background: #FFFFFF;
-        ">
-          ${infoLabel('Version', meta.version || '1.0')}
-          ${infoLabel('Created Date', meta.created_date)}
-          ${infoLabel('Document Status', meta.document_status || 'Draft')}
-          ${infoLabel('Document Owner', meta.document_owner)}
-        </div>
-      </div>
-    `;
-  }
-
-  // -----------------------------
-  // Executive Summary
-  // -----------------------------
-
-  if (prdData.executive_summary) {
-    const summary = prdData.executive_summary;
-
-    html += `
-      <section style="
-        margin-bottom: 36px;
-        padding: 26px;
-        background: #F8FAFC;
-        border: 1px solid #E2E8F0;
-        border-radius: 8px;
-      ">
-
-        ${sectionTitle('Executive Summary', '01')}
-
-        ${
-          summary.overview
-            ? `
-              <p style="
-                margin: 0 0 20px;
-                color: #475569;
-                font-size: 14px;
-                line-height: 1.75;
-              ">
-                ${escapeHtml(summary.overview)}
-              </p>
-            `
-            : ''
-        }
-
-        ${
-          summary.key_objectives &&
-          Array.isArray(summary.key_objectives) &&
-          summary.key_objectives.length > 0
-            ? `
-              <div style="margin-bottom: 18px;">
-                <h3 style="
-                  margin: 0 0 10px;
-                  font-size: 14px;
-                  font-weight: 700;
-                  color: #1E293B;
-                ">
-                  Key Objectives
-                </h3>
-
-                <ul style="
-                  margin: 0;
-                  padding-left: 22px;
-                  color: #475569;
-                ">
-                  ${summary.key_objectives
-                    .map(
-                      (obj) => `
-                        <li style="margin-bottom: 6px;">
-                          ${escapeHtml(obj)}
-                        </li>
-                      `
-                    )
-                    .join('')}
-                </ul>
-              </div>
-            `
-            : ''
-        }
-
-        ${
-          summary.strategic_alignment
-            ? `
-              <div style="
-                padding: 14px 16px;
-                background: #FFFFFF;
-                border-left: 3px solid #2563EB;
-                border-radius: 4px;
-              ">
-                <strong style="color: #1E293B;">
-                  Strategic Alignment:
-                </strong>
-                <span style="color: #475569;">
-                  ${escapeHtml(summary.strategic_alignment)}
-                </span>
-              </div>
-            `
-            : ''
-        }
-      </section>
-    `;
-  }
-
-  // -----------------------------
-  // Business Problem
-  // -----------------------------
-
-  if (prdData.business_problem) {
-    const problem = prdData.business_problem;
-
-    html += `
-      <section style="
-        margin-bottom: 36px;
-        padding: 26px;
-        background: #FFFFFF;
-        border: 1px solid #E2E8F0;
-        border-radius: 8px;
-      ">
-
-        ${sectionTitle('Business Problem', '02')}
-
-        <div style="
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-          gap: 16px;
-        ">
-
-          <div style="
-            padding: 16px;
-            background: #F8FAFC;
-            border: 1px solid #E2E8F0;
-            border-radius: 6px;
-          ">
-            <h3 style="
-              margin: 0 0 8px;
-              font-size: 13px;
-              font-weight: 700;
-              color: #1E293B;
-            ">
-              Problem Statement
-            </h3>
-            <p style="margin: 0; color: #475569;">
-              ${formatValue(problem.problem_statement)}
-            </p>
-          </div>
-
-          <div style="
-            padding: 16px;
-            background: #F8FAFC;
-            border: 1px solid #E2E8F0;
-            border-radius: 6px;
-          ">
-            <h3 style="
-              margin: 0 0 8px;
-              font-size: 13px;
-              font-weight: 700;
-              color: #1E293B;
-            ">
-              Current State
-            </h3>
-            <p style="margin: 0; color: #475569;">
-              ${formatValue(problem.current_state)}
-            </p>
-          </div>
-
-          <div style="
-            padding: 16px;
-            background: #F8FAFC;
-            border: 1px solid #E2E8F0;
-            border-radius: 6px;
-          ">
-            <h3 style="
-              margin: 0 0 8px;
-              font-size: 13px;
-              font-weight: 700;
-              color: #1E293B;
-            ">
-              Desired State
-            </h3>
-            <p style="margin: 0; color: #475569;">
-              ${formatValue(problem.desired_state)}
-            </p>
-          </div>
-
-          ${
-            problem.business_value
-              ? `
-                <div style="
-                  padding: 16px;
-                  background: #F8FAFC;
-                  border: 1px solid #E2E8F0;
-                  border-radius: 6px;
-                ">
-                  <h3 style="
-                    margin: 0 0 8px;
-                    font-size: 13px;
-                    font-weight: 700;
-                    color: #1E293B;
-                  ">
-                    Business Value
-                  </h3>
-                  <p style="margin: 0; color: #475569;">
-                    ${escapeHtml(problem.business_value)}
-                  </p>
-                </div>
-              `
-              : ''
-          }
-        </div>
-
-        ${
-          problem.affected_users &&
-          Array.isArray(problem.affected_users) &&
-          problem.affected_users.length > 0
-            ? `
-              <div style="margin-top: 20px;">
-                <h3 style="
-                  margin: 0 0 10px;
-                  font-size: 13px;
-                  font-weight: 700;
-                  color: #1E293B;
-                ">
-                  Affected Users
-                </h3>
-
-                <div style="
-                  display: flex;
-                  flex-wrap: wrap;
-                  gap: 8px;
-                ">
-                  ${problem.affected_users
-                    .map(
-                      (user) => `
-                        <span style="
-                          padding: 6px 12px;
-                          background: #EFF6FF;
-                          color: #1D4ED8;
-                          border: 1px solid #BFDBFE;
-                          border-radius: 4px;
-                          font-size: 12px;
-                          font-weight: 500;
-                        ">
-                          ${escapeHtml(user)}
-                        </span>
-                      `
-                    )
-                    .join('')}
-                </div>
-              </div>
-            `
-            : ''
-        }
-      </section>
-    `;
-  }
-
-  // -----------------------------
-  // Feature Overview
-  // -----------------------------
-
-  if (prdData.feature_overview) {
-    const features = prdData.feature_overview;
-
-    html += `
-      <section style="margin-bottom: 36px;">
-
-        ${sectionTitle('Feature Overview', '03')}
-
-        ${
-          features.description
-            ? `
-              <p style="
-                margin: 0 0 20px;
-                color: #475569;
-                line-height: 1.7;
-              ">
-                ${escapeHtml(features.description)}
-              </p>
-            `
-            : ''
-        }
-
-        ${
-          features.features &&
-          Array.isArray(features.features) &&
-          features.features.length > 0
-            ? `
-              <div style="
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-                gap: 16px;
-              ">
-                ${features.features
-                  .map(
-                    (feature) => `
-                      <div style="
-                        padding: 20px;
-                        background: #FFFFFF;
-                        border: 1px solid #E2E8F0;
-                        border-radius: 8px;
-                        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-                      ">
-
-                        <div style="
-                          display: flex;
-                          justify-content: space-between;
-                          align-items: flex-start;
-                          gap: 12px;
-                          margin-bottom: 10px;
-                        ">
-                          <h3 style="
-                            margin: 0;
-                            font-size: 15px;
-                            font-weight: 700;
-                            color: #1E293B;
-                          ">
-                            ${formatValue(feature.feature_name)}
-                          </h3>
-
-                          ${priorityBadge(feature.priority)}
-                        </div>
-
-                        <p style="
-                          margin: 0 0 16px;
-                          color: #64748B;
-                          font-size: 13px;
-                          line-height: 1.65;
-                        ">
-                          ${formatValue(feature.description)}
-                        </p>
-
-                        <div style="
-                          display: grid;
-                          grid-template-columns: 1fr 1fr;
-                          gap: 8px;
-                          padding-top: 12px;
-                          border-top: 1px solid #E2E8F0;
-                        ">
-                          <div>
-                            <div style="
-                              font-size: 10px;
-                              text-transform: uppercase;
-                              color: #94A3B8;
-                              font-weight: 600;
-                            ">
-                              Category
-                            </div>
-                            <div style="
-                              margin-top: 3px;
-                              font-size: 12px;
-                              color: #475569;
-                              font-weight: 500;
-                            ">
-                              ${formatValue(feature.category, 'Core')}
-                            </div>
-                          </div>
-
-                          <div>
-                            <div style="
-                              font-size: 10px;
-                              text-transform: uppercase;
-                              color: #94A3B8;
-                              font-weight: 600;
-                            ">
-                              Estimated Effort
-                            </div>
-                            <div style="
-                              margin-top: 3px;
-                              font-size: 12px;
-                              color: #475569;
-                              font-weight: 500;
-                            ">
-                              ${formatValue(feature.estimated_effort, 'Not specified')}
-                            </div>
-                          </div>
-
-                          <div style="
-                            grid-column: 1 / -1;
-                            margin-top: 4px;
-                          ">
-                            <div style="
-                              font-size: 10px;
-                              text-transform: uppercase;
-                              color: #94A3B8;
-                              font-weight: 600;
-                            ">
-                              Release Scope
-                            </div>
-                            <div style="
-                              margin-top: 3px;
-                              font-size: 12px;
-                              color: #475569;
-                              font-weight: 500;
-                            ">
-                              ${feature.mvp_inclusion ? 'MVP' : 'Post-MVP'}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    `
-                  )
-                  .join('')}
-              </div>
-            `
-            : ''
-        }
-      </section>
-    `;
-  }
-
-  // -----------------------------
-  // User Stories
-  // -----------------------------
-
-  if (
-    Array.isArray(prdData.user_stories) &&
-    prdData.user_stories.length > 0
-  ) {
-    html += `
-      <section style="margin-bottom: 36px;">
-
-        ${sectionTitle('User Stories', '04')}
-
-        <div style="
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        ">
-          ${prdData.user_stories
-            .map(
-              (story, idx) => `
-                <div style="
-                  display: flex;
-                  gap: 16px;
-                  padding: 18px 20px;
-                  background: #FFFFFF;
-                  border: 1px solid #E2E8F0;
-                  border-radius: 8px;
-                ">
-
-                  <div style="
-                    flex-shrink: 0;
-                    width: 34px;
-                    height: 34px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    background: #EFF6FF;
-                    color: #1D4ED8;
-                    border-radius: 5px;
-                    font-size: 12px;
-                    font-weight: 700;
-                  ">
-                    US-${String(idx + 1).padStart(3, '0')}
-                  </div>
-
-                  <div style="flex: 1; min-width: 0;">
-
-                    <p style="
-                      margin: 0 0 12px;
-                      color: #334155;
-                      font-size: 14px;
-                      line-height: 1.65;
-                    ">
-                      ${formatValue(story.story)}
-                    </p>
-
-                    <div style="
-                      display: flex;
-                      flex-wrap: wrap;
-                      gap: 8px;
-                    ">
-                      <span style="
-                        padding: 4px 9px;
-                        background: #F8FAFC;
-                        border: 1px solid #E2E8F0;
-                        border-radius: 4px;
-                        color: #64748B;
-                        font-size: 11px;
-                      ">
-                        Priority: ${formatValue(story.priority, 'Not specified')}
-                      </span>
-
-                      <span style="
-                        padding: 4px 9px;
-                        background: #F8FAFC;
-                        border: 1px solid #E2E8F0;
-                        border-radius: 4px;
-                        color: #64748B;
-                        font-size: 11px;
-                      ">
-                        Release: ${formatValue(story.release, 'Not specified')}
-                      </span>
-
-                      <span style="
-                        padding: 4px 9px;
-                        background: #F8FAFC;
-                        border: 1px solid #E2E8F0;
-                        border-radius: 4px;
-                        color: #64748B;
-                        font-size: 11px;
-                      ">
-                        Estimation: ${formatValue(story.estimation, 'Not specified')}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              `
-            )
-            .join('')}
-        </div>
-      </section>
-    `;
-  }
-
-  // -----------------------------
-  // Acceptance Criteria
-  // -----------------------------
-
-  if (
-    Array.isArray(prdData.acceptance_criteria) &&
-    prdData.acceptance_criteria.length > 0
-  ) {
-    html += `
-      <section style="margin-bottom: 36px;">
-
-        ${sectionTitle('Acceptance Criteria', '05')}
-
-        <div style="
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        ">
-          ${prdData.acceptance_criteria
-            .map(
-              (criteria, idx) => `
-                <div style="
-                  padding: 20px;
-                  background: #FFFFFF;
-                  border: 1px solid #E2E8F0;
-                  border-radius: 8px;
-                ">
-
-                  <div style="
-                    display: flex;
-                    align-items: center;
-                    gap: 10px;
-                    margin-bottom: 10px;
-                  ">
-                    <span style="
-                      font-size: 12px;
-                      font-weight: 700;
-                      color: #2563EB;
-                    ">
-                      AC-${String(idx + 1).padStart(3, '0')}
-                    </span>
-
-                    <div style="
-                      height: 1px;
-                      flex: 1;
-                      background: #E2E8F0;
-                    "></div>
-                  </div>
-
-                  <p style="
-                    margin: 0 0 14px;
-                    color: #334155;
-                    font-size: 14px;
-                    font-weight: 500;
-                  ">
-                    ${formatValue(criteria.criteria)}
-                  </p>
-
-                  ${
-                    criteria.scenario || criteria.expected_result
-                      ? `
-                        <div style="
-                          padding: 14px 16px;
-                          background: #F8FAFC;
-                          border: 1px solid #E2E8F0;
-                          border-radius: 6px;
-                        ">
-
-                          ${
-                            criteria.scenario
-                              ? `
-                                <p style="
-                                  margin: 0 0 6px;
-                                  color: #475569;
-                                  font-size: 13px;
-                                ">
-                                  <strong style="color: #1E293B;">
-                                    Scenario:
-                                  </strong>
-                                  ${escapeHtml(criteria.scenario)}
-                                </p>
-                              `
-                              : ''
-                          }
-
-                          ${
-                            criteria.expected_result
-                              ? `
-                                <p style="
-                                  margin: 0;
-                                  color: #475569;
-                                  font-size: 13px;
-                                ">
-                                  <strong style="color: #1E293B;">
-                                    Expected Result:
-                                  </strong>
-                                  ${escapeHtml(criteria.expected_result)}
-                                </p>
-                              `
-                              : ''
-                          }
-
-                        </div>
-                      `
-                      : ''
-                  }
-                </div>
-              `
-            )
-            .join('')}
-        </div>
-      </section>
-    `;
-  }
-
-  // -----------------------------
-  // Functional Requirements
-  // -----------------------------
-
-  if (
-    Array.isArray(prdData.functional_requirements) &&
-    prdData.functional_requirements.length > 0
-  ) {
-    html += `
-      <section style="margin-bottom: 36px;">
-
-        ${sectionTitle('Functional Requirements', '06')}
-
-        <div style="
-          overflow-x: auto;
-          border: 1px solid #CBD5E1;
-          border-radius: 8px;
-        ">
-          <table style="
-            width: 100%;
-            border-collapse: collapse;
-            table-layout: fixed;
-            font-size: 13px;
-          ">
-
-            <thead>
-              <tr style="background: #1E3A5F; color: #FFFFFF;">
-                <th style="
-                  width: 14%;
-                  padding: 13px 16px;
-                  text-align: left;
-                  font-size: 11px;
-                  font-weight: 700;
-                  text-transform: uppercase;
-                  letter-spacing: 0.4px;
-                ">
-                  Requirement ID
-                </th>
-
-                <th style="
-                  width: 61%;
-                  padding: 13px 16px;
-                  text-align: left;
-                  font-size: 11px;
-                  font-weight: 700;
-                  text-transform: uppercase;
-                  letter-spacing: 0.4px;
-                ">
-                  Requirement
-                </th>
-
-                <th style="
-                  width: 25%;
-                  padding: 13px 16px;
-                  text-align: left;
-                  font-size: 11px;
-                  font-weight: 700;
-                  text-transform: uppercase;
-                  letter-spacing: 0.4px;
-                ">
-                  Priority
-                </th>
-              </tr>
-            </thead>
-
-            <tbody>
-              ${prdData.functional_requirements
-                .map(
-                  (req, idx) => `
-                    <tr style="
-                      background: ${idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'};
-                      border-top: 1px solid #E2E8F0;
-                    ">
-
-                      <td style="
-                        padding: 14px 16px;
-                        color: #1E40AF;
-                        font-weight: 700;
-                        vertical-align: top;
-                      ">
-                        ${formatValue(
-                          req.requirement_id,
-                          `FR-${String(idx + 1).padStart(3, '0')}`
-                        )}
-                      </td>
-
-                      <td style="
-                        padding: 14px 16px;
-                        color: #475569;
-                        vertical-align: top;
-                        line-height: 1.6;
-                        word-wrap: break-word;
-                      ">
-                        ${formatValue(req.requirement)}
-                      </td>
-
-                      <td style="
-                        padding: 14px 16px;
-                        vertical-align: top;
-                      ">
-                        ${priorityBadge(req.priority)}
-                      </td>
-
-                    </tr>
-                  `
-                )
-                .join('')}
-            </tbody>
-
-          </table>
-        </div>
-      </section>
-    `;
-  }
-
-  // -----------------------------
-  // Security Considerations
-  // -----------------------------
-
-  if (
-    Array.isArray(prdData.security_considerations) &&
-    prdData.security_considerations.length > 0
-  ) {
-    html += `
-      <section style="margin-bottom: 36px;">
-
-        ${sectionTitle('Security Considerations', '07')}
-
-        <div style="
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-          gap: 16px;
-        ">
-          ${prdData.security_considerations
-            .map(
-              (security) => `
-                <div style="
-                  padding: 20px;
-                  background: #FFFFFF;
-                  border: 1px solid #E2E8F0;
-                  border-radius: 8px;
-                ">
-
-                  <h3 style="
-                    margin: 0 0 8px;
-                    font-size: 15px;
-                    font-weight: 700;
-                    color: #1E293B;
-                  ">
-                    ${formatValue(security.control)}
-                  </h3>
-
-                  <p style="
-                    margin: 0 0 16px;
-                    color: #64748B;
-                    font-size: 13px;
-                    line-height: 1.6;
-                  ">
-                    ${formatValue(security.requirement)}
-                  </p>
-
-                  <div style="
-                    display: flex;
-                    gap: 20px;
-                    padding-top: 12px;
-                    border-top: 1px solid #E2E8F0;
-                  ">
-                    <div>
-                      <div style="
-                        color: #94A3B8;
-                        font-size: 10px;
-                        font-weight: 600;
-                        text-transform: uppercase;
-                      ">
-                        Risk Level
-                      </div>
-                      <div style="
-                        margin-top: 3px;
-                        color: #475569;
-                        font-size: 12px;
-                        font-weight: 600;
-                      ">
-                        ${formatValue(security.risk_level, 'Not specified')}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div style="
-                        color: #94A3B8;
-                        font-size: 10px;
-                        font-weight: 600;
-                        text-transform: uppercase;
-                      ">
-                        Category
-                      </div>
-                      <div style="
-                        margin-top: 3px;
-                        color: #475569;
-                        font-size: 12px;
-                        font-weight: 600;
-                      ">
-                        ${formatValue(security.category, 'Not specified')}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              `
-            )
-            .join('')}
-        </div>
-      </section>
-    `;
-  }
-
-  // -----------------------------
-  // Workflow Expectations
-  // -----------------------------
-
-  if (prdData.workflow_expectations) {
-    const workflow = prdData.workflow_expectations;
-
-    html += `
-      <section style="margin-bottom: 36px;">
-
-        ${sectionTitle('Workflow Expectations', '08')}
-
-        <div style="
-          padding: 24px;
-          background: #F8FAFC;
-          border: 1px solid #E2E8F0;
-          border-radius: 8px;
-        ">
-
-          ${
-            workflow.workflow_sequence &&
-            Array.isArray(workflow.workflow_sequence)
-              ? `
-                <div style="margin-bottom: 24px;">
-                  <h3 style="
-                    margin: 0 0 12px;
-                    font-size: 14px;
-                    font-weight: 700;
-                    color: #1E293B;
-                  ">
-                    Workflow Sequence
-                  </h3>
-
-                  <div style="
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 8px;
-                  ">
-                    ${workflow.workflow_sequence
-                      .map(
-                        (step, idx) => `
-                          <div style="
-                            display: flex;
-                            align-items: center;
-                            gap: 8px;
-                          ">
-                            <span style="
-                              padding: 7px 12px;
-                              background: #FFFFFF;
-                              border: 1px solid #CBD5E1;
-                              border-radius: 5px;
-                              color: #334155;
-                              font-size: 12px;
-                              font-weight: 500;
-                            ">
-                              ${idx + 1}. ${escapeHtml(step)}
-                            </span>
-                          </div>
-                        `
-                      )
-                      .join('')}
-                  </div>
-                </div>
-              `
-              : ''
-          }
-
-          ${
-            workflow.key_screens &&
-            Array.isArray(workflow.key_screens)
-              ? `
-                <div>
-                  <h3 style="
-                    margin: 0 0 12px;
-                    font-size: 14px;
-                    font-weight: 700;
-                    color: #1E293B;
-                  ">
-                    Key Screens
-                  </h3>
-
-                  <div style="
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 8px;
-                  ">
-                    ${workflow.key_screens
-                      .map(
-                        (screen) => `
-                          <span style="
-                            padding: 6px 12px;
-                            background: #EFF6FF;
-                            border: 1px solid #BFDBFE;
-                            border-radius: 4px;
-                            color: #1D4ED8;
-                            font-size: 12px;
-                            font-weight: 500;
-                          ">
-                            ${escapeHtml(screen)}
-                          </span>
-                        `
-                      )
-                      .join('')}
-                  </div>
-                </div>
-              `
-              : ''
-          }
-
-        </div>
-      </section>
-    `;
-  }
-
-  // -----------------------------
-  // API & Data Requirements
-  // -----------------------------
-
-  if (
-    Array.isArray(prdData.api_data_requirements) &&
-    prdData.api_data_requirements.length > 0
-  ) {
-    html += `
-      <section style="margin-bottom: 36px;">
-
-        ${sectionTitle('API & Data Requirements', '09')}
-
-        <div style="
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-          gap: 16px;
-        ">
-          ${prdData.api_data_requirements
-            .map(
-              (api) => `
-                <div style="
-                  padding: 20px;
-                  background: #FFFFFF;
-                  border: 1px solid #E2E8F0;
-                  border-radius: 8px;
-                ">
-
-                  <h3 style="
-                    margin: 0 0 8px;
-                    font-size: 15px;
-                    font-weight: 700;
-                    color: #1E293B;
-                  ">
-                    ${formatValue(api.integration)}
-                  </h3>
-
-                  <p style="
-                    margin: 0 0 16px;
-                    color: #64748B;
-                    font-size: 13px;
-                    line-height: 1.6;
-                  ">
-                    ${formatValue(api.purpose)}
-                  </p>
-
-                  <div style="
-                    display: flex;
-                    gap: 24px;
-                    padding-top: 12px;
-                    border-top: 1px solid #E2E8F0;
-                  ">
-                    <div>
-                      <div style="
-                        color: #94A3B8;
-                        font-size: 10px;
-                        font-weight: 600;
-                        text-transform: uppercase;
-                      ">
-                        Type
-                      </div>
-                      <div style="
-                        margin-top: 3px;
-                        color: #475569;
-                        font-size: 12px;
-                      ">
-                        ${formatValue(api.type, 'Not specified')}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div style="
-                        color: #94A3B8;
-                        font-size: 10px;
-                        font-weight: 600;
-                        text-transform: uppercase;
-                      ">
-                        Data Format
-                      </div>
-                      <div style="
-                        margin-top: 3px;
-                        color: #475569;
-                        font-size: 12px;
-                      ">
-                        ${formatValue(api.data_format, 'JSON')}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              `
-            )
-            .join('')}
-        </div>
-      </section>
-    `;
-  }
-
-  // -----------------------------
-  // Technical Dependencies
-  // -----------------------------
-
-  if (
-    Array.isArray(prdData.technical_dependencies) &&
-    prdData.technical_dependencies.length > 0
-  ) {
-    html += `
-      <section style="margin-bottom: 36px;">
-
-        ${sectionTitle('Technical Dependencies', '10')}
-
-        <div style="
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-          gap: 16px;
-        ">
-          ${prdData.technical_dependencies
-            .map(
-              (dep) => `
-                <div style="
-                  padding: 20px;
-                  background: #FFFFFF;
-                  border: 1px solid #E2E8F0;
-                  border-radius: 8px;
-                ">
-
-                  <h3 style="
-                    margin: 0 0 8px;
-                    font-size: 15px;
-                    font-weight: 700;
-                    color: #1E293B;
-                  ">
-                    ${formatValue(dep.dependency)}
-                  </h3>
-
-                  <p style="
-                    margin: 0 0 16px;
-                    color: #64748B;
-                    font-size: 13px;
-                    line-height: 1.6;
-                  ">
-                    ${formatValue(dep.purpose)}
-                  </p>
-
-                  <div style="
-                    display: flex;
-                    gap: 24px;
-                    padding-top: 12px;
-                    border-top: 1px solid #E2E8F0;
-                  ">
-                    <div>
-                      <div style="
-                        color: #94A3B8;
-                        font-size: 10px;
-                        font-weight: 600;
-                        text-transform: uppercase;
-                      ">
-                        Criticality
-                      </div>
-                      <div style="
-                        margin-top: 3px;
-                        color: #475569;
-                        font-size: 12px;
-                        font-weight: 600;
-                      ">
-                        ${formatValue(dep.criticality, 'Not specified')}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div style="
-                        color: #94A3B8;
-                        font-size: 10px;
-                        font-weight: 600;
-                        text-transform: uppercase;
-                      ">
-                        Status
-                      </div>
-                      <div style="
-                        margin-top: 3px;
-                        color: #475569;
-                        font-size: 12px;
-                        font-weight: 600;
-                      ">
-                        ${formatValue(dep.status, 'Not specified')}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              `
-            )
-            .join('')}
-        </div>
-      </section>
-    `;
-  }
-
-  // -----------------------------
-  // Edge Cases
-  // -----------------------------
-
-  if (
-    Array.isArray(prdData.edge_cases) &&
-    prdData.edge_cases.length > 0
-  ) {
-    html += `
-      <section style="
-        margin-bottom: 36px;
-        padding: 24px;
-        background: #FFFBEB;
-        border: 1px solid #FDE68A;
-        border-radius: 8px;
-      ">
-
-        ${sectionTitle('Edge Cases', '11')}
-
-        <ul style="
-          margin: 0;
-          padding-left: 22px;
-          color: #475569;
-        ">
-          ${prdData.edge_cases
-            .map(
-              (case_) => `
-                <li style="
-                  margin-bottom: 8px;
-                  padding-left: 4px;
-                ">
-                  ${escapeHtml(case_)}
-                </li>
-              `
-            )
-            .join('')}
-        </ul>
-      </section>
-    `;
-  }
-
-  // -----------------------------
-  // Close Document
-  // -----------------------------
-
-  html += `
-    </div>
-  `;
-
-  return html;
-};
 
 const generatePrdDocumentHandler = async (forceRegenerate = false) => {
   console.log("🔥 GENERATE PRD CALLED");
@@ -2613,68 +1467,31 @@ const generatePrdDocumentHandler = async (forceRegenerate = false) => {
     }
 
     // Try to extract PRD from various places in the response
-    let prdContent = null;
+    // Try the structured PRD object first — this is the reliable path
+    const prdObject = getPrdObject(data);
 
-    // 1. Check if prd_output is directly in data
-    if (data?.data?.prd_output) {
-      prdContent = data.data.prd_output;
-    } 
-    // 2. Check if prd_output is in data.prd_output (nested)
-    else if (data?.prd_output) {
-      prdContent = data.prd_output;
-    }
-    // 3. Extract from raw_response using extractPrdOutput
-    else {
-      const extracted = extractPrdOutput(data?.raw_response || data);
-      if (extracted) {
-        prdContent = extracted;
+    let nextHtml = "";
+    if (prdObject) {
+      nextHtml = buildPrdHtml(prdObject);
+    } else {
+      // Fallback for legacy/unstructured responses
+      if (data?.data?.prd_output) {
+        nextHtml = cleanPrdHtml(data.data.prd_output);
+      } else if (data?.prd_output) {
+        nextHtml = cleanPrdHtml(data.prd_output);
+      } else {
+        const extracted = extractPrdOutput(data?.raw_response || data);
+        if (extracted) nextHtml = cleanPrdHtml(extracted);
       }
     }
 
-    if (!prdContent) {
+    if (!nextHtml) {
       setPrdError("PRD output is empty.");
       setPrdHtml("");
       return;
     }
 
-    // Parse the PRD content if it's a string
-    let parsedPrd = prdContent;
-    if (typeof prdContent === 'string') {
-      try {
-        parsedPrd = JSON.parse(prdContent);
-      } catch (e) {
-        // Not valid JSON, might be HTML or text
-        parsedPrd = prdContent;
-      }
-    }
-
-    // If it's a JSON object with the PRD structure, render it as HTML
-    if (typeof parsedPrd === 'object' && parsedPrd !== null) {
-      // Check if it has the PRD structure (document_meta, executive_summary, etc.)
-      if (parsedPrd.document_meta || parsedPrd.executive_summary || parsedPrd.feature_overview) {
-        const renderedHtml = renderPrdAsHtml(parsedPrd);
-        setPrdHtml(renderedHtml);
-      } else if (parsedPrd.data?.prd) {
-        // Handle nested data.prd structure
-        const prdData = parsedPrd.data.prd;
-        if (typeof prdData === 'object') {
-          const renderedHtml = renderPrdAsHtml(prdData);
-          setPrdHtml(renderedHtml);
-        } else {
-          setPrdHtml(JSON.stringify(prdData, null, 2));
-        }
-      } else {
-        // Fallback: show as formatted JSON
-        setPrdHtml(`<pre style="white-space: pre-wrap; word-break: break-word; font-family: monospace; background: #f8f9fa; padding: 20px; border-radius: 8px;">${JSON.stringify(parsedPrd, null, 2)}</pre>`);
-      }
-    } else if (typeof parsedPrd === 'string' && parsedPrd.includes('<h1')) {
-      // It's already HTML
-      setPrdHtml(parsedPrd);
-    } else {
-      // Default: show as text
-      setPrdHtml(`<pre style="white-space: pre-wrap; word-break: break-word; font-family: monospace; background: #f8f9fa; padding: 20px; border-radius: 8px;">${String(parsedPrd)}</pre>`);
-    }
-
+    setPrdHtml(nextHtml);
   } catch (err) {
     setPrdError(err.message || "Failed to generate PRD document");
     setPrdHtml("");
@@ -2682,6 +1499,7 @@ const generatePrdDocumentHandler = async (forceRegenerate = false) => {
     setPrdLoading(false);
   }
 };
+
 
 
 const handleRegeneratePrd = async () => {
@@ -2701,16 +1519,15 @@ try {
 const handleOpenPrdModal = async () => {
   setIsPrdModalOpen(true);
 
-  // Start loader
+  // Start loader (same as BRD)
   setPrdProgress([]);
   runProgressSteps(PRD_STEPS, setPrdProgress);
 
-  // Reset previous state
   setPrdHtml("");
   setPrdError("");
 
   if (!projectId) {
-    setPrdError("Project ID is missing.");
+    setPrdError("Project id is missing.");
     return;
   }
 
@@ -2718,48 +1535,28 @@ const handleOpenPrdModal = async () => {
     const { data: existingData } = await getExistingPrd({ projectId });
 
     // Existing PRD found
-    if (existingData?.prd_content) {
-      let prdData = existingData.prd_content;
-
-      // Handle PRD content if it is stored as a JSON string
-      if (typeof prdData === "string") {
-        try {
-          prdData = JSON.parse(prdData);
-        } catch (parseError) {
-          console.error(
-            "Failed to parse existing PRD content:",
-            parseError
-          );
-
-          setPrdError(
-            "The existing PRD content is not in a valid format."
-          );
-
-          return;
-        }
+   const existingPrdObject = getPrdObject(existingData);
+    if (existingPrdObject) {
+      const html = buildPrdHtml(existingPrdObject);
+      if (html) {
+        setPrdHtml(html);
+        return;
       }
-
-      // Convert structured PRD JSON into professional HTML
-      const formattedPrdHtml = renderPrdAsHtml(prdData);
-
-      // Display professionally formatted PRD
-      setPrdHtml(formattedPrdHtml);
-
+    }
+    // Fallback: if it's already pre-rendered HTML in prd_content, use it directly
+    if (typeof existingData?.prd_content === "string" && existingData.prd_content.includes("<h1")) {
+      setPrdHtml(existingData.prd_content);
       return;
     }
 
-    // No existing PRD found
-    // Generate a new PRD
+    // Generate new PRD
     await generatePrdDocumentHandler();
-
   } catch (err) {
-    console.error("Failed to fetch existing PRD:", err);
-
-    setPrdError(
-      err?.message || "Failed to load PRD. Please try again."
-    );
+    console.error("Failed to fetch existing PRD", err);
+    setPrdError(err.message || "Failed to load PRD");
   }
 };
+
   const handleDownloadPrdDoc = async () => {
     if (!prdHtml || isDownloadingPrd) return;
 
