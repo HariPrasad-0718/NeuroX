@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, ChevronDown, Upload, Download, Share2, Trash2, FileText, Link as LinkIcon, Loader2, AlertTriangle, HandHeart, Lightbulb, X } from "lucide-react";
+import { FileJson, Users, Target, Zap, Shield, Clock, CheckCircle2, Calendar, User, GitBranch } from "lucide-react";
 import { api } from "@/services/api";
 import { useProgressSteps } from "@/hooks/useProgressSteps";
 import { generatePersonaCard } from "@/services/personaService";
@@ -100,69 +101,125 @@ const IDEATE_CARD_MEDIA = {
 };
 
 function extractPrdOutput(result) {
-  const messages = result?.response?.messages || [];
+  // 1. Check agent_response.message first (this is where your data lives)
+  if (result?.agent_response?.message) {
+    const messageStr = result.agent_response.message;
+    try {
+      // Parse the message string (it's a JSON string)
+      const parsedMessage = JSON.parse(messageStr);
+      
+      // Check for prd_output in the parsed message
+      if (parsedMessage?.prd_output) {
+        const prd = parsedMessage.prd_output;
+        // If prd_output is a stringified JSON, parse it
+        if (typeof prd === 'string') {
+          try {
+            const parsedPrd = JSON.parse(prd);
+            // If it has data.prd, extract the full PRD object as string
+            if (parsedPrd?.data?.prd) {
+              return JSON.stringify(parsedPrd.data.prd, null, 2);
+            }
+            // If it has success and data, try to extract
+            if (parsedPrd?.data) {
+              return JSON.stringify(parsedPrd.data, null, 2);
+            }
+            // If it's already the PRD content (HTML), return it
+            if (typeof parsedPrd === 'string' && (parsedPrd.includes('<h1') || parsedPrd.includes('document_meta'))) {
+              return cleanPrdOutput(parsedPrd);
+            }
+            return cleanPrdOutput(prd);
+          } catch (e) {
+            // Not valid JSON, treat as string content
+            if (prd.includes('<h1') || prd.includes('document_meta')) {
+              return cleanPrdOutput(prd);
+            }
+          }
+        }
+        return cleanPrdOutput(prd);
+      }
+      
+      // Check for data.prd in the parsed message
+      if (parsedMessage?.data?.prd) {
+        return JSON.stringify(parsedMessage.data.prd, null, 2);
+      }
+    } catch (e) {
+      // If message isn't valid JSON, try to extract HTML
+      if (messageStr.includes('<h1') && messageStr.includes('<h2')) {
+        return cleanPrdOutput(messageStr);
+      }
+    }
+  }
 
+  // 2. Check messages array (fallback)
+  const messages = result?.response?.messages || [];
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const msg = messages[i];
     if (typeof msg !== "string") continue;
 
-    const match = msg.match(/content='(.*?)'\s+additional_kwargs=/s);
+    const match = msg.match(/content='([\s\S]*?)'\s+additional_kwargs=/s);
     if (!match) continue;
 
     const content = match[1];
-    if (content.includes("<h1>") && content.includes("<h2>")) {
-      const cleaned = cleanPrdOutput(content);
-      if (!cleaned.includes("...") && cleaned.length > 1000) {
-        return cleaned;
+    // Check if it's a JSON string with prd_output
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed?.prd_output) {
+        const prd = parsed.prd_output;
+        if (typeof prd === 'string') {
+          try {
+            const prdObj = JSON.parse(prd);
+            if (prdObj?.data?.prd) {
+              return JSON.stringify(prdObj.data.prd, null, 2);
+            }
+            if (prdObj?.data) {
+              return JSON.stringify(prdObj.data, null, 2);
+            }
+            return cleanPrdOutput(prd);
+          } catch (e) {
+            return cleanPrdOutput(prd);
+          }
+        }
       }
-      if (cleaned.length > 1000) {
-        return cleaned;
+    } catch (e) {
+      // Not JSON, check for HTML
+      if (content.includes("<h1>") && content.includes("<h2>")) {
+        const cleaned = cleanPrdOutput(content);
+        if (!cleaned.includes("...") && cleaned.length > 1000) {
+          return cleaned;
+        }
+        if (cleaned.length > 1000) {
+          return cleaned;
+        }
       }
     }
   }
 
+  // 3. Check top-level message (fallback)
   const topMessage = result?.message || "";
   if (topMessage) {
-    const parsed = tryParseJsonString(topMessage);
-    if (parsed && typeof parsed === "object") {
-      const prd = parsed.prd_output || "";
-      if (
-        typeof prd === "string" &&
-        prd.includes("<h1>") &&
-        prd.includes("<h2>") &&
-        !prd.includes("...") &&
-        prd.length > 1000
-      ) {
-        return cleanPrdOutput(prd);
+    try {
+      const parsed = JSON.parse(topMessage);
+      if (parsed?.prd_output) {
+        const prd = parsed.prd_output;
+        if (typeof prd === 'string') {
+          try {
+            const prdObj = JSON.parse(prd);
+            if (prdObj?.data?.prd) {
+              return JSON.stringify(prdObj.data.prd, null, 2);
+            }
+            if (prdObj?.data) {
+              return JSON.stringify(prdObj.data, null, 2);
+            }
+            return cleanPrdOutput(prd);
+          } catch (e) {
+            return cleanPrdOutput(prd);
+          }
+        }
       }
-    }
-  }
-
-  if (result?.data?.prd_output) {
-    const prd = result.data.prd_output;
-    if (typeof prd === "string" && prd.includes("<h1>") && prd.includes("<h2>")) {
-      return cleanPrdOutput(prd);
-    }
-  }
-
-  if (result?.prd_output) {
-    const prd = result.prd_output;
-    if (typeof prd === "string" && prd.includes("<h1>") && prd.includes("<h2>")) {
-      return cleanPrdOutput(prd);
-    }
-  }
-
-  if (result?.final_response) {
-    if (typeof result.final_response === "object" && result.final_response.prd_output) {
-      return cleanPrdOutput(result.final_response.prd_output);
-    }
-    if (typeof result.final_response === "string") {
-      const parsed = tryParseJsonString(result.final_response);
-      if (parsed && parsed.prd_output) {
-        return cleanPrdOutput(parsed.prd_output);
-      }
-      if (result.final_response.includes("<h1>") && result.final_response.includes("<h2>")) {
-        return cleanPrdOutput(result.final_response);
+    } catch (e) {
+      // Not valid JSON
+      if (topMessage.includes("<h1>") && topMessage.includes("<h2>")) {
+        return cleanPrdOutput(topMessage);
       }
     }
   }
@@ -1034,9 +1091,1470 @@ const handleOpenBrdModal = async () => {
     setBrdLoading(false);
   }
 };
+const renderPrdAsHtml = (prdData) => {
+  if (!prdData || typeof prdData !== 'object') {
+    return `
+      <div style="
+        font-family: Arial, sans-serif;
+        padding: 40px;
+        text-align: center;
+        color: #475569;
+      ">
+        No PRD data available
+      </div>
+    `;
+  }
+
+  // -----------------------------
+  // Helper Functions
+  // -----------------------------
+
+  const escapeHtml = (value) => {
+    if (value === null || value === undefined) return '';
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  };
+
+  const formatValue = (value, fallback = '') => {
+    return value !== undefined && value !== null && value !== ''
+      ? escapeHtml(value)
+      : fallback;
+  };
+
+  const getPriorityStyle = (priority) => {
+    const value = String(priority || '').toLowerCase();
+
+    if (value === 'critical') {
+      return {
+        background: '#FEE2E2',
+        color: '#991B1B',
+        border: '#FECACA'
+      };
+    }
+
+    if (value === 'high') {
+      return {
+        background: '#FEF3C7',
+        color: '#92400E',
+        border: '#FDE68A'
+      };
+    }
+
+    if (value === 'medium') {
+      return {
+        background: '#DBEAFE',
+        color: '#1E40AF',
+        border: '#BFDBFE'
+      };
+    }
+
+    return {
+      background: '#F1F5F9',
+      color: '#475569',
+      border: '#E2E8F0'
+    };
+  };
+
+  const priorityBadge = (priority, defaultValue = 'Medium') => {
+    const value = priority || defaultValue;
+    const style = getPriorityStyle(value);
+
+    return `
+      <span style="
+        display: inline-block;
+        padding: 4px 10px;
+        background: ${style.background};
+        color: ${style.color};
+        border: 1px solid ${style.border};
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1.2;
+        white-space: nowrap;
+      ">
+        ${escapeHtml(value)}
+      </span>
+    `;
+  };
+
+  const sectionTitle = (title, number = '') => `
+    <div style="
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 0 0 20px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #E2E8F0;
+    ">
+      ${
+        number
+          ? `
+            <span style="
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              width: 28px;
+              height: 28px;
+              background: #1E3A5F;
+              color: #FFFFFF;
+              border-radius: 4px;
+              font-size: 13px;
+              font-weight: 700;
+            ">
+              ${number}
+            </span>
+          `
+          : ''
+      }
+
+      <h2 style="
+        margin: 0;
+        font-size: 21px;
+        line-height: 1.3;
+        font-weight: 700;
+        color: #1E293B;
+        letter-spacing: -0.2px;
+      ">
+        ${escapeHtml(title)}
+      </h2>
+    </div>
+  `;
+
+  const infoLabel = (label, value) => `
+    <div style="
+      min-width: 160px;
+      flex: 1;
+      padding: 14px 16px;
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      border-radius: 6px;
+    ">
+      <div style="
+        margin-bottom: 5px;
+        color: #64748B;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      ">
+        ${escapeHtml(label)}
+      </div>
+
+      <div style="
+        color: #1E293B;
+        font-size: 14px;
+        font-weight: 600;
+      ">
+        ${formatValue(value, 'Not specified')}
+      </div>
+    </div>
+  `;
+
+  // -----------------------------
+  // Main Document Container
+  // -----------------------------
+
+  let html = `
+    <div
+      class="prd-document"
+      style="
+        width: 100%;
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 40px;
+        box-sizing: border-box;
+        background: #FFFFFF;
+        color: #334155;
+        font-family:
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          Roboto,
+          'Helvetica Neue',
+          Arial,
+          sans-serif;
+        font-size: 14px;
+        line-height: 1.65;
+      "
+    >
+  `;
+
+  // -----------------------------
+  // Document Header
+  // -----------------------------
+
+  if (prdData.document_meta) {
+    const meta = prdData.document_meta;
+
+    html += `
+      <div style="
+        margin-bottom: 36px;
+        border: 1px solid #CBD5E1;
+        border-radius: 8px;
+        overflow: hidden;
+        background: #FFFFFF;
+      ">
+
+        <div style="
+          padding: 36px 40px;
+          background: #1E3A5F;
+          color: #FFFFFF;
+        ">
+          <div style="
+            margin-bottom: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: #CBD5E1;
+          ">
+            Product Requirements Document
+          </div>
+
+          <h1 style="
+            margin: 0 0 10px;
+            font-size: 30px;
+            line-height: 1.25;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            color: #FFFFFF;
+          ">
+            ${formatValue(meta.project_name, 'Product Requirements Document')}
+          </h1>
+
+          ${
+            meta.project_description
+              ? `
+                <p style="
+                  max-width: 800px;
+                  margin: 0;
+                  font-size: 15px;
+                  line-height: 1.6;
+                  color: #E2E8F0;
+                ">
+                  ${escapeHtml(meta.project_description)}
+                </p>
+              `
+              : ''
+          }
+        </div>
+
+        <div style="
+          display: flex;
+          flex-wrap: wrap;
+          gap: 12px;
+          padding: 20px;
+          background: #FFFFFF;
+        ">
+          ${infoLabel('Version', meta.version || '1.0')}
+          ${infoLabel('Created Date', meta.created_date)}
+          ${infoLabel('Document Status', meta.document_status || 'Draft')}
+          ${infoLabel('Document Owner', meta.document_owner)}
+        </div>
+      </div>
+    `;
+  }
+
+  // -----------------------------
+  // Executive Summary
+  // -----------------------------
+
+  if (prdData.executive_summary) {
+    const summary = prdData.executive_summary;
+
+    html += `
+      <section style="
+        margin-bottom: 36px;
+        padding: 26px;
+        background: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+      ">
+
+        ${sectionTitle('Executive Summary', '01')}
+
+        ${
+          summary.overview
+            ? `
+              <p style="
+                margin: 0 0 20px;
+                color: #475569;
+                font-size: 14px;
+                line-height: 1.75;
+              ">
+                ${escapeHtml(summary.overview)}
+              </p>
+            `
+            : ''
+        }
+
+        ${
+          summary.key_objectives &&
+          Array.isArray(summary.key_objectives) &&
+          summary.key_objectives.length > 0
+            ? `
+              <div style="margin-bottom: 18px;">
+                <h3 style="
+                  margin: 0 0 10px;
+                  font-size: 14px;
+                  font-weight: 700;
+                  color: #1E293B;
+                ">
+                  Key Objectives
+                </h3>
+
+                <ul style="
+                  margin: 0;
+                  padding-left: 22px;
+                  color: #475569;
+                ">
+                  ${summary.key_objectives
+                    .map(
+                      (obj) => `
+                        <li style="margin-bottom: 6px;">
+                          ${escapeHtml(obj)}
+                        </li>
+                      `
+                    )
+                    .join('')}
+                </ul>
+              </div>
+            `
+            : ''
+        }
+
+        ${
+          summary.strategic_alignment
+            ? `
+              <div style="
+                padding: 14px 16px;
+                background: #FFFFFF;
+                border-left: 3px solid #2563EB;
+                border-radius: 4px;
+              ">
+                <strong style="color: #1E293B;">
+                  Strategic Alignment:
+                </strong>
+                <span style="color: #475569;">
+                  ${escapeHtml(summary.strategic_alignment)}
+                </span>
+              </div>
+            `
+            : ''
+        }
+      </section>
+    `;
+  }
+
+  // -----------------------------
+  // Business Problem
+  // -----------------------------
+
+  if (prdData.business_problem) {
+    const problem = prdData.business_problem;
+
+    html += `
+      <section style="
+        margin-bottom: 36px;
+        padding: 26px;
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+      ">
+
+        ${sectionTitle('Business Problem', '02')}
+
+        <div style="
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+          gap: 16px;
+        ">
+
+          <div style="
+            padding: 16px;
+            background: #F8FAFC;
+            border: 1px solid #E2E8F0;
+            border-radius: 6px;
+          ">
+            <h3 style="
+              margin: 0 0 8px;
+              font-size: 13px;
+              font-weight: 700;
+              color: #1E293B;
+            ">
+              Problem Statement
+            </h3>
+            <p style="margin: 0; color: #475569;">
+              ${formatValue(problem.problem_statement)}
+            </p>
+          </div>
+
+          <div style="
+            padding: 16px;
+            background: #F8FAFC;
+            border: 1px solid #E2E8F0;
+            border-radius: 6px;
+          ">
+            <h3 style="
+              margin: 0 0 8px;
+              font-size: 13px;
+              font-weight: 700;
+              color: #1E293B;
+            ">
+              Current State
+            </h3>
+            <p style="margin: 0; color: #475569;">
+              ${formatValue(problem.current_state)}
+            </p>
+          </div>
+
+          <div style="
+            padding: 16px;
+            background: #F8FAFC;
+            border: 1px solid #E2E8F0;
+            border-radius: 6px;
+          ">
+            <h3 style="
+              margin: 0 0 8px;
+              font-size: 13px;
+              font-weight: 700;
+              color: #1E293B;
+            ">
+              Desired State
+            </h3>
+            <p style="margin: 0; color: #475569;">
+              ${formatValue(problem.desired_state)}
+            </p>
+          </div>
+
+          ${
+            problem.business_value
+              ? `
+                <div style="
+                  padding: 16px;
+                  background: #F8FAFC;
+                  border: 1px solid #E2E8F0;
+                  border-radius: 6px;
+                ">
+                  <h3 style="
+                    margin: 0 0 8px;
+                    font-size: 13px;
+                    font-weight: 700;
+                    color: #1E293B;
+                  ">
+                    Business Value
+                  </h3>
+                  <p style="margin: 0; color: #475569;">
+                    ${escapeHtml(problem.business_value)}
+                  </p>
+                </div>
+              `
+              : ''
+          }
+        </div>
+
+        ${
+          problem.affected_users &&
+          Array.isArray(problem.affected_users) &&
+          problem.affected_users.length > 0
+            ? `
+              <div style="margin-top: 20px;">
+                <h3 style="
+                  margin: 0 0 10px;
+                  font-size: 13px;
+                  font-weight: 700;
+                  color: #1E293B;
+                ">
+                  Affected Users
+                </h3>
+
+                <div style="
+                  display: flex;
+                  flex-wrap: wrap;
+                  gap: 8px;
+                ">
+                  ${problem.affected_users
+                    .map(
+                      (user) => `
+                        <span style="
+                          padding: 6px 12px;
+                          background: #EFF6FF;
+                          color: #1D4ED8;
+                          border: 1px solid #BFDBFE;
+                          border-radius: 4px;
+                          font-size: 12px;
+                          font-weight: 500;
+                        ">
+                          ${escapeHtml(user)}
+                        </span>
+                      `
+                    )
+                    .join('')}
+                </div>
+              </div>
+            `
+            : ''
+        }
+      </section>
+    `;
+  }
+
+  // -----------------------------
+  // Feature Overview
+  // -----------------------------
+
+  if (prdData.feature_overview) {
+    const features = prdData.feature_overview;
+
+    html += `
+      <section style="margin-bottom: 36px;">
+
+        ${sectionTitle('Feature Overview', '03')}
+
+        ${
+          features.description
+            ? `
+              <p style="
+                margin: 0 0 20px;
+                color: #475569;
+                line-height: 1.7;
+              ">
+                ${escapeHtml(features.description)}
+              </p>
+            `
+            : ''
+        }
+
+        ${
+          features.features &&
+          Array.isArray(features.features) &&
+          features.features.length > 0
+            ? `
+              <div style="
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+                gap: 16px;
+              ">
+                ${features.features
+                  .map(
+                    (feature) => `
+                      <div style="
+                        padding: 20px;
+                        background: #FFFFFF;
+                        border: 1px solid #E2E8F0;
+                        border-radius: 8px;
+                        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+                      ">
+
+                        <div style="
+                          display: flex;
+                          justify-content: space-between;
+                          align-items: flex-start;
+                          gap: 12px;
+                          margin-bottom: 10px;
+                        ">
+                          <h3 style="
+                            margin: 0;
+                            font-size: 15px;
+                            font-weight: 700;
+                            color: #1E293B;
+                          ">
+                            ${formatValue(feature.feature_name)}
+                          </h3>
+
+                          ${priorityBadge(feature.priority)}
+                        </div>
+
+                        <p style="
+                          margin: 0 0 16px;
+                          color: #64748B;
+                          font-size: 13px;
+                          line-height: 1.65;
+                        ">
+                          ${formatValue(feature.description)}
+                        </p>
+
+                        <div style="
+                          display: grid;
+                          grid-template-columns: 1fr 1fr;
+                          gap: 8px;
+                          padding-top: 12px;
+                          border-top: 1px solid #E2E8F0;
+                        ">
+                          <div>
+                            <div style="
+                              font-size: 10px;
+                              text-transform: uppercase;
+                              color: #94A3B8;
+                              font-weight: 600;
+                            ">
+                              Category
+                            </div>
+                            <div style="
+                              margin-top: 3px;
+                              font-size: 12px;
+                              color: #475569;
+                              font-weight: 500;
+                            ">
+                              ${formatValue(feature.category, 'Core')}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div style="
+                              font-size: 10px;
+                              text-transform: uppercase;
+                              color: #94A3B8;
+                              font-weight: 600;
+                            ">
+                              Estimated Effort
+                            </div>
+                            <div style="
+                              margin-top: 3px;
+                              font-size: 12px;
+                              color: #475569;
+                              font-weight: 500;
+                            ">
+                              ${formatValue(feature.estimated_effort, 'Not specified')}
+                            </div>
+                          </div>
+
+                          <div style="
+                            grid-column: 1 / -1;
+                            margin-top: 4px;
+                          ">
+                            <div style="
+                              font-size: 10px;
+                              text-transform: uppercase;
+                              color: #94A3B8;
+                              font-weight: 600;
+                            ">
+                              Release Scope
+                            </div>
+                            <div style="
+                              margin-top: 3px;
+                              font-size: 12px;
+                              color: #475569;
+                              font-weight: 500;
+                            ">
+                              ${feature.mvp_inclusion ? 'MVP' : 'Post-MVP'}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    `
+                  )
+                  .join('')}
+              </div>
+            `
+            : ''
+        }
+      </section>
+    `;
+  }
+
+  // -----------------------------
+  // User Stories
+  // -----------------------------
+
+  if (
+    Array.isArray(prdData.user_stories) &&
+    prdData.user_stories.length > 0
+  ) {
+    html += `
+      <section style="margin-bottom: 36px;">
+
+        ${sectionTitle('User Stories', '04')}
+
+        <div style="
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        ">
+          ${prdData.user_stories
+            .map(
+              (story, idx) => `
+                <div style="
+                  display: flex;
+                  gap: 16px;
+                  padding: 18px 20px;
+                  background: #FFFFFF;
+                  border: 1px solid #E2E8F0;
+                  border-radius: 8px;
+                ">
+
+                  <div style="
+                    flex-shrink: 0;
+                    width: 34px;
+                    height: 34px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: #EFF6FF;
+                    color: #1D4ED8;
+                    border-radius: 5px;
+                    font-size: 12px;
+                    font-weight: 700;
+                  ">
+                    US-${String(idx + 1).padStart(3, '0')}
+                  </div>
+
+                  <div style="flex: 1; min-width: 0;">
+
+                    <p style="
+                      margin: 0 0 12px;
+                      color: #334155;
+                      font-size: 14px;
+                      line-height: 1.65;
+                    ">
+                      ${formatValue(story.story)}
+                    </p>
+
+                    <div style="
+                      display: flex;
+                      flex-wrap: wrap;
+                      gap: 8px;
+                    ">
+                      <span style="
+                        padding: 4px 9px;
+                        background: #F8FAFC;
+                        border: 1px solid #E2E8F0;
+                        border-radius: 4px;
+                        color: #64748B;
+                        font-size: 11px;
+                      ">
+                        Priority: ${formatValue(story.priority, 'Not specified')}
+                      </span>
+
+                      <span style="
+                        padding: 4px 9px;
+                        background: #F8FAFC;
+                        border: 1px solid #E2E8F0;
+                        border-radius: 4px;
+                        color: #64748B;
+                        font-size: 11px;
+                      ">
+                        Release: ${formatValue(story.release, 'Not specified')}
+                      </span>
+
+                      <span style="
+                        padding: 4px 9px;
+                        background: #F8FAFC;
+                        border: 1px solid #E2E8F0;
+                        border-radius: 4px;
+                        color: #64748B;
+                        font-size: 11px;
+                      ">
+                        Estimation: ${formatValue(story.estimation, 'Not specified')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              `
+            )
+            .join('')}
+        </div>
+      </section>
+    `;
+  }
+
+  // -----------------------------
+  // Acceptance Criteria
+  // -----------------------------
+
+  if (
+    Array.isArray(prdData.acceptance_criteria) &&
+    prdData.acceptance_criteria.length > 0
+  ) {
+    html += `
+      <section style="margin-bottom: 36px;">
+
+        ${sectionTitle('Acceptance Criteria', '05')}
+
+        <div style="
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        ">
+          ${prdData.acceptance_criteria
+            .map(
+              (criteria, idx) => `
+                <div style="
+                  padding: 20px;
+                  background: #FFFFFF;
+                  border: 1px solid #E2E8F0;
+                  border-radius: 8px;
+                ">
+
+                  <div style="
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    margin-bottom: 10px;
+                  ">
+                    <span style="
+                      font-size: 12px;
+                      font-weight: 700;
+                      color: #2563EB;
+                    ">
+                      AC-${String(idx + 1).padStart(3, '0')}
+                    </span>
+
+                    <div style="
+                      height: 1px;
+                      flex: 1;
+                      background: #E2E8F0;
+                    "></div>
+                  </div>
+
+                  <p style="
+                    margin: 0 0 14px;
+                    color: #334155;
+                    font-size: 14px;
+                    font-weight: 500;
+                  ">
+                    ${formatValue(criteria.criteria)}
+                  </p>
+
+                  ${
+                    criteria.scenario || criteria.expected_result
+                      ? `
+                        <div style="
+                          padding: 14px 16px;
+                          background: #F8FAFC;
+                          border: 1px solid #E2E8F0;
+                          border-radius: 6px;
+                        ">
+
+                          ${
+                            criteria.scenario
+                              ? `
+                                <p style="
+                                  margin: 0 0 6px;
+                                  color: #475569;
+                                  font-size: 13px;
+                                ">
+                                  <strong style="color: #1E293B;">
+                                    Scenario:
+                                  </strong>
+                                  ${escapeHtml(criteria.scenario)}
+                                </p>
+                              `
+                              : ''
+                          }
+
+                          ${
+                            criteria.expected_result
+                              ? `
+                                <p style="
+                                  margin: 0;
+                                  color: #475569;
+                                  font-size: 13px;
+                                ">
+                                  <strong style="color: #1E293B;">
+                                    Expected Result:
+                                  </strong>
+                                  ${escapeHtml(criteria.expected_result)}
+                                </p>
+                              `
+                              : ''
+                          }
+
+                        </div>
+                      `
+                      : ''
+                  }
+                </div>
+              `
+            )
+            .join('')}
+        </div>
+      </section>
+    `;
+  }
+
+  // -----------------------------
+  // Functional Requirements
+  // -----------------------------
+
+  if (
+    Array.isArray(prdData.functional_requirements) &&
+    prdData.functional_requirements.length > 0
+  ) {
+    html += `
+      <section style="margin-bottom: 36px;">
+
+        ${sectionTitle('Functional Requirements', '06')}
+
+        <div style="
+          overflow-x: auto;
+          border: 1px solid #CBD5E1;
+          border-radius: 8px;
+        ">
+          <table style="
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+            font-size: 13px;
+          ">
+
+            <thead>
+              <tr style="background: #1E3A5F; color: #FFFFFF;">
+                <th style="
+                  width: 14%;
+                  padding: 13px 16px;
+                  text-align: left;
+                  font-size: 11px;
+                  font-weight: 700;
+                  text-transform: uppercase;
+                  letter-spacing: 0.4px;
+                ">
+                  Requirement ID
+                </th>
+
+                <th style="
+                  width: 61%;
+                  padding: 13px 16px;
+                  text-align: left;
+                  font-size: 11px;
+                  font-weight: 700;
+                  text-transform: uppercase;
+                  letter-spacing: 0.4px;
+                ">
+                  Requirement
+                </th>
+
+                <th style="
+                  width: 25%;
+                  padding: 13px 16px;
+                  text-align: left;
+                  font-size: 11px;
+                  font-weight: 700;
+                  text-transform: uppercase;
+                  letter-spacing: 0.4px;
+                ">
+                  Priority
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              ${prdData.functional_requirements
+                .map(
+                  (req, idx) => `
+                    <tr style="
+                      background: ${idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'};
+                      border-top: 1px solid #E2E8F0;
+                    ">
+
+                      <td style="
+                        padding: 14px 16px;
+                        color: #1E40AF;
+                        font-weight: 700;
+                        vertical-align: top;
+                      ">
+                        ${formatValue(
+                          req.requirement_id,
+                          `FR-${String(idx + 1).padStart(3, '0')}`
+                        )}
+                      </td>
+
+                      <td style="
+                        padding: 14px 16px;
+                        color: #475569;
+                        vertical-align: top;
+                        line-height: 1.6;
+                        word-wrap: break-word;
+                      ">
+                        ${formatValue(req.requirement)}
+                      </td>
+
+                      <td style="
+                        padding: 14px 16px;
+                        vertical-align: top;
+                      ">
+                        ${priorityBadge(req.priority)}
+                      </td>
+
+                    </tr>
+                  `
+                )
+                .join('')}
+            </tbody>
+
+          </table>
+        </div>
+      </section>
+    `;
+  }
+
+  // -----------------------------
+  // Security Considerations
+  // -----------------------------
+
+  if (
+    Array.isArray(prdData.security_considerations) &&
+    prdData.security_considerations.length > 0
+  ) {
+    html += `
+      <section style="margin-bottom: 36px;">
+
+        ${sectionTitle('Security Considerations', '07')}
+
+        <div style="
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+          gap: 16px;
+        ">
+          ${prdData.security_considerations
+            .map(
+              (security) => `
+                <div style="
+                  padding: 20px;
+                  background: #FFFFFF;
+                  border: 1px solid #E2E8F0;
+                  border-radius: 8px;
+                ">
+
+                  <h3 style="
+                    margin: 0 0 8px;
+                    font-size: 15px;
+                    font-weight: 700;
+                    color: #1E293B;
+                  ">
+                    ${formatValue(security.control)}
+                  </h3>
+
+                  <p style="
+                    margin: 0 0 16px;
+                    color: #64748B;
+                    font-size: 13px;
+                    line-height: 1.6;
+                  ">
+                    ${formatValue(security.requirement)}
+                  </p>
+
+                  <div style="
+                    display: flex;
+                    gap: 20px;
+                    padding-top: 12px;
+                    border-top: 1px solid #E2E8F0;
+                  ">
+                    <div>
+                      <div style="
+                        color: #94A3B8;
+                        font-size: 10px;
+                        font-weight: 600;
+                        text-transform: uppercase;
+                      ">
+                        Risk Level
+                      </div>
+                      <div style="
+                        margin-top: 3px;
+                        color: #475569;
+                        font-size: 12px;
+                        font-weight: 600;
+                      ">
+                        ${formatValue(security.risk_level, 'Not specified')}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style="
+                        color: #94A3B8;
+                        font-size: 10px;
+                        font-weight: 600;
+                        text-transform: uppercase;
+                      ">
+                        Category
+                      </div>
+                      <div style="
+                        margin-top: 3px;
+                        color: #475569;
+                        font-size: 12px;
+                        font-weight: 600;
+                      ">
+                        ${formatValue(security.category, 'Not specified')}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              `
+            )
+            .join('')}
+        </div>
+      </section>
+    `;
+  }
+
+  // -----------------------------
+  // Workflow Expectations
+  // -----------------------------
+
+  if (prdData.workflow_expectations) {
+    const workflow = prdData.workflow_expectations;
+
+    html += `
+      <section style="margin-bottom: 36px;">
+
+        ${sectionTitle('Workflow Expectations', '08')}
+
+        <div style="
+          padding: 24px;
+          background: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          border-radius: 8px;
+        ">
+
+          ${
+            workflow.workflow_sequence &&
+            Array.isArray(workflow.workflow_sequence)
+              ? `
+                <div style="margin-bottom: 24px;">
+                  <h3 style="
+                    margin: 0 0 12px;
+                    font-size: 14px;
+                    font-weight: 700;
+                    color: #1E293B;
+                  ">
+                    Workflow Sequence
+                  </h3>
+
+                  <div style="
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                  ">
+                    ${workflow.workflow_sequence
+                      .map(
+                        (step, idx) => `
+                          <div style="
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                          ">
+                            <span style="
+                              padding: 7px 12px;
+                              background: #FFFFFF;
+                              border: 1px solid #CBD5E1;
+                              border-radius: 5px;
+                              color: #334155;
+                              font-size: 12px;
+                              font-weight: 500;
+                            ">
+                              ${idx + 1}. ${escapeHtml(step)}
+                            </span>
+                          </div>
+                        `
+                      )
+                      .join('')}
+                  </div>
+                </div>
+              `
+              : ''
+          }
+
+          ${
+            workflow.key_screens &&
+            Array.isArray(workflow.key_screens)
+              ? `
+                <div>
+                  <h3 style="
+                    margin: 0 0 12px;
+                    font-size: 14px;
+                    font-weight: 700;
+                    color: #1E293B;
+                  ">
+                    Key Screens
+                  </h3>
+
+                  <div style="
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                  ">
+                    ${workflow.key_screens
+                      .map(
+                        (screen) => `
+                          <span style="
+                            padding: 6px 12px;
+                            background: #EFF6FF;
+                            border: 1px solid #BFDBFE;
+                            border-radius: 4px;
+                            color: #1D4ED8;
+                            font-size: 12px;
+                            font-weight: 500;
+                          ">
+                            ${escapeHtml(screen)}
+                          </span>
+                        `
+                      )
+                      .join('')}
+                  </div>
+                </div>
+              `
+              : ''
+          }
+
+        </div>
+      </section>
+    `;
+  }
+
+  // -----------------------------
+  // API & Data Requirements
+  // -----------------------------
+
+  if (
+    Array.isArray(prdData.api_data_requirements) &&
+    prdData.api_data_requirements.length > 0
+  ) {
+    html += `
+      <section style="margin-bottom: 36px;">
+
+        ${sectionTitle('API & Data Requirements', '09')}
+
+        <div style="
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+          gap: 16px;
+        ">
+          ${prdData.api_data_requirements
+            .map(
+              (api) => `
+                <div style="
+                  padding: 20px;
+                  background: #FFFFFF;
+                  border: 1px solid #E2E8F0;
+                  border-radius: 8px;
+                ">
+
+                  <h3 style="
+                    margin: 0 0 8px;
+                    font-size: 15px;
+                    font-weight: 700;
+                    color: #1E293B;
+                  ">
+                    ${formatValue(api.integration)}
+                  </h3>
+
+                  <p style="
+                    margin: 0 0 16px;
+                    color: #64748B;
+                    font-size: 13px;
+                    line-height: 1.6;
+                  ">
+                    ${formatValue(api.purpose)}
+                  </p>
+
+                  <div style="
+                    display: flex;
+                    gap: 24px;
+                    padding-top: 12px;
+                    border-top: 1px solid #E2E8F0;
+                  ">
+                    <div>
+                      <div style="
+                        color: #94A3B8;
+                        font-size: 10px;
+                        font-weight: 600;
+                        text-transform: uppercase;
+                      ">
+                        Type
+                      </div>
+                      <div style="
+                        margin-top: 3px;
+                        color: #475569;
+                        font-size: 12px;
+                      ">
+                        ${formatValue(api.type, 'Not specified')}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style="
+                        color: #94A3B8;
+                        font-size: 10px;
+                        font-weight: 600;
+                        text-transform: uppercase;
+                      ">
+                        Data Format
+                      </div>
+                      <div style="
+                        margin-top: 3px;
+                        color: #475569;
+                        font-size: 12px;
+                      ">
+                        ${formatValue(api.data_format, 'JSON')}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              `
+            )
+            .join('')}
+        </div>
+      </section>
+    `;
+  }
+
+  // -----------------------------
+  // Technical Dependencies
+  // -----------------------------
+
+  if (
+    Array.isArray(prdData.technical_dependencies) &&
+    prdData.technical_dependencies.length > 0
+  ) {
+    html += `
+      <section style="margin-bottom: 36px;">
+
+        ${sectionTitle('Technical Dependencies', '10')}
+
+        <div style="
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+          gap: 16px;
+        ">
+          ${prdData.technical_dependencies
+            .map(
+              (dep) => `
+                <div style="
+                  padding: 20px;
+                  background: #FFFFFF;
+                  border: 1px solid #E2E8F0;
+                  border-radius: 8px;
+                ">
+
+                  <h3 style="
+                    margin: 0 0 8px;
+                    font-size: 15px;
+                    font-weight: 700;
+                    color: #1E293B;
+                  ">
+                    ${formatValue(dep.dependency)}
+                  </h3>
+
+                  <p style="
+                    margin: 0 0 16px;
+                    color: #64748B;
+                    font-size: 13px;
+                    line-height: 1.6;
+                  ">
+                    ${formatValue(dep.purpose)}
+                  </p>
+
+                  <div style="
+                    display: flex;
+                    gap: 24px;
+                    padding-top: 12px;
+                    border-top: 1px solid #E2E8F0;
+                  ">
+                    <div>
+                      <div style="
+                        color: #94A3B8;
+                        font-size: 10px;
+                        font-weight: 600;
+                        text-transform: uppercase;
+                      ">
+                        Criticality
+                      </div>
+                      <div style="
+                        margin-top: 3px;
+                        color: #475569;
+                        font-size: 12px;
+                        font-weight: 600;
+                      ">
+                        ${formatValue(dep.criticality, 'Not specified')}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style="
+                        color: #94A3B8;
+                        font-size: 10px;
+                        font-weight: 600;
+                        text-transform: uppercase;
+                      ">
+                        Status
+                      </div>
+                      <div style="
+                        margin-top: 3px;
+                        color: #475569;
+                        font-size: 12px;
+                        font-weight: 600;
+                      ">
+                        ${formatValue(dep.status, 'Not specified')}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              `
+            )
+            .join('')}
+        </div>
+      </section>
+    `;
+  }
+
+  // -----------------------------
+  // Edge Cases
+  // -----------------------------
+
+  if (
+    Array.isArray(prdData.edge_cases) &&
+    prdData.edge_cases.length > 0
+  ) {
+    html += `
+      <section style="
+        margin-bottom: 36px;
+        padding: 24px;
+        background: #FFFBEB;
+        border: 1px solid #FDE68A;
+        border-radius: 8px;
+      ">
+
+        ${sectionTitle('Edge Cases', '11')}
+
+        <ul style="
+          margin: 0;
+          padding-left: 22px;
+          color: #475569;
+        ">
+          ${prdData.edge_cases
+            .map(
+              (case_) => `
+                <li style="
+                  margin-bottom: 8px;
+                  padding-left: 4px;
+                ">
+                  ${escapeHtml(case_)}
+                </li>
+              `
+            )
+            .join('')}
+        </ul>
+      </section>
+    `;
+  }
+
+  // -----------------------------
+  // Close Document
+  // -----------------------------
+
+  html += `
+    </div>
+  `;
+
+  return html;
+};
 
 const generatePrdDocumentHandler = async (forceRegenerate = false) => {
-    console.log("🔥 GENERATE PRD CALLED");
+  console.log("🔥 GENERATE PRD CALLED");
 
   if (!projectId) {
     setPrdError("Project id is missing.");
@@ -1072,19 +2590,69 @@ const generatePrdDocumentHandler = async (forceRegenerate = false) => {
       return;
     }
 
-    const nextHtml = cleanPrdHtml(
-      data?.data?.prd_output ||
-      data?.prd_output ||
-      extractPrdMarkup(data?.raw_response || "")
-    );
+    // Try to extract PRD from various places in the response
+    let prdContent = null;
 
-    if (!nextHtml) {
+    // 1. Check if prd_output is directly in data
+    if (data?.data?.prd_output) {
+      prdContent = data.data.prd_output;
+    } 
+    // 2. Check if prd_output is in data.prd_output (nested)
+    else if (data?.prd_output) {
+      prdContent = data.prd_output;
+    }
+    // 3. Extract from raw_response using extractPrdOutput
+    else {
+      const extracted = extractPrdOutput(data?.raw_response || data);
+      if (extracted) {
+        prdContent = extracted;
+      }
+    }
+
+    if (!prdContent) {
       setPrdError("PRD output is empty.");
       setPrdHtml("");
       return;
     }
 
-    setPrdHtml(nextHtml);
+    // Parse the PRD content if it's a string
+    let parsedPrd = prdContent;
+    if (typeof prdContent === 'string') {
+      try {
+        parsedPrd = JSON.parse(prdContent);
+      } catch (e) {
+        // Not valid JSON, might be HTML or text
+        parsedPrd = prdContent;
+      }
+    }
+
+    // If it's a JSON object with the PRD structure, render it as HTML
+    if (typeof parsedPrd === 'object' && parsedPrd !== null) {
+      // Check if it has the PRD structure (document_meta, executive_summary, etc.)
+      if (parsedPrd.document_meta || parsedPrd.executive_summary || parsedPrd.feature_overview) {
+        const renderedHtml = renderPrdAsHtml(parsedPrd);
+        setPrdHtml(renderedHtml);
+      } else if (parsedPrd.data?.prd) {
+        // Handle nested data.prd structure
+        const prdData = parsedPrd.data.prd;
+        if (typeof prdData === 'object') {
+          const renderedHtml = renderPrdAsHtml(prdData);
+          setPrdHtml(renderedHtml);
+        } else {
+          setPrdHtml(JSON.stringify(prdData, null, 2));
+        }
+      } else {
+        // Fallback: show as formatted JSON
+        setPrdHtml(`<pre style="white-space: pre-wrap; word-break: break-word; font-family: monospace; background: #f8f9fa; padding: 20px; border-radius: 8px;">${JSON.stringify(parsedPrd, null, 2)}</pre>`);
+      }
+    } else if (typeof parsedPrd === 'string' && parsedPrd.includes('<h1')) {
+      // It's already HTML
+      setPrdHtml(parsedPrd);
+    } else {
+      // Default: show as text
+      setPrdHtml(`<pre style="white-space: pre-wrap; word-break: break-word; font-family: monospace; background: #f8f9fa; padding: 20px; border-radius: 8px;">${String(parsedPrd)}</pre>`);
+    }
+
   } catch (err) {
     setPrdError(err.message || "Failed to generate PRD document");
     setPrdHtml("");
@@ -1092,7 +2660,6 @@ const generatePrdDocumentHandler = async (forceRegenerate = false) => {
     setPrdLoading(false);
   }
 };
-
 
 
 const handleRegeneratePrd = async () => {
@@ -1112,15 +2679,16 @@ try {
 const handleOpenPrdModal = async () => {
   setIsPrdModalOpen(true);
 
-  // Start loader (same as BRD)
+  // Start loader
   setPrdProgress([]);
   runProgressSteps(PRD_STEPS, setPrdProgress);
 
+  // Reset previous state
   setPrdHtml("");
   setPrdError("");
 
   if (!projectId) {
-    setPrdError("Project id is missing.");
+    setPrdError("Project ID is missing.");
     return;
   }
 
@@ -1129,18 +2697,47 @@ const handleOpenPrdModal = async () => {
 
     // Existing PRD found
     if (existingData?.prd_content) {
-      setPrdHtml(existingData.prd_content);
+      let prdData = existingData.prd_content;
+
+      // Handle PRD content if it is stored as a JSON string
+      if (typeof prdData === "string") {
+        try {
+          prdData = JSON.parse(prdData);
+        } catch (parseError) {
+          console.error(
+            "Failed to parse existing PRD content:",
+            parseError
+          );
+
+          setPrdError(
+            "The existing PRD content is not in a valid format."
+          );
+
+          return;
+        }
+      }
+
+      // Convert structured PRD JSON into professional HTML
+      const formattedPrdHtml = renderPrdAsHtml(prdData);
+
+      // Display professionally formatted PRD
+      setPrdHtml(formattedPrdHtml);
+
       return;
     }
 
-    // Generate new PRD
+    // No existing PRD found
+    // Generate a new PRD
     await generatePrdDocumentHandler();
+
   } catch (err) {
-    console.error("Failed to fetch existing PRD", err);
-    setPrdError(err.message || "Failed to load PRD");
+    console.error("Failed to fetch existing PRD:", err);
+
+    setPrdError(
+      err?.message || "Failed to load PRD. Please try again."
+    );
   }
 };
-
   const handleDownloadPrdDoc = async () => {
     if (!prdHtml || isDownloadingPrd) return;
 

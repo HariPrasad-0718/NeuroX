@@ -194,9 +194,48 @@ function isCompletePrdHtml(text) {
 }
 
 function extractPrdOutput(result, rawText = "") {
-  const messages = result?.response?.messages || [];
+  // 1) Check if result has agent_response with message containing prd_output
+  if (result?.agent_response?.message) {
+    const messageObj = tryParseJsonString(result.agent_response.message);
+    if (messageObj && typeof messageObj === "object") {
+      // Check for prd_output in the parsed message
+      const prd = messageObj.prd_output;
+      if (typeof prd === "string" && prd.length > 100) {
+        const cleaned = cleanPrdOutput(prd);
+        if (cleaned.length > 100) {
+          return cleaned;
+        }
+      }
+      
+      // Check deeper: message might have data.prd
+      if (messageObj.data?.prd) {
+        const prdString = JSON.stringify(messageObj.data.prd, null, 2);
+        if (prdString.length > 100) {
+          return cleanPrdOutput(prdString);
+        }
+      }
+    }
+  }
 
-  // 1) Prefer full assistant HTML output from messages.
+  // 2) Check result.message directly
+  if (result?.message) {
+    const parsed = tryParseJsonString(result.message);
+    if (parsed && typeof parsed === "object") {
+      const prd = parsed.prd_output;
+      if (typeof prd === "string" && prd.length > 100) {
+        return cleanPrdOutput(prd);
+      }
+      if (parsed.data?.prd) {
+        const prdString = JSON.stringify(parsed.data.prd, null, 2);
+        if (prdString.length > 100) {
+          return cleanPrdOutput(prdString);
+        }
+      }
+    }
+  }
+
+  // 3) Check messages array for HTML content
+  const messages = result?.response?.messages || [];
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const msg = messages[i];
     if (typeof msg !== "string") continue;
@@ -216,28 +255,21 @@ function extractPrdOutput(result, rawText = "") {
     }
   }
 
-  // 2) Fallback to top-level message prd_output.
-  const topMessage = result?.message || "";
-  if (topMessage) {
-    const parsed = tryParseJsonString(topMessage);
-    if (parsed && typeof parsed === "object") {
-      const prd = parsed.prd_output || "";
-      if (
-        typeof prd === "string" &&
-        prd.includes("<h1>") &&
-        prd.includes("<h2>") &&
-        !prd.includes("...") &&
-        prd.length > 1000
-      ) {
-        return cleanPrdOutput(prd);
-      }
-    }
-  }
-
-  // Final fallback: if upstream returned strong HTML directly, use it.
+  // 4) Try to extract from raw text
   const cleanedRaw = cleanPrdOutput(rawText);
   if (cleanedRaw.includes("<h1>") && cleanedRaw.includes("<h2>")) {
     return cleanedRaw;
+  }
+
+  // 5) Last resort: try to find any JSON with prd_output in the entire response
+  const allStrings = collectPossiblePrdStrings(result);
+  for (const str of allStrings) {
+    if (str && str.length > 500) {
+      const cleaned = cleanPrdOutput(str);
+      if (cleaned.length > 500 && (cleaned.includes("{") || cleaned.includes("<h1"))) {
+        return cleaned;
+      }
+    }
   }
 
   return "";
@@ -354,7 +386,7 @@ function buildProjectBrief({
 }
 
 export const POST = withAuth(async (request, _ctx, user) => {
-    console.log("🔥 AGENT API HIT");
+  console.log("🔥 AGENT API HIT");
   const { data: input, error: validationError } = await validateBody(request, generatePRDSchema);
   console.log("INPUT RECEIVED:", input);
   if (validationError) return validationError;
@@ -366,7 +398,7 @@ export const POST = withAuth(async (request, _ctx, user) => {
 
   try {
     const projectId = Number(input.projectId);
-const forceRegenerate = input.forceRegenerate ?? false;
+    const forceRegenerate = input.forceRegenerate ?? false;
 
     if (!projectId) {
       return NextResponse.json(
@@ -387,27 +419,25 @@ const forceRegenerate = input.forceRegenerate ?? false;
 
     const pool = await getPool();
     const existingPrdResult = await pool
-  .request()
-  .input("projectId", sql.Int, projectId)
-  .query(`
-    SELECT TOP 1 prd_content
-    FROM ProductRequirementsDocuments
-    WHERE project_id = @projectId
-  `);
+      .request()
+      .input("projectId", sql.Int, projectId)
+      .query(`
+        SELECT TOP 1 prd_content
+        FROM ProductRequirementsDocuments
+        WHERE project_id = @projectId
+      `);
 
-if (
-  existingPrdResult.recordset.length > 0 &&
-  !forceRegenerate
-) {
-  return NextResponse.json({
-    success: true,
-    source: "database",
-    prd_output: existingPrdResult.recordset[0].prd_content,
-    data: {
-      prd_output: existingPrdResult.recordset[0].prd_content,
-    },
-  });
-}
+    if (existingPrdResult.recordset.length > 0 && !forceRegenerate) {
+      return NextResponse.json({
+        success: true,
+        source: "database",
+        prd_output: existingPrdResult.recordset[0].prd_content,
+        data: {
+          prd_output: existingPrdResult.recordset[0].prd_content,
+        },
+      });
+    }
+
     const [
       projectResult,
       personasResult,
@@ -551,7 +581,6 @@ if (
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(AGENT_TIMEOUT_MS),
     });
-    
 
     const text = await response.text();
     console.log("🔥 RAW AGENT RESPONSE TEXT:");
@@ -596,37 +625,38 @@ if (
         { status: 502 }
       );
     }
+
     await pool
-  .request()
-  .input("projectId", sql.Int, projectId)
-  .input("prdOutput", sql.NVarChar(sql.MAX), prdOutput)
-  .query(`
-    IF EXISTS (
-      SELECT 1
-      FROM ProductRequirementsDocuments
-      WHERE project_id = @projectId
-    )
-    BEGIN
-      UPDATE ProductRequirementsDocuments
-      SET
-        prd_content = @prdOutput,
-        updated_at = GETDATE()
-      WHERE project_id = @projectId
-    END
-    ELSE
-    BEGIN
-      INSERT INTO ProductRequirementsDocuments
-      (
-        project_id,
-        prd_content
-      )
-      VALUES
-      (
-        @projectId,
-        @prdOutput
-      )
-    END
-  `);
+      .request()
+      .input("projectId", sql.Int, projectId)
+      .input("prdOutput", sql.NVarChar(sql.MAX), prdOutput)
+      .query(`
+        IF EXISTS (
+          SELECT 1
+          FROM ProductRequirementsDocuments
+          WHERE project_id = @projectId
+        )
+        BEGIN
+          UPDATE ProductRequirementsDocuments
+          SET
+            prd_content = @prdOutput,
+            updated_at = GETDATE()
+          WHERE project_id = @projectId
+        END
+        ELSE
+        BEGIN
+          INSERT INTO ProductRequirementsDocuments
+          (
+            project_id,
+            prd_content
+          )
+          VALUES
+          (
+            @projectId,
+            @prdOutput
+          )
+        END
+      `);
 
     return NextResponse.json({
       success: true,
