@@ -13,7 +13,7 @@ const WEBHOOK_URL =
 const USERNAME = process.env.AGENT5I_USERNAME || process.env.AGENT_USERNAME || "";
 const PASSWORD = process.env.AGENT5I_PASSWORD || process.env.AGENT_PASSWORD || "";
 const PRD_AGENT_NAME = "AI PRD Generator";
-const AGENT_TIMEOUT_MS = 180_000;
+const AGENT_TIMEOUT_MS = 300_000;
 
 function tryParseJson(value) {
   try {
