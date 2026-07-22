@@ -28,7 +28,6 @@ export default function EmpathyMapPage() {
   const [personaContextSaveStatus, setPersonaContextSaveStatus] = useState("");
 
   // ─── PERSONA-LEVEL question state (shared across all interviewees) ────────────
-  // These belong to the persona, not to any individual interviewee.
   const [personaQuestions, setPersonaQuestions] = useState({
     hasQuestions: false,
     questionAgentOutput: [],
@@ -46,13 +45,15 @@ export default function EmpathyMapPage() {
   const [showForm, setShowForm] = useState(false);
   const [isSavingInterviewee, setIsSavingInterviewee] = useState(false);
   const [intervieweeSaveError, setIntervieweeSaveError] = useState("");
+  
+  // ✅ UPDATED: Only name, title, location in form
   const [form, setForm] = useState({
-    name: "", gender: "", age: "", location: "",
-    relationship_status: "", title: "", education: "",
+    name: "", 
+    title: "", 
+    location: "",
   });
 
   // ─── INTERVIEWEE-LEVEL state (unique per interviewee) ────────────────────────
-  // questionSets holds the interview row for the selected interviewee only.
   const [questionSets, setQuestionSets] = useState([]);
   const [isLoadingInterviewData, setIsLoadingInterviewData] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -61,7 +62,6 @@ export default function EmpathyMapPage() {
   const [saveStatus, setSaveStatus] = useState("");
 
   // ─── Persona output state (interviewee-level) ─────────────────────────────────
-  // "idle" | "generating" | "ready" | "error"
   const [personaStatus, setPersonaStatus] = useState("idle");
   const [personaOutput, setPersonaOutput] = useState("");
   const [personaError, setPersonaError] = useState("");
@@ -79,9 +79,7 @@ export default function EmpathyMapPage() {
 
   // ─── Refs ─────────────────────────────────────────────────────────────────────
   const progressIntervalRef = useRef(null);
-  // Guards against stale async results when switching interviewees rapidly
   const activeIntervieweeIdRef = useRef(null);
-  // Guards against stale async results when switching personas rapidly
   const activePersonaIdRef = useRef(null);
 
   // ═══════════════════════════════════════════════════════════════════════════════
@@ -110,7 +108,6 @@ export default function EmpathyMapPage() {
     }, 1800);
   };
 
-  /** Reset ONLY interviewee-specific state. Persona-level questions are untouched. */
   const resetIntervieweeState = () => {
     clearProgressInterval();
     setQuestionSets([]);
@@ -125,7 +122,6 @@ export default function EmpathyMapPage() {
     setActiveStep(-1);
   };
 
-  /** Reset persona-level question state (used when switching personas). */
   const resetPersonaQuestions = () => {
     setPersonaQuestions({
       hasQuestions: false,
@@ -183,10 +179,6 @@ export default function EmpathyMapPage() {
     }
   };
 
-  /**
-   * PERSONA-LEVEL fetch — loads shared questions for the whole persona.
-   * Called when activePersona changes. Has stale-fetch guard via activePersonaIdRef.
-   */
   const fetchPersonaQuestions = async (personaId) => {
     setIsLoadingPersonaQuestions(true);
     setQuestionError("");
@@ -195,7 +187,6 @@ export default function EmpathyMapPage() {
       const res = await fetch(`/api/persona-questions?personaId=${personaId}`);
       const data = await res.json();
 
-      // Stale guard — user may have switched persona while fetch was in flight
       if (activePersonaIdRef.current !== personaId) return;
 
       if (!data?.success) throw new Error(data?.error?.message || "Failed to load questions");
@@ -210,7 +201,6 @@ export default function EmpathyMapPage() {
     } catch (err) {
       if (activePersonaIdRef.current !== personaId) return;
       console.error("Persona questions fetch error:", err);
-      // Non-fatal — questions just won't show; don't block interviewee interaction
     } finally {
       if (activePersonaIdRef.current === personaId) {
         setIsLoadingPersonaQuestions(false);
@@ -218,11 +208,6 @@ export default function EmpathyMapPage() {
     }
   };
 
-  /**
-   * INTERVIEWEE-LEVEL fetch — loads transcript + persona output for the selected
-   * interviewee only. Does NOT touch personaQuestions state.
-   * Has stale-fetch guard via activeIntervieweeIdRef.
-   */
   const fetchIntervieweeData = async (intervieweeId) => {
     setIsLoadingInterviewData(true);
 
@@ -261,7 +246,6 @@ export default function EmpathyMapPage() {
     } catch (err) {
       if (activeIntervieweeIdRef.current !== intervieweeId) return;
       console.error("Interviewee data fetch error:", err);
-      // Reset to safe defaults on error
       setQuestionSets([]);
       setTranscript("");
       setTranscriptDraft("");
@@ -303,27 +287,20 @@ export default function EmpathyMapPage() {
 
       if (!data?.success) throw new Error(data?.error?.message || "Failed to generate questions");
 
-      // Update persona-level questions immediately from the response
       setPersonaQuestions({
         hasQuestions: true,
         questionAgentOutput:    data.data.questionAgentQuestions    ?? [],
         processDiscoveryOutput: data.data.processDiscoveryQuestions ?? [],
-        // questions list will be refreshed by the re-fetch below
         questions:              [],
         generatedAt:            new Date().toISOString(),
       });
 
-      // Re-fetch persona questions to get the full saved state (including question texts)
       await fetchPersonaQuestions(activePersona.persona_id);
 
-      // If an interviewee is open, reload their interview row so the interviewee
-      // picks up the newly copied questions (the POST handler copies questions to
-      // all existing interviewees in the transaction).
       if (selectedInterviewee?.interviewee_id) {
         await fetchIntervieweeData(selectedInterviewee.interviewee_id);
       }
 
-      // Progress tracking — only increment on first-ever generation for this persona
       if (!personaQuestions.hasQuestions) {
         try {
           await fetch(`/api/projects/${projectId}/progress`, {
@@ -468,7 +445,7 @@ export default function EmpathyMapPage() {
   };
 
   // ═══════════════════════════════════════════════════════════════════════════════
-  // INTERVIEWEE CRUD
+  // INTERVIEWEE CRUD - UPDATED with only name, title, location
   // ═══════════════════════════════════════════════════════════════════════════════
 
   const handleAddInterviewee = async () => {
@@ -481,13 +458,19 @@ export default function EmpathyMapPage() {
       const res = await fetch("/api/interviewees", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ personaId: activePersona.persona_id, ...form }),
+        // ✅ Only send name, title, location
+        body: JSON.stringify({ 
+          personaId: activePersona.persona_id, 
+          name: form.name,
+          title: form.title,
+          location: form.location,
+        }),
       });
       const data = await res.json();
       if (!data?.success) throw new Error(data?.error?.message || "Failed to create interviewee");
 
       setShowForm(false);
-      setForm({ name: "", gender: "", age: "", location: "", relationship_status: "", title: "", education: "" });
+      setForm({ name: "", title: "", location: "" });
       setIntervieweeSaveError("");
 
       const listRes  = await fetch(`/api/interviewees?personaId=${activePersona.persona_id}`);
@@ -536,13 +519,11 @@ export default function EmpathyMapPage() {
     return () => clearProgressInterval();
   }, []);
 
-  // When active persona changes: load its interviewees AND its shared questions
   useEffect(() => {
     if (!activePersona) return;
 
     activePersonaIdRef.current = activePersona.persona_id;
 
-    // Reset everything so no stale data shows from the old persona
     resetIntervieweeState();
     resetPersonaQuestions();
     setSelectedInterviewee(null);
@@ -553,17 +534,14 @@ export default function EmpathyMapPage() {
     setIsEditingPersonaContext(false);
     setPersonaContextSaveStatus("");
 
-    // Load persona-level data in parallel
     fetchInterviewees(activePersona.persona_id);
     fetchPersonaQuestions(activePersona.persona_id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePersona?.persona_id]);
 
-  // When selected interviewee changes: load only its transcript + persona output
   useEffect(() => {
     activeIntervieweeIdRef.current = selectedInterviewee?.interviewee_id ?? null;
 
-    // Immediately wipe interviewee-specific state (synchronous — no flash)
     resetIntervieweeState();
 
     if (selectedInterviewee?.interviewee_id) {
@@ -573,7 +551,7 @@ export default function EmpathyMapPage() {
   }, [selectedInterviewee?.interviewee_id]);
 
   // ═══════════════════════════════════════════════════════════════════════════════
-  // DOWNLOAD
+  // DOWNLOAD - UPDATED with only name, title, location
   // ═══════════════════════════════════════════════════════════════════════════════
 
   const downloadPersonaReport = async () => {
@@ -625,13 +603,10 @@ export default function EmpathyMapPage() {
           new Paragraph({ text: `Persona Name: ${activePersona?.persona_name || "-"}`, spacing: { after: 120 } }),
           new Paragraph({ text: `Persona Description: ${enhancedPersonaDescription || activePersona?.persona_description || "-"}`, spacing: { after: 240 } }),
           new Paragraph({ text: "Interviewee Details", heading: HeadingLevel.HEADING_1, spacing: { after: 160 } }),
+          // ✅ Only show name, title, location
           new Paragraph({ text: `Name: ${selectedInterviewee?.name || "-"}`, spacing: { after: 100 } }),
-          new Paragraph({ text: `Gender: ${selectedInterviewee?.gender || "-"}`, spacing: { after: 100 } }),
-          new Paragraph({ text: `Age: ${selectedInterviewee?.age ?? "-"}`, spacing: { after: 100 } }),
-          new Paragraph({ text: `Location: ${selectedInterviewee?.location || "-"}`, spacing: { after: 100 } }),
-          new Paragraph({ text: `Relationship Status: ${selectedInterviewee?.relationship_status || "-"}`, spacing: { after: 100 } }),
           new Paragraph({ text: `Title: ${selectedInterviewee?.title || "-"}`, spacing: { after: 100 } }),
-          new Paragraph({ text: `Education: ${selectedInterviewee?.education || "-"}`, spacing: { after: 240 } }),
+          new Paragraph({ text: `Location: ${selectedInterviewee?.location || "-"}`, spacing: { after: 240 } }),
           new Paragraph({ text: "Generated Questions", heading: HeadingLevel.HEADING_1, spacing: { after: 160 } }),
           ...questionParagraphs,
           new Paragraph({ text: "", spacing: { after: 120 } }),
@@ -797,33 +772,43 @@ export default function EmpathyMapPage() {
             </button>
           </div>
 
-          {/* Add Interviewee Form */}
+          {/* ✅ UPDATED: Add Interviewee Form with only name, title, location */}
           {showForm && (
             <div className="mb-0 bg-transparent py-4">
               <h3 className="mb-4 text-base font-semibold text-gray-800 px-5">Add Interviewee</h3>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 px-5">
-                {[
-                  { key: "name", label: "Name" },
-                  { key: "gender", label: "Gender" },
-                  { key: "age", label: "Age" },
-                  { key: "location", label: "Location" },
-                  { key: "relationship_status", label: "Relationship Status" },
-                  { key: "title", label: "Title" },
-                  { key: "education", label: "Education" },
-                ].map(({ key, label }) => (
-                  <div key={key} className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-gray-600">
-                      {label}{key === "name" && <span className="ml-0.5 text-red-500">*</span>}
-                    </label>
-                    <input
-                      placeholder={`Enter ${label.toLowerCase()}`}
-                      value={form[key]}
-                      onChange={(e) => { setForm({ ...form, [key]: e.target.value }); if (key === "name") setIntervieweeSaveError(""); }}
-                      disabled={isSavingInterviewee}
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-400 bg-white disabled:opacity-50"
-                    />
-                  </div>
-                ))}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 px-5">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">
+                    Name <span className="ml-0.5 text-red-500">*</span>
+                  </label>
+                  <input
+                    placeholder="Enter full name"
+                    value={form.name}
+                    onChange={(e) => { setForm({ ...form, name: e.target.value }); setIntervieweeSaveError(""); }}
+                    disabled={isSavingInterviewee}
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-400 bg-white disabled:opacity-50"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">Title</label>
+                  <input
+                    placeholder="Enter job title"
+                    value={form.title}
+                    onChange={(e) => setForm({ ...form, title: e.target.value })}
+                    disabled={isSavingInterviewee}
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-400 bg-white disabled:opacity-50"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">Location</label>
+                  <input
+                    placeholder="Enter city, country"
+                    value={form.location}
+                    onChange={(e) => setForm({ ...form, location: e.target.value })}
+                    disabled={isSavingInterviewee}
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-400 bg-white disabled:opacity-50"
+                  />
+                </div>
               </div>
               {intervieweeSaveError && <p className="mt-3 px-5 text-sm text-red-600">{intervieweeSaveError}</p>}
               <div className="mt-5 flex gap-3 px-5">
@@ -841,7 +826,7 @@ export default function EmpathyMapPage() {
                   {isSavingInterviewee ? "Saving..." : "Save"}
                 </button>
                 <button
-                  onClick={() => { setShowForm(false); setIntervieweeSaveError(""); setForm({ name: "", gender: "", age: "", location: "", relationship_status: "", title: "", education: "" }); }}
+                  onClick={() => { setShowForm(false); setIntervieweeSaveError(""); setForm({ name: "", title: "", location: "" }); }}
                   disabled={isSavingInterviewee}
                   className="px-5 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50 transition"
                 >
@@ -851,45 +836,141 @@ export default function EmpathyMapPage() {
             </div>
           )}
 
-          {/* Interviewee Details */}
-          {selectedInterviewee && (
-            <div className="border-t border-gray-200 bg-white">
-              <div className="px-4 py-3">
-                <div className="flex flex-wrap items-center gap-2 pr-8 text-sm leading-snug">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
-                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
-                    </svg>
-                  </div>
-                  <span className="font-semibold text-gray-900">{selectedInterviewee.name}</span>
-                  <span className="text-gray-300">•</span>
-                  <span className="text-gray-500">Interviewee</span>
-                  <span className="text-gray-300">•</span>
-                  <span className="text-gray-700">{selectedInterviewee.age || "—"} yrs</span>
-                  <span className="text-gray-300">•</span>
-                  <span className="text-gray-700">{selectedInterviewee.location || "—"}</span>
-                  <span className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-gray-600">
-                    <span className="h-2 w-2 rounded-full bg-emerald-500" />Active
-                  </span>
-                </div>
-              </div>
-              <div className="mt-5 px-4 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-                {[
-                  { label: "Gender",       value: selectedInterviewee.gender },
-                  { label: "Education",    value: selectedInterviewee.education },
-                  { label: "Title",        value: selectedInterviewee.title },
-                  { label: "Relationship", value: selectedInterviewee.relationship_status },
-                  { label: "Age",          value: selectedInterviewee.age ? `${selectedInterviewee.age}` : "" },
-                  { label: "Location",     value: selectedInterviewee.location },
-                ].map((item) => (
-                  <div key={item.label} className="flex items-center justify-between gap-3 border-b border-gray-100 pb-1 text-sm leading-snug">
-                    <span className="text-gray-400">{item.label}</span>
-                    <span className="font-medium text-gray-800">{item.value || <span className="italic text-gray-400">Not set</span>}</span>
-                  </div>
-                ))}
-              </div>
+        {/* ✅ IMPROVED: Interviewee Details - Modern Card Design */}
+{selectedInterviewee && (
+  <div className="border-t border-gray-200 bg-gradient-to-br from-white to-gray-50/30">
+    {/* Header Section */}
+    <div className="px-5 py-4">
+      <div className="flex flex-wrap items-center gap-4">
+        {/* Avatar - Enhanced with gradient and shadow */}
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-md shadow-indigo-200/50 ring-2 ring-white">
+          <span className="text-lg font-bold">
+            {selectedInterviewee.name?.charAt(0).toUpperCase() || "?"}
+          </span>
+        </div>
+        
+        {/* Name and Details */}
+        <div className="flex flex-col">
+          <span className="text-lg font-bold text-gray-900 leading-tight">
+            {selectedInterviewee.name}
+          </span>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500 mt-0.5">
+            {selectedInterviewee.title && (
+              <span className="inline-flex items-center gap-1 text-gray-700 font-medium">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5 text-indigo-400">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                  <path d="M2 17l10 5 10-5" />
+                  <path d="M2 12l10 5 10-5" />
+                </svg>
+                {selectedInterviewee.title}
+              </span>
+            )}
+            {selectedInterviewee.title && selectedInterviewee.location && (
+              <span className="text-gray-300">•</span>
+            )}
+            {selectedInterviewee.location && (
+              <span className="inline-flex items-center gap-1 text-gray-700">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5 text-emerald-400">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+                {selectedInterviewee.location}
+              </span>
+            )}
+          </div>
+        </div>
+        
+        {/* Status Badge - Animated */}
+        <div className="ml-auto flex items-center gap-2">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+          </span>
+          <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+            Active
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    {/* Details Grid - Card-based design */}
+    <div className="px-5 pb-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {/* Name Card */}
+        <div className="group rounded-xl border border-gray-200 bg-white px-4 py-3 transition-all duration-200 hover:border-indigo-300 hover:shadow-md hover:shadow-indigo-50/50 hover:-translate-y-0.5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 transition-colors duration-200 group-hover:bg-indigo-100">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4.5 w-4.5">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
             </div>
-          )}
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Name</p>
+              <p className="text-sm font-semibold text-gray-900 truncate">
+                {selectedInterviewee.name || <span className="italic font-normal text-gray-400">Not set</span>}
+              </p>
+            </div>
+          </div>
+        </div>
+        
+        {/* Title Card */}
+        <div className="group rounded-xl border border-gray-200 bg-white px-4 py-3 transition-all duration-200 hover:border-purple-300 hover:shadow-md hover:shadow-purple-50/50 hover:-translate-y-0.5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-50 text-purple-600 transition-colors duration-200 group-hover:bg-purple-100">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4.5 w-4.5">
+                <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                <path d="M2 17l10 5 10-5" />
+                <path d="M2 12l10 5 10-5" />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Title</p>
+              <p className="text-sm font-semibold text-gray-900 truncate">
+                {selectedInterviewee.title || <span className="italic font-normal text-gray-400">Not set</span>}
+              </p>
+            </div>
+          </div>
+        </div>
+        
+        {/* Location Card */}
+        <div className="group rounded-xl border border-gray-200 bg-white px-4 py-3 transition-all duration-200 hover:border-emerald-300 hover:shadow-md hover:shadow-emerald-50/50 hover:-translate-y-0.5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 transition-colors duration-200 group-hover:bg-emerald-100">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4.5 w-4.5">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                <circle cx="12" cy="10" r="3" />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Location</p>
+              <p className="text-sm font-semibold text-gray-900 truncate">
+                {selectedInterviewee.location || <span className="italic font-normal text-gray-400">Not set</span>}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Optional: Quick Stats Bar */}
+      <div className="mt-3 flex items-center justify-between px-1">
+        <div className="flex items-center gap-4 text-xs text-gray-400">
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-indigo-400"></span>
+            Interview Ready
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+            Profile Complete
+          </span>
+        </div>
+        <span className="text-[10px] text-gray-400">
+          Last updated: {new Date().toLocaleDateString()}
+        </span>
+      </div>
+    </div>
+  </div>
+)}
         </div>
 
         {/* ── Question Guide + Transcript + Persona ──────────────────────────── */}
@@ -897,7 +978,6 @@ export default function EmpathyMapPage() {
           <div className="mt-3">
             <div className="bg-transparent py-6">
 
-              {/* Header row — always shows Generate/Regenerate for the persona */}
               <div className="flex flex-col gap-4 border-b border-gray-200 pb-5 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] px-1 text-gray-500">Interview Flow</p>
@@ -939,7 +1019,6 @@ export default function EmpathyMapPage() {
                 </div>
               ) : (
                 <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Mandatory Questions — persona-level */}
                   <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
                     <h3 className="font-semibold text-green-600 mb-4">Mandatory Questions</h3>
                     {personaQuestions.processDiscoveryOutput.length > 0 ? (
@@ -953,7 +1032,6 @@ export default function EmpathyMapPage() {
                     )}
                   </div>
 
-                  {/* Suggested Questions — persona-level */}
                   <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
                     <h3 className="font-semibold text-indigo-600 mb-4">Suggested Questions</h3>
                     {personaQuestions.questionAgentOutput.length > 0 ? (
@@ -969,7 +1047,7 @@ export default function EmpathyMapPage() {
                 </div>
               )}
 
-              {/* ── Transcript (interviewee-level) ──────────────────────────── */}
+              {/* ── Transcript ──────────────────────────────────────────── */}
               {personaQuestions.hasQuestions && !isGeneratingQuestions && (
                 <div className="mt-8 border-t border-gray-200 pt-6">
                   <div className="mb-4">
@@ -1040,7 +1118,7 @@ export default function EmpathyMapPage() {
                 </div>
               )}
 
-              {/* ── Persona Output (interviewee-level) ─────────────────────── */}
+              {/* ── Persona Output ─────────────────────────────────────── */}
               {showPersonaSection && (
                 <div className="mt-8 border-t border-gray-200 pt-6">
                   <div className="mb-4 flex items-center justify-between gap-3">

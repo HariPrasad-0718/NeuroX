@@ -18,20 +18,24 @@ function toList(value) {
     .filter(Boolean);
 }
 
-function parseDemographics(value) {
+// ✅ UPDATED: Only parse name, title, location
+function parseInterviewInfo(value) {
   if (!value) return {};
   if (typeof value === "object" && !Array.isArray(value)) return value;
 
   const obj = {};
-  String(value)
-    .split("\n")
-    .map((line) => line.replace(/^\s*[-*•]\s*/, "").trim())
-    .filter(Boolean)
-    .forEach((line) => {
-      const [key, ...rest] = line.split(":");
-      if (!key || !rest.length) return;
-      obj[key.trim()] = rest.join(":").trim();
-    });
+  const lines = String(value).split("\n").filter(Boolean);
+  
+  lines.forEach((line) => {
+    const [key, ...rest] = line.split(":");
+    if (!key || !rest.length) return;
+    const trimmedKey = key.trim().toLowerCase();
+    
+    // Only extract name, title, location
+    if (["name", "title", "location"].includes(trimmedKey)) {
+      obj[trimmedKey] = rest.join(":").trim();
+    }
+  });
 
   return obj;
 }
@@ -82,14 +86,16 @@ function parseThemeLines(value) {
     .filter(Boolean);
 }
 
+// ✅ UPDATED: Normalize only with name, title, location
 function normalizeAgentCard(raw = {}) {
   return {
     header: raw.header || raw.HEADER || "",
     name: raw.name || raw.NAME || "",
+    title: raw.title || raw.TITLE || "",
+    location: raw.location || raw.LOCATION || "",
     quote: raw.quote || raw.QUOTE || "",
     background: raw.background || raw.BACKGROUND || "",
     scenario: raw.scenario || raw.SCENARIO || "",
-    demographics: raw.demographics || raw.DEMOGRAPHICS || "",
     personality: raw.personality || raw.PERSONALITY || [],
     behaviours: raw.behaviours || raw["BEHAVIOURS & HABITS"] || [],
     goals: raw.goals || raw.GOALS || [],
@@ -107,6 +113,7 @@ function normalizeAgentCard(raw = {}) {
   };
 }
 
+// ✅ UPDATED: Build context with ONLY name, title, location
 function buildPersonaContext(persona, fallbackProjectName) {
   const validOutputs = (persona.outputs || []).filter((output) => {
     const summary = String(output.summary || "").trim();
@@ -121,16 +128,14 @@ function buildPersonaContext(persona, fallbackProjectName) {
     const hasPersonaOutput =
       personaOutput && personaOutput.toLowerCase() !== "no persona output available";
 
-    const hasDemographics = Boolean(
-      output.demographics?.gender ||
-        output.demographics?.age !== undefined ||
-        output.demographics?.location ||
-        output.demographics?.relationshipStatus ||
-        output.demographics?.title ||
-        output.demographics?.education
+    // ✅ Only check for basic info: name, title, location
+    const hasBasicInfo = Boolean(
+      output.intervieweeName ||
+      output.title ||
+      output.location
     );
 
-    return hasSummary && hasOutcome && hasPersonaOutput && hasDemographics;
+    return hasSummary && hasOutcome && hasPersonaOutput && hasBasicInfo;
   });
 
   return `Persona ID: ${persona.personaId}
@@ -152,23 +157,17 @@ ${validOutputs.length
       .filter(Boolean)
       .join(" | ");
 
-    const demographicsText = [
-      output.demographics?.gender ? `Gender: ${output.demographics.gender}` : "",
-      output.demographics?.age !== undefined && output.demographics?.age !== null
-        ? `Age: ${output.demographics.age}`
-        : "",
-      output.demographics?.location ? `Location: ${output.demographics.location}` : "",
-      output.demographics?.relationshipStatus
-        ? `Relationship Status: ${output.demographics.relationshipStatus}`
-        : "",
-      output.demographics?.title ? `Title: ${output.demographics.title}` : "",
-      output.demographics?.education ? `Education: ${output.demographics.education}` : "",
+    // ✅ Simplified - ONLY name, title, location
+    const basicInfo = [
+      output.intervieweeName ? `Name: ${output.intervieweeName}` : "",
+      output.title ? `Title: ${output.title}` : "",
+      output.location ? `Location: ${output.location}` : "",
     ]
       .filter(Boolean)
       .join("\n");
 
     return `${metadata}
-${demographicsText ? `${demographicsText}\n` : ""}
+${basicInfo ? `${basicInfo}\n` : ""}
 Summary:
 ${output.summary || "No summary available"}
 
@@ -202,13 +201,15 @@ function CardBox({ title, borderColor, bgColor, titleColor, children }) {
   );
 }
 
+// ✅ UPDATED: Display ONLY name, title, location in the card
 function AgentPersonaCard({ card, personaName }) {
   const header = parseHeaderText(card.header, card.name || personaName);
   const name = header.name || personaName || "Persona";
-  const role = header.role || parseDemographics(card.demographics).Role || "";
+  const role = header.role || card.title || "";
   const quote = header.quote || card.quote || "";
 
-  const demographics = parseDemographics(card.demographics);
+  // ✅ Only parse name, title, location
+  const interviewInfo = parseInterviewInfo(card.interviewInfo || "");
   const personality = toList(card.personality);
   const behaviours = toList(card.behaviours);
   const goals = toList(card.goals);
@@ -218,6 +219,10 @@ function AgentPersonaCard({ card, personaName }) {
   const positiveThemes = parseThemeLines(card.positiveThemes);
   const negativeThemes = parseThemeLines(card.negativeThemes);
   const needs = toList(card.needs);
+
+  // Use card.title as fallback for title
+  const displayTitle = card.title || role || "";
+  const displayLocation = card.location || interviewInfo.location || "";
 
   const initials = name
     .split(" ")
@@ -262,7 +267,10 @@ function AgentPersonaCard({ card, personaName }) {
           </div>
           <div>
             <div style={{ fontSize: 26, fontWeight: 700 }}>{name}</div>
-            <div style={{ fontSize: 13, color: "#aaa", marginTop: 3 }}>{role || personaName || ""}</div>
+            <div style={{ fontSize: 13, color: "#aaa", marginTop: 3 }}>
+              {displayTitle || personaName || ""}
+              {displayLocation && ` • ${displayLocation}`}
+            </div>
           </div>
         </div>
         {quote ? (
@@ -294,17 +302,32 @@ function AgentPersonaCard({ card, personaName }) {
             gap: 22,
           }}
         >
+          {/* ✅ UPDATED: Show ONLY name, title, location */}
           <div>
             <h4 style={{ fontSize: 11, fontWeight: 700, letterSpacing: "1.2px", color: "#4a00e0", textTransform: "uppercase", margin: "0 0 10px 0" }}>
-              👤 Demographics
+              👤 Interview Details
             </h4>
-            {Object.keys(demographics).length ? (
-              Object.entries(demographics).map(([k, v]) => (
-                <div key={k} style={{ display: "flex", gap: 8, marginBottom: 7, fontSize: 13 }}>
-                  <span style={{ color: "#666", width: 80, flexShrink: 0, fontSize: 12 }}>{k}</span>
-                  <span style={{ fontWeight: 500 }}>{String(v)}</span>
-                </div>
-              ))
+            {(name || displayTitle || displayLocation) ? (
+              <div>
+                {name && (
+                  <div style={{ display: "flex", gap: 8, marginBottom: 7, fontSize: 13 }}>
+                    <span style={{ color: "#666", width: 80, flexShrink: 0, fontSize: 12 }}>Name</span>
+                    <span style={{ fontWeight: 500 }}>{name}</span>
+                  </div>
+                )}
+                {displayTitle && (
+                  <div style={{ display: "flex", gap: 8, marginBottom: 7, fontSize: 13 }}>
+                    <span style={{ color: "#666", width: 80, flexShrink: 0, fontSize: 12 }}>Title</span>
+                    <span style={{ fontWeight: 500 }}>{displayTitle}</span>
+                  </div>
+                )}
+                {displayLocation && (
+                  <div style={{ display: "flex", gap: 8, marginBottom: 7, fontSize: 13 }}>
+                    <span style={{ color: "#666", width: 80, flexShrink: 0, fontSize: 12 }}>Location</span>
+                    <span style={{ fontWeight: 500 }}>{displayLocation}</span>
+                  </div>
+                )}
+              </div>
             ) : (
               <p style={{ fontSize: 13, color: "#999" }}>—</p>
             )}
@@ -516,50 +539,37 @@ export default function DefinePhasePage() {
       setAgentCardsByPersona(nextCards);
 
       // ==========================================
-// SAVE GENERATED DATA TO DATABASE
-// ==========================================
+      // SAVE GENERATED DATA TO DATABASE
+      // ==========================================
 
-await fetch("/api/save-generated-persona", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    projectId,
-
-    problemStatement: sharedProblemStatement,
-
-    personas: Object.values(nextCards).map((card) => ({
-      personaName: card.name,
-
-      demographics: card.demographics,
-
-      background: card.background,
-
-      scenario: card.scenario,
-
-      personality: card.personality,
-
-      behaviours: card.behaviours,
-
-      goals: card.goals,
-
-      frustrations: card.frustrations,
-
-      motivations: card.motivations,
-
-      previousExperience: card.previousExperience,
-
-      positiveThemes: card.positiveThemes,
-
-      negativeThemes: card.negativeThemes,
-
-      needs: card.needs,
-
-      generatedOutput: card,
-    })),
-  }),
-});
+      await fetch("/api/save-generated-persona", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          projectId,
+          problemStatement: sharedProblemStatement,
+          personas: Object.values(nextCards).map((card) => ({
+            personaName: card.name,
+            title: card.title,
+            location: card.location,
+            background: card.background,
+            scenario: card.scenario,
+            personality: card.personality,
+            behaviours: card.behaviours,
+            goals: card.goals,
+            frustrations: card.frustrations,
+            motivations: card.motivations,
+            previousExperience: card.previousExperience,
+            positiveThemes: card.positiveThemes,
+            negativeThemes: card.negativeThemes,
+            needs: card.needs,
+            generatedOutput: card,
+          })),
+        }),
+      });
+      
       const current = nextCards[activePersonaId] || nextCards[personas[0]?.personaId] || {};
       const fallbackProblemStatement =
         current.problemStatement ||
@@ -585,26 +595,26 @@ await fetch("/api/save-generated-persona", {
   };
 
   const handleDownloadPDF = async () => {
-  const input = document.getElementById("persona-card-download");
+    const input = document.getElementById("persona-card-download");
 
-  if (!input) return;
+    if (!input) return;
 
-  const canvas = await html2canvas(input, {
-    scale: 2,
-    useCORS: true,
-  });
+    const canvas = await html2canvas(input, {
+      scale: 2,
+      useCORS: true,
+    });
 
-  const imgData = canvas.toDataURL("image/png");
+    const imgData = canvas.toDataURL("image/png");
 
-  const pdf = new jsPDF("p", "mm", "a4");
+    const pdf = new jsPDF("p", "mm", "a4");
 
-  const pdfWidth = pdf.internal.pageSize.getWidth();
-  const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
-  pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+    pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
 
-  pdf.save("persona-card.pdf");
-};
+    pdf.save("persona-card.pdf");
+  };
 
   const handleGenerateInformationArchitecture = async () => {
     if (!projectId) {
@@ -696,223 +706,220 @@ await fetch("/api/save-generated-persona", {
           </div>
 
           {!loading && !loadedFromDb ? (
-           <button
-    onClick={handleGenerate}
-    disabled={generating || !personas.length}
-    className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-  >
-    {generating ? (
-      <>
-        <Loader2 className="w-4 h-4 animate-spin" />
-        Generating...
-      </>
-    ) : (
-      <>
-        <Sparkles className="w-4 h-4" />
-        {generated ? "Regenerate" : "Generate Problem Definition"}
-      </>
-    )}
-  </button>
+            <button
+              onClick={handleGenerate}
+              disabled={generating || !personas.length}
+              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {generating ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  {generated ? "Regenerate" : "Generate Problem Definition"}
+                </>
+              )}
+            </button>
           ) : null}
         </div>
 
         <div className="max-w-6xl mx-auto px-3 py-5 flex-1">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-32">
-            <Loader2 className="w-10 h-10 text-indigo-500 animate-spin mb-4" />
-            <p className="text-sm text-gray-500">Loading empathy phase data...</p>
-          </div>
-        ) : null}
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-32">
+              <Loader2 className="w-10 h-10 text-indigo-500 animate-spin mb-4" />
+              <p className="text-sm text-gray-500">Loading empathy phase data...</p>
+            </div>
+          ) : null}
 
-        {!loading && error ? (
-          <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-5 py-4 mb-6">
-            <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-red-700">{error}</p>
-          </div>
-        ) : null}
+          {!loading && error ? (
+            <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-5 py-4 mb-6">
+              <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+          ) : null}
 
-        {!loading && !error ? (
-          <>
-            {!hasAnyOutput && !generated ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 mb-6">
-                <p className="text-sm text-amber-800">
-                  <strong>No persona outputs found.</strong> Complete the empathy phase interviews in the workspace to generate persona outputs before defining the problem statement.
-                </p>
-              </div>
-            ) : null}
-
-            {!generated ? (
-              <div className="rounded-2xl border border-gray-200 bg-white p-10 text-center shadow-sm">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "linear-gradient(135deg, #ede8ff, #d1c4e9)" }}>
-                  <Sparkles className="w-7 h-7 text-indigo-600" />
+          {!loading && !error ? (
+            <>
+              {!hasAnyOutput && !generated ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 mb-6">
+                  <p className="text-sm text-amber-800">
+                    <strong>No persona outputs found.</strong> Complete the empathy phase interviews in the workspace to generate persona outputs before defining the problem statement.
+                  </p>
                 </div>
-                <h2 className="text-lg font-semibold text-gray-900 mb-2">Ready to define the problem?</h2>
-                <p className="text-sm text-gray-500 max-w-md mx-auto mb-6">
-                  Click <strong>Generate Problem Definition</strong> above to analyze empathy-phase data and generate the problem statement and persona card from Agent5i.
-                </p>
-                <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 border border-indigo-100 px-4 py-1.5 text-xs font-semibold text-indigo-700">
-                  {personas.length} persona group{personas.length !== 1 ? "s" : ""} • {totalInterviewees} interviewee{totalInterviewees !== 1 ? "s" : ""} found
-                </div>
-              </div>
-            ) : null}
+              ) : null}
 
-            {generated ? (
-              <div className="space-y-10">
-                <section id="problem-definition-card">
-                  <div className="mb-4">
-                    <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500">Define Phase · AI-Generated</p>
-                    <h2 className="text-2xl font-bold text-gray-900 mt-1">Problem Statement</h2>
+              {!generated ? (
+                <div className="rounded-2xl border border-gray-200 bg-white p-10 text-center shadow-sm">
+                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "linear-gradient(135deg, #ede8ff, #d1c4e9)" }}>
+                    <Sparkles className="w-7 h-7 text-indigo-600" />
                   </div>
+                  <h2 className="text-lg font-semibold text-gray-900 mb-2">Ready to define the problem?</h2>
+                  <p className="text-sm text-gray-500 max-w-md mx-auto mb-6">
+                    Click <strong>Generate Problem Definition</strong> above to analyze empathy-phase data and generate the problem statement and persona card from Agent5i.
+                  </p>
+                  <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 border border-indigo-100 px-4 py-1.5 text-xs font-semibold text-indigo-700">
+                    {personas.length} persona group{personas.length !== 1 ? "s" : ""} • {totalInterviewees} interviewee{totalInterviewees !== 1 ? "s" : ""} found
+                  </div>
+                </div>
+              ) : null}
 
-                  <button
-                    type="button"
-                    aria-label="Go to Problem Statement Card"
-                    onClick={() => {
-                      if (typeof window !== "undefined") {
-                        window.location.hash = "problem-definition-card";
-                        // Optionally scroll into view for smooth UX
-                        const el = document.getElementById("problem-definition-card");
-                        if (el) el.scrollIntoView({ behavior: "smooth" });
-                      }
-                    }}
-                    style={{
-                      border: "none",
-                      background: "none",
-                      padding: 0,
-                      width: "100%",
-                      textAlign: "inherit",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <div
+              {generated ? (
+                <div className="space-y-10">
+                  <section id="problem-definition-card">
+                    <div className="mb-4">
+                      <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500">Define Phase · AI-Generated</p>
+                      <h2 className="text-2xl font-bold text-gray-900 mt-1">Problem Statement</h2>
+                    </div>
+
+                    <button
+                      type="button"
+                      aria-label="Go to Problem Statement Card"
+                      onClick={() => {
+                        if (typeof window !== "undefined") {
+                          window.location.hash = "problem-definition-card";
+                          const el = document.getElementById("problem-definition-card");
+                          if (el) el.scrollIntoView({ behavior: "smooth" });
+                        }
+                      }}
                       style={{
-                        borderRadius: 16,
-                        background: "linear-gradient(135deg, #1a1a2e, #2d1b69)",
-                        padding: "32px 36px",
-                        color: "white",
-                        boxShadow: "0 8px 32px rgba(74,0,224,0.25)",
+                        border: "none",
+                        background: "none",
+                        padding: 0,
                         width: "100%",
+                        textAlign: "inherit",
+                        cursor: "pointer",
                       }}
                     >
-                      <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "1.5px", textTransform: "uppercase", color: "#c9b8ff", marginBottom: 16 }}>
-                        Problem Statement
-                      </p>
-                      {problemStatement ? (
-                        <p style={{ fontSize: 18, lineHeight: 1.75, fontWeight: 500 }}>{problemStatement}</p>
-                      ) : (
-                        <p style={{ fontSize: 15, color: "#aaa", fontStyle: "italic" }}>
-                          The agent did not return a problem statement for this persona.
-                        </p>
-                      )}
-                    </div>
-                  </button>
-                </section>
-
-                <section>
-                  <div className="mb-6">
-                    <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500">Agent Persona Output</p>
-                    <h2 className="text-2xl font-bold text-gray-900 mt-1">Persona Card</h2>
-                    <p className="text-sm text-gray-500 mt-1">
-                      Card details are rendered from the same Agent5i response.
-                    </p>
-                  </div>
-
-                  <div className="mb-4 flex flex-wrap gap-2 border-b border-gray-200 pb-2">
-                    {personas.map((persona) => (
-                      <button
-                        key={persona.personaId}
-                        onClick={() => {
-                          setActivePersonaId(persona.personaId);
-                          setActiveIntervieweeId(persona.outputs?.[0]?.intervieweeId ?? null);
+                      <div
+                        style={{
+                          borderRadius: 16,
+                          background: "linear-gradient(135deg, #1a1a2e, #2d1b69)",
+                          padding: "32px 36px",
+                          color: "white",
+                          boxShadow: "0 8px 32px rgba(74,0,224,0.25)",
+                          width: "100%",
                         }}
-                        className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                          activePersonaId === persona.personaId
-                            ? "bg-[#702dff] text-white shadow"
-                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                        }`}
                       >
-                        {persona.personaName}
-                      </button>
-                    ))}
-                  </div>
+                        <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "1.5px", textTransform: "uppercase", color: "#c9b8ff", marginBottom: 16 }}>
+                          Problem Statement
+                        </p>
+                        {problemStatement ? (
+                          <p style={{ fontSize: 18, lineHeight: 1.75, fontWeight: 500 }}>{problemStatement}</p>
+                        ) : (
+                          <p style={{ fontSize: 15, color: "#aaa", fontStyle: "italic" }}>
+                            The agent did not return a problem statement for this persona.
+                          </p>
+                        )}
+                      </div>
+                    </button>
+                  </section>
 
-                 {activeAgentCard ? (
-  <div>
-    <div id="persona-card-download">
-      <AgentPersonaCard
-        card={activeAgentCard}
-        personaName={activePersonaGroup?.personaName || "Persona"}
-      />
-    </div>
+                  <section>
+                    <div className="mb-6">
+                      <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500">Agent Persona Output</p>
+                      <h2 className="text-2xl font-bold text-gray-900 mt-1">Persona Card</h2>
+                      <p className="text-sm text-gray-500 mt-1">
+                        Card details are rendered from the same Agent5i response.
+                      </p>
+                    </div>
 
-    <div className="mt-5 flex justify-end gap-3">
-      
-      <button
-  disabled={isGeneratingProcessFlow}
-  onClick={() => {
-    setIsGeneratingProcessFlow(true);
+                    <div className="mb-4 flex flex-wrap gap-2 border-b border-gray-200 pb-2">
+                      {personas.map((persona) => (
+                        <button
+                          key={persona.personaId}
+                          onClick={() => {
+                            setActivePersonaId(persona.personaId);
+                            setActiveIntervieweeId(persona.outputs?.[0]?.intervieweeId ?? null);
+                          }}
+                          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                            activePersonaId === persona.personaId
+                              ? "bg-[#702dff] text-white shadow"
+                              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                          }`}
+                        >
+                          {persona.personaName}
+                        </button>
+                      ))}
+                    </div>
 
-    router.push(
-      `/process-flow?projectId=${encodeURIComponent(projectId)}`
-    );
-  }}
-  className="px-5 py-2.5 rounded-xl font-semibold transition-all duration-200 border border-[#702dff] text-[#702dff] hover:bg-[#702dff] hover:text-white hover:scale-[1.02] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
->
-  {isGeneratingProcessFlow ? (
-    <>
-      <svg
-        className="h-4 w-4 animate-spin"
-        xmlns="http://www.w3.org/2000/svg"
-        fill="none"
-        viewBox="0 0 24 24"
-      >
-        <circle
-          cx="12"
-          cy="12"
-          r="10"
-          stroke="currentColor"
-          strokeWidth="4"
-          className="opacity-25"
-        />
-        <path
-          fill="currentColor"
-          className="opacity-75"
-          d="M4 12a8 8 0 018-8v8H4z"
-        />
-      </svg>
-      Opening Process Flow...
-    </>
-  ) : (
-    "Generate Process Flow"
-  )}
-</button>
-      <button
-  onClick={handleDownloadPDF}
-  className="px-5 py-2.5 rounded-xl text-white font-semibold transition-all duration-200 cursor-pointer hover:scale-[1.02]"
-  style={{
-    background: "linear-gradient(135deg, #4a00e0, #702dff)",
-    boxShadow: "0 4px 14px rgba(74,0,224,0.25)",
-  }}
->
-  Download PDF
-</button>
-    </div>
-    {iaError ? (
-      <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{iaError}</p>
-    ) : null}
-  </div>
-) : (
-                    <p className="rounded-lg border border-gray-200 bg-white px-4 py-6 text-center text-sm text-gray-500">
-                      No agent persona card available for this persona.
-                    </p>
-                  )}
-                </section>
-              </div>
-            ) : null}
-          </>
-        ) : null}
+                    {activeAgentCard ? (
+                      <div>
+                        <div id="persona-card-download">
+                          <AgentPersonaCard
+                            card={activeAgentCard}
+                            personaName={activePersonaGroup?.personaName || "Persona"}
+                          />
+                        </div>
+
+                        <div className="mt-5 flex justify-end gap-3">
+                          <button
+                            disabled={isGeneratingProcessFlow}
+                            onClick={() => {
+                              setIsGeneratingProcessFlow(true);
+                              router.push(
+                                `/process-flow?projectId=${encodeURIComponent(projectId)}`
+                              );
+                            }}
+                            className="px-5 py-2.5 rounded-xl font-semibold transition-all duration-200 border border-[#702dff] text-[#702dff] hover:bg-[#702dff] hover:text-white hover:scale-[1.02] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                          >
+                            {isGeneratingProcessFlow ? (
+                              <>
+                                <svg
+                                  className="h-4 w-4 animate-spin"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <circle
+                                    cx="12"
+                                    cy="12"
+                                    r="10"
+                                    stroke="currentColor"
+                                    strokeWidth="4"
+                                    className="opacity-25"
+                                  />
+                                  <path
+                                    fill="currentColor"
+                                    className="opacity-75"
+                                    d="M4 12a8 8 0 018-8v8H4z"
+                                  />
+                                </svg>
+                                Opening Process Flow...
+                              </>
+                            ) : (
+                              "Generate Process Flow"
+                            )}
+                          </button>
+                          <button
+                            onClick={handleDownloadPDF}
+                            className="px-5 py-2.5 rounded-xl text-white font-semibold transition-all duration-200 cursor-pointer hover:scale-[1.02]"
+                            style={{
+                              background: "linear-gradient(135deg, #4a00e0, #702dff)",
+                              boxShadow: "0 4px 14px rgba(74,0,224,0.25)",
+                            }}
+                          >
+                            Download PDF
+                          </button>
+                        </div>
+                        {iaError ? (
+                          <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{iaError}</p>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <p className="rounded-lg border border-gray-200 bg-white px-4 py-6 text-center text-sm text-gray-500">
+                        No agent persona card available for this persona.
+                      </p>
+                    )}
+                  </section>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </div>
       </div>
-    </div>
     </div>
   );
 }
