@@ -562,7 +562,7 @@ FROM generated_personass
 WHERE project_id = @projectId
 ORDER BY created_at ASC
       `);
-
+    console.log(personaResult.recordset.length, "define records found for project", projectId); 
     const definePersonas = [];
 
     const providedDefineOutputs = parseDefinePayload(combinedPersonaOutput);

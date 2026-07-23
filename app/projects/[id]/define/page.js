@@ -17,7 +17,7 @@ function toList(value) {
     .map((line) => line.replace(/^\s*[-*•\d]+[.)-]?\s*/, "").trim())
     .filter(Boolean);
 }
-// ✅ UPDATED: New normalize function with correct field mapping
+
 function parseHeaderText(rawHeader, fallbackName) {
   const lines = String(rawHeader || "")
     .split("\n")
@@ -412,6 +412,7 @@ export default function DefinePhasePage() {
 
         // Check DB for already-generated persona cards
         const savedRes = await fetch(`/api/save-generated-persona?projectId=${projectId}`);
+        console.log("Saved persona card fetch response:", savedRes);
         const savedData = await savedRes.json();
         if (savedData.success && savedData.exists && savedData.personas?.length) {
           const cards = {};
@@ -470,7 +471,10 @@ export default function DefinePhasePage() {
           problemStatement: data.problem_statement || "",
           personas: Object.values(nextCards).map((card) => ({
             personaId: card.personaId,
-            personaName: parseHeaderText(card.header).name,
+            personaName:
+  parseHeaderText(card.header).name
+    .replace(/\s*["“].*$/, "")
+    .trim(),
             title: card.demographics?.occupation || "",
             location: card.demographics?.location || "",
             background: card.background,
