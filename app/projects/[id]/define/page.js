@@ -17,7 +17,7 @@ function toList(value) {
     .map((line) => line.replace(/^\s*[-*•\d]+[.)-]?\s*/, "").trim())
     .filter(Boolean);
 }
-
+// ✅ UPDATED: New normalize function with correct field mapping
 function parseHeaderText(rawHeader, fallbackName) {
   const lines = String(rawHeader || "")
     .split("\n")
