@@ -873,6 +873,7 @@ const [expectedTimeline, setExpectedTimeline] = useState("");
 const [regulatoryRequirements, setRegulatoryRequirements] = useState("");
 const [isBrdInputModalOpen, setIsBrdInputModalOpen] = useState(false);
 const [isResearchSummaryModalOpen, setIsResearchSummaryModalOpen] = useState(false);
+const [canGenerateDocuments, setCanGenerateDocuments] = useState(false);
 const BRD_STEPS = [
   "Analyzing requirements",
   "Extracting business requirements",
@@ -927,6 +928,27 @@ const PRD_STEPS = [
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isBrdModalOpen, isPrdModalOpen]);
+
+  useEffect(() => {
+  async function checkIAExists() {
+    if (!projectId) return;
+
+    try {
+      const response = await fetch(
+        `/api/generate-information-architecture?projectId=${projectId}`
+      );
+
+      const data = await response.json();
+
+      setCanGenerateDocuments(data.exists);
+    } catch (error) {
+      console.error(error);
+      setCanGenerateDocuments(false);
+    }
+  }
+
+  checkIAExists();
+}, [projectId]);
 
   const fetchProject = async () => {
     setIsLoading(true);
@@ -1267,7 +1289,7 @@ const handleGenerateInformationArchitecture = async () => {
     }
 
     setInformationArchitectureData(agentData.information_architecture);
-
+    setCanGenerateDocuments(true);
     sessionStorage.setItem(
       "informationArchitectureData",
       JSON.stringify(agentData.information_architecture)
@@ -2142,7 +2164,6 @@ const handleDownloadBrdDoc = async () => {
   const isProjectCompleted = project.status === "Completed";
   const activePersonaCard =
     personaCards.find((card) => card.personaId === activePersonaCardId) || null;
-  const canGenerateDocuments = Boolean(informationArchitectureData);
 
   return (
     <div className="bg-[#fafafa] px-3 py-3 pb-40 md:pb-48">

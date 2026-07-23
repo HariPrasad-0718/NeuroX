@@ -901,3 +901,41 @@ if (directParsed) {
     });
   }
 }
+
+export async function GET(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+
+    const projectId = searchParams.get("projectId");
+
+    if (!projectId) {
+      return NextResponse.json(
+        { exists: false, message: "Project ID is required" },
+        { status: 400 }
+      );
+    }
+
+    const pool = await getPool();
+
+    const result = await pool
+  .request()
+  .input("projectId", sql.Int, Number(projectId))
+  .query(`
+    SELECT TOP 1 ia_id
+    FROM InformationArchitecture
+    WHERE project_id = @projectId
+  `);
+
+return NextResponse.json({
+  exists: result.recordset.length > 0,
+});
+
+  } catch (error) {
+    console.error(error);
+
+    return NextResponse.json(
+      { exists: false },
+      { status: 500 }
+    );
+  }
+}
