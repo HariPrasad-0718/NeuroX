@@ -18,28 +18,6 @@ function toList(value) {
     .filter(Boolean);
 }
 
-// ✅ UPDATED: Only parse name, title, location
-function parseInterviewInfo(value) {
-  if (!value) return {};
-  if (typeof value === "object" && !Array.isArray(value)) return value;
-
-  const obj = {};
-  const lines = String(value).split("\n").filter(Boolean);
-  
-  lines.forEach((line) => {
-    const [key, ...rest] = line.split(":");
-    if (!key || !rest.length) return;
-    const trimmedKey = key.trim().toLowerCase();
-    
-    // Only extract name, title, location
-    if (["name", "title", "location"].includes(trimmedKey)) {
-      obj[trimmedKey] = rest.join(":").trim();
-    }
-  });
-
-  return obj;
-}
-
 function parseHeaderText(rawHeader, fallbackName) {
   const lines = String(rawHeader || "")
     .split("\n")
@@ -79,106 +57,59 @@ function parseHeaderText(rawHeader, fallbackName) {
   };
 }
 
-function parseThemeLines(value) {
-  return String(value || "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-// ✅ UPDATED: Normalize only with name, title, location
+// ✅ REPLACED: New normalize function with correct field mapping
 function normalizeAgentCard(raw = {}) {
   return {
-    header: raw.header || raw.HEADER || "",
-    name: raw.name || raw.NAME || "",
-    title: raw.title || raw.TITLE || "",
-    location: raw.location || raw.LOCATION || "",
-    quote: raw.quote || raw.QUOTE || "",
-    background: raw.background || raw.BACKGROUND || "",
-    scenario: raw.scenario || raw.SCENARIO || "",
-    personality: raw.personality || raw.PERSONALITY || [],
-    behaviours: raw.behaviours || raw["BEHAVIOURS & HABITS"] || [],
-    goals: raw.goals || raw.GOALS || [],
-    frustrations: raw.frustrations || raw.FRUSTRATIONS || [],
-    motivations: raw.motivations || raw.MOTIVATIONS || [],
-    previousExperience: raw.previousExperience || raw["PREVIOUS EXPERIENCE"] || [],
-    positiveThemes: raw.positiveThemes || raw["POSITIVE THEMES"] || [],
-    negativeThemes: raw.negativeThemes || raw["NEGATIVE THEMES"] || [],
-    needs: raw.needs || raw["NEEDS & EXPECTATIONS"] || [],
-    problemStatement:
-      raw.problemStatement ||
-      raw.problem_statement ||
-      raw["PROBLEM STATEMENT"] ||
-      "",
+    personaId: raw.persona_id || "",
+    header: raw.header || "",
+    background: raw.background || "",
+    scenario: raw.scenario || "",
+    demographics: raw.demographics || {},
+    personality: raw.personality || [],
+    behaviours: raw.behaviours_and_habits || [],
+    goals: raw.goals || [],
+    frustrations: raw.frustrations || [],
+    motivations: raw.motivations || [],
+    previousExperience: raw.previous_experience || [],
+    positiveThemes: raw.positive_themes || [],
+    negativeThemes: raw.negative_themes || [],
+    needs: raw.needs_and_expectations || [],
   };
 }
 
-// ✅ UPDATED: Build context with ONLY name, title, location
-function buildPersonaContext(persona, fallbackProjectName) {
-  const validOutputs = (persona.outputs || []).filter((output) => {
-    const summary = String(output.summary || "").trim();
-    const outcome = String(output.interviewOutcome || "").trim();
-    const personaOutput = String(output.personaOutput || "").trim();
+// ✅ REPLACED: New bundle-builder function
+function buildFullProjectContext(personas, fallbackProjectName) {
+  const projectName = personas[0]?.projectName || fallbackProjectName || "";
+  const projectDescription = personas[0]?.projectDescription || "";
 
-    const hasSummary = summary && summary.toLowerCase() !== "no summary available";
-    const hasOutcome =
-      outcome &&
-      outcome.toLowerCase() !== "no outcome available" &&
-      outcome.toLowerCase() !== "no interview outcome available";
-    const hasPersonaOutput =
-      personaOutput && personaOutput.toLowerCase() !== "no persona output available";
+  const user_personas = personas.map((p) => ({
+    persona_id: p.personaId,
+    persona_name: p.personaName,
+  }));
 
-    // ✅ Only check for basic info: name, title, location
-    const hasBasicInfo = Boolean(
-      output.intervieweeName ||
-      output.title ||
-      output.location
-    );
+  const user_answers = personas.map((p) => ({
+    persona_id: p.personaId,
+    persona_name: p.personaName,
+    interviewees: (p.outputs || [])
+      .filter((o) => o.summary || o.interviewOutcome || o.personaOutput)
+      .map((o) => ({
+        interview_id: o.interviewId,
+        interviewee_id: o.intervieweeId,
+        name: o.intervieweeName,
+        title: o.title,
+        location: o.location,
+        summary: o.summary || "No summary available",
+        interview_outcome: o.interviewOutcome || "No interview outcome available",
+        persona_output: o.personaOutput || "No persona output available",
+      })),
+  }));
 
-    return hasSummary && hasOutcome && hasPersonaOutput && hasBasicInfo;
+  return JSON.stringify({
+    project_name: projectName,
+    project_description: projectDescription,
+    user_personas,
+    user_answers,
   });
-
-  return `Persona ID: ${persona.personaId}
-Persona Name: ${persona.personaName}
-Project Name: ${persona.projectName || fallbackProjectName || ""}
-Project Description: ${persona.projectDescription || ""}
-Persona Outputs:
-${validOutputs.length
-  ? validOutputs
-  .map((output, index) => {
-    const createdAt = output.generatedAt ? new Date(output.generatedAt).toISOString() : "";
-    const metadata = [
-      `Output ${index + 1}`,
-      output.interviewId ? `Interview ID: ${output.interviewId}` : "",
-      output.intervieweeId ? `Interviewee ID: ${output.intervieweeId}` : "",
-      output.intervieweeName ? `Interviewee Name: ${output.intervieweeName}` : "",
-      createdAt ? `Generated At: ${createdAt}` : "",
-    ]
-      .filter(Boolean)
-      .join(" | ");
-
-    // ✅ Simplified - ONLY name, title, location
-    const basicInfo = [
-      output.intervieweeName ? `Name: ${output.intervieweeName}` : "",
-      output.title ? `Title: ${output.title}` : "",
-      output.location ? `Location: ${output.location}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n");
-
-    return `${metadata}
-${basicInfo ? `${basicInfo}\n` : ""}
-Summary:
-${output.summary || "No summary available"}
-
-Interview Outcome:
-${output.interviewOutcome || "No interview outcome available"}
-
-Persona Output:
-${output.personaOutput || "No persona output available"}`;
-  })
-  .join("\n\n")
-  : "No valid interview details available."}`;
 }
 
 function CardBox({ title, borderColor, bgColor, titleColor, children }) {
@@ -201,28 +132,27 @@ function CardBox({ title, borderColor, bgColor, titleColor, children }) {
   );
 }
 
-// ✅ UPDATED: Display ONLY name, title, location in the card
+// ✅ UPDATED: Uses direct arrays from card (now {theme, description} objects)
 function AgentPersonaCard({ card, personaName }) {
   const header = parseHeaderText(card.header, card.name || personaName);
   const name = header.name || personaName || "Persona";
-  const role = header.role || card.title || "";
+  const role = header.role || card.demographics?.occupation || "";
   const quote = header.quote || card.quote || "";
 
-  // ✅ Only parse name, title, location
-  const interviewInfo = parseInterviewInfo(card.interviewInfo || "");
   const personality = toList(card.personality);
   const behaviours = toList(card.behaviours);
   const goals = toList(card.goals);
   const frustrations = toList(card.frustrations);
   const motivations = toList(card.motivations);
   const previousExperience = toList(card.previousExperience);
-  const positiveThemes = parseThemeLines(card.positiveThemes);
-  const negativeThemes = parseThemeLines(card.negativeThemes);
+  
+  // ✅ Direct use - now arrays of {theme, description}
+  const positiveThemes = Array.isArray(card.positiveThemes) ? card.positiveThemes : [];
+  const negativeThemes = Array.isArray(card.negativeThemes) ? card.negativeThemes : [];
   const needs = toList(card.needs);
 
-  // Use card.title as fallback for title
-  const displayTitle = card.title || role || "";
-  const displayLocation = card.location || interviewInfo.location || "";
+  const displayTitle = card.demographics?.occupation || role || "";
+  const displayLocation = card.demographics?.location || "";
 
   const initials = name
     .split(" ")
@@ -302,7 +232,6 @@ function AgentPersonaCard({ card, personaName }) {
             gap: 22,
           }}
         >
-          {/* ✅ UPDATED: Show ONLY name, title, location */}
           <div>
             <h4 style={{ fontSize: 11, fontWeight: 700, letterSpacing: "1.2px", color: "#4a00e0", textTransform: "uppercase", margin: "0 0 10px 0" }}>
               👤 Interview Details
@@ -395,10 +324,20 @@ function AgentPersonaCard({ card, personaName }) {
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <CardBox title="👍 Positive Themes" borderColor="#c8e6c9" bgColor="#f9fff9" titleColor="#2e7d32">
-              {positiveThemes.length ? positiveThemes.map((line, i) => <p key={`pt-${i}`} style={{ fontSize: 13, margin: "0 0 6px 0" }}>✔ {line}</p>) : <p style={{ fontSize: 13, color: "#999" }}>—</p>}
+              {positiveThemes.length ? positiveThemes.map((item, i) => (
+                <p key={`pt-${i}`} style={{ fontSize: 13, margin: "0 0 6px 0" }}>
+                  ✔ {item.theme || item}
+                  {item.description && `: ${item.description}`}
+                </p>
+              )) : <p style={{ fontSize: 13, color: "#999" }}>—</p>}
             </CardBox>
             <CardBox title="👎 Negative Themes" borderColor="#ffcdd2" bgColor="#fff9f9" titleColor="#c62828">
-              {negativeThemes.length ? negativeThemes.map((line, i) => <p key={`nt-${i}`} style={{ fontSize: 13, margin: "0 0 6px 0" }}>✔ {line}</p>) : <p style={{ fontSize: 13, color: "#999" }}>—</p>}
+              {negativeThemes.length ? negativeThemes.map((item, i) => (
+                <p key={`nt-${i}`} style={{ fontSize: 13, margin: "0 0 6px 0" }}>
+                  ✖ {item.theme || item}
+                  {item.description && `: ${item.description}`}
+                </p>
+              )) : <p style={{ fontSize: 13, color: "#999" }}>—</p>}
             </CardBox>
           </div>
 
@@ -476,9 +415,10 @@ export default function DefinePhasePage() {
         const savedData = await savedRes.json();
         if (savedData.success && savedData.exists && savedData.personas?.length) {
           const cards = {};
-          savedData.personas.forEach((card, i) => {
-            const personaId = nextPersonas[i]?.personaId;
-            if (personaId != null) cards[personaId] = normalizeAgentCard(card);
+          // ✅ ID-based match instead of index-based
+          savedData.personas.forEach((card) => {
+            const personaId = card.personaId;
+            if (personaId != null) cards[personaId] = normalizeAgentCard(card.generatedOutput || card);
           });
           setAgentCardsByPersona(cards);
           setProblemStatement(savedData.problemStatement || "");
@@ -495,6 +435,7 @@ export default function DefinePhasePage() {
     fetchEmpathyData();
   }, [projectId]);
 
+  // ✅ REWRITTEN: Single call to agent with full bundle
   const handleGenerate = async () => {
     if (!personas.length) {
       setError("No empathy phase data found. Complete the empathy phase first.");
@@ -506,54 +447,32 @@ export default function DefinePhasePage() {
     setIaError("");
 
     try {
+      const personaContext = buildFullProjectContext(personas, projectName);
+      const { data } = await generatePersonaCard({ empathyDataAndContext: personaContext });
+      if (!data.success) {
+        throw new Error(data.error || "Agent generation failed");
+      }
+
       const nextCards = {};
-      let sharedProblemStatement = "";
-
-      for (const persona of personas) {
-        const personaContext = buildPersonaContext(persona, projectName);
-
-        const { data } = await generatePersonaCard({ empathyDataAndContext: personaContext });
-        if (!data.success) {
-          throw new Error(data.error || `Agent failed for ${persona.personaName}`);
-        }
-
-        const normalizedCard = normalizeAgentCard(data.persona_card || {});
-
-        if (!sharedProblemStatement && String(normalizedCard.problemStatement || "").trim()) {
-          sharedProblemStatement = String(normalizedCard.problemStatement).trim();
-        }
-
-        nextCards[persona.personaId] = normalizedCard;
-      }
-
-      // Keep one canonical problem statement for this generation run.
-      if (sharedProblemStatement) {
-        Object.keys(nextCards).forEach((personaId) => {
-          nextCards[personaId] = {
-            ...nextCards[personaId],
-            problemStatement: sharedProblemStatement,
-          };
-        });
-      }
+      (data.persona_cards || []).forEach((raw) => {
+        nextCards[raw.persona_id] = normalizeAgentCard(raw);
+      });
 
       setAgentCardsByPersona(nextCards);
-
-      // ==========================================
-      // SAVE GENERATED DATA TO DATABASE
-      // ==========================================
+      setProblemStatement(data.problem_statement || "");
+      setGenerated(true);
 
       await fetch("/api/save-generated-persona", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectId,
-          problemStatement: sharedProblemStatement,
+          problemStatement: data.problem_statement || "",
           personas: Object.values(nextCards).map((card) => ({
-            personaName: card.name,
-            title: card.title,
-            location: card.location,
+            personaId: card.personaId,
+            personaName: parseHeaderText(card.header).name,
+            title: card.demographics?.occupation || "",
+            location: card.demographics?.location || "",
             background: card.background,
             scenario: card.scenario,
             personality: card.personality,
@@ -569,16 +488,7 @@ export default function DefinePhasePage() {
           })),
         }),
       });
-      
-      const current = nextCards[activePersonaId] || nextCards[personas[0]?.personaId] || {};
-      const fallbackProblemStatement =
-        current.problemStatement ||
-        Object.values(nextCards).find((card) => String(card?.problemStatement || "").trim())?.problemStatement ||
-        "";
-      setProblemStatement(fallbackProblemStatement);
-      setGenerated(true);
 
-      // Update define progress to 50 → overall = empathize(100)+define(50) = 150/500 = 30%
       try {
         await fetch(`/api/projects/${projectId}/progress`, {
           method: "PUT",
