@@ -22,287 +22,50 @@ function tryParseJSON(value) {
   }
 }
 
-function hasPersonaSignals(obj) {
-  if (!obj || typeof obj !== "object") return false;
-
-  const normalizedKeys = Object.keys(obj).map((k) => String(k).toLowerCase().trim());
-  const expected = [
-    "name",
-    "header",
-    "quote",
-    "background",
-    "scenario",
-    "goals",
-    "frustrations",
-    "motivations",
-    "demographics",
-    "personality",
-    "behaviours & habits",
-    "behaviors & habits",
-    "previous experience",
-    "positive themes",
-    "negative themes",
-    "needs & expectations",
-    "problem statement",
-    "problem_statement",
-    "problemstatement",
-  ];
-
-  return expected.some((key) => normalizedKeys.includes(key));
-}
-
-function findFirstKeyCaseInsensitive(obj, expectedKey) {
-  if (!obj || typeof obj !== "object") return null;
-  const target = String(expectedKey || "").toLowerCase();
-  for (const key of Object.keys(obj)) {
-    if (String(key).toLowerCase() === target) return key;
-  }
-  return null;
-}
-
-function extractPersonaCards(input, depth = 0) {
-  if (depth > 6 || input == null) return [];
+function extractPersonaPayload(input, depth = 0) {
+  if (depth > 6 || input == null) return { problemStatement: "", cards: [] };
 
   if (typeof input === "string") {
     const parsed = tryParseJSON(input);
-    return parsed == null ? [] : extractPersonaCards(parsed, depth + 1);
+    return parsed == null
+      ? { problemStatement: "", cards: [] }
+      : extractPersonaPayload(parsed, depth + 1);
   }
 
   if (Array.isArray(input)) {
-    // If this already looks like persona-card rows, use it directly.
-    if (input.some((item) => item && typeof item === "object" && (item.PERSONA_ID || item.persona_id || item.personaId))) {
-      return input.filter((item) => item && typeof item === "object");
+    if (input.some((item) => item && typeof item === "object" && item.persona_id)) {
+      return { problemStatement: "", cards: input.filter((i) => i && typeof i === "object") };
     }
-
     for (const item of input) {
-      const cards = extractPersonaCards(item, depth + 1);
-      if (cards.length) return cards;
+      const result = extractPersonaPayload(item, depth + 1);
+      if (result.cards.length) return result;
     }
-    return [];
+    return { problemStatement: "", cards: [] };
   }
 
-  if (typeof input !== "object") return [];
+  if (typeof input !== "object") return { problemStatement: "", cards: [] };
 
-  const personaCardsKey = findFirstKeyCaseInsensitive(input, "persona_cards");
-  if (personaCardsKey) {
-    return extractPersonaCards(input[personaCardsKey], depth + 1);
+  if (Array.isArray(input.persona_cards) || typeof input.persona_cards === "string") {
+    const problemStatement = String(input.problem_statement || "").trim();
+    let cards = input.persona_cards;
+    if (typeof cards === "string") {
+      const parsed = tryParseJSON(cards);
+      if (parsed && !Array.isArray(parsed) && parsed.persona_cards) {
+        return extractPersonaPayload(parsed, depth + 1);
+      }
+      cards = Array.isArray(parsed) ? parsed : [];
+    }
+    return { problemStatement, cards: Array.isArray(cards) ? cards : [] };
   }
 
   for (const value of Object.values(input)) {
-    const cards = extractPersonaCards(value, depth + 1);
-    if (cards.length) return cards;
+    const result = extractPersonaPayload(value, depth + 1);
+    if (result.cards.length) return result;
   }
 
-  return [];
+  return { problemStatement: "", cards: [] };
 }
 
-function pickPersonaCard(cards, targetPersonaId) {
-  if (!cards.length) return null;
-
-  const normalizedTarget = String(targetPersonaId || "").trim();
-  if (normalizedTarget) {
-    const exact = cards.find((card) => {
-      const cardId = String(card.PERSONA_ID || card.persona_id || card.personaId || "").trim();
-      return cardId && cardId === normalizedTarget;
-    });
-    if (exact) return exact;
-  }
-
-  const firstSpecific = cards.find((card) => {
-    const cardId = String(card.PERSONA_ID || card.persona_id || card.personaId || "").trim();
-    return cardId && cardId !== "0";
-  });
-
-  return firstSpecific || cards[0];
-}
-
-function pickSharedProblemStatement(cards) {
-  if (!Array.isArray(cards) || !cards.length) return "";
-
-  const getStatement = (card) =>
-    String(
-      card?.["PROBLEM_STATEMENT"] ||
-      card?.["PROBLEM STATEMENT"] ||
-      card?.problem_statement ||
-      card?.problemStatement ||
-      ""
-    ).trim();
-
-  const preferred = cards.find((card) => {
-    const cardId = String(card?.PERSONA_ID || card?.persona_id || card?.personaId || "").trim();
-    return !cardId && getStatement(card);
-  });
-
-  if (preferred) return getStatement(preferred);
-
-  const fallback = cards.find((card) => getStatement(card));
-  return fallback ? getStatement(fallback) : "";
-}
-
-function findPersonaPayload(input, depth = 0) {
-  if (depth > 6 || input == null) return null;
-
-  if (typeof input === "string") {
-    const parsed = tryParseJSON(input);
-    if (parsed != null) return findPersonaPayload(parsed, depth + 1);
-    return null;
-  }
-
-  if (Array.isArray(input)) {
-    for (const item of input) {
-      const found = findPersonaPayload(item, depth + 1);
-      if (found) return found;
-    }
-    return null;
-  }
-
-  if (typeof input !== "object") return null;
-
-  if (hasPersonaSignals(input)) return input;
-
-  const preferredKeys = [
-    "persona_card",
-    "data",
-    "result",
-    "output",
-    "response",
-    "message",
-    "text",
-    "content",
-  ];
-
-  for (const key of preferredKeys) {
-    if (Object.prototype.hasOwnProperty.call(input, key)) {
-      const found = findPersonaPayload(input[key], depth + 1);
-      if (found) return found;
-    }
-  }
-
-  for (const value of Object.values(input)) {
-    const found = findPersonaPayload(value, depth + 1);
-    if (found) return found;
-  }
-
-  return input;
-}
-
-function extractFallbackText(input) {
-  if (!input) return "";
-
-  if (typeof input === "string") return input.trim();
-
-  if (Array.isArray(input)) {
-    for (const item of input) {
-      const t = extractFallbackText(item);
-      if (t) return t;
-    }
-    return "";
-  }
-
-  if (typeof input !== "object") return "";
-
-  const preferred = ["message", "text", "content", "response", "output", "result"];
-  for (const key of preferred) {
-    if (Object.prototype.hasOwnProperty.call(input, key)) {
-      const t = extractFallbackText(input[key]);
-      if (t) return t;
-    }
-  }
-
-  for (const value of Object.values(input)) {
-    const t = extractFallbackText(value);
-    if (t) return t;
-  }
-
-  return "";
-}
-
-function extractPersonaCard(data, options = {}) {
-  if (!data) return {};
-
-  const { targetPersonaId = "" } = options;
-
-  const cards = extractPersonaCards(data);
-  const selectedFromCards = pickPersonaCard(cards, targetPersonaId);
-  const sharedProblemStatement = pickSharedProblemStatement(cards);
-
-  const cleanData = selectedFromCards || findPersonaPayload(data) || data;
-  const fallbackText = extractFallbackText(data);
-
-  logger.debug("Persona card data extracted from agent response", { hasPersonaSignals: hasPersonaSignals(cleanData) });
-
-  if (typeof cleanData !== "object") {
-    return {
-      name: "Persona",
-      background: String(cleanData || fallbackText || ""),
-      goals: [],
-      needs: [],
-      frustrations: [],
-      problemStatement: "",
-    };
-  }
- const toArray = (value) => {
-  if (!value) return [];
-
-  if (Array.isArray(value)) return value;
-
-  if (typeof value === "object") {
-    return Object.values(value).map((v) => String(v).trim());
-  }
-
-  if (typeof value === "string") {
-    return value
-      .split(/\n|•/)
-      .map((v) => v.trim())
-      .filter(Boolean);
-  }
-
-  return [];
-};
-
-  return {
-    name: cleanData.NAME || cleanData.name || "Persona",
-    header: cleanData.HEADER || cleanData.header || "",
-    quote: cleanData.QUOTE || cleanData.quote || "",
-    background: cleanData.BACKGROUND || cleanData.background || "",
-    scenario: cleanData.SCENARIO || cleanData.scenario || "",
-
-    goals: toArray(cleanData.GOALS || cleanData.goals),
-    frustrations: toArray(cleanData.FRUSTRATIONS || cleanData.frustrations),
-    motivations: toArray(cleanData.MOTIVATIONS || cleanData.motivations),
-    needs: toArray(
-      cleanData["NEEDS & EXPECTATIONS"] ||
-      cleanData.needs ||
-      cleanData.needs_and_expectations
-    ),
-    positiveThemes: toArray(
-      cleanData["POSITIVE THEMES"] || cleanData.positiveThemes || cleanData.positive_themes
-    ),
-    negativeThemes: toArray(
-      cleanData["NEGATIVE THEMES"] || cleanData.negativeThemes || cleanData.negative_themes
-    ),
-    behaviours: toArray(
-      cleanData["BEHAVIOURS & HABITS"] ||
-      cleanData["BEHAVIORS & HABITS"] ||
-      cleanData.behaviours ||
-      cleanData.behaviors
-    ),
-    personality: toArray(cleanData.PERSONALITY || cleanData.personality),
-    previousExperience: toArray(
-      cleanData["PREVIOUS EXPERIENCE"] || cleanData.previousExperience || cleanData.previous_experience
-    ),
-
-    demographics: cleanData.DEMOGRAPHICS || cleanData.demographics || {},
-    problemStatement:
-      cleanData["PROBLEM STATEMENT"] ||
-      cleanData.PROBLEM_STATEMENT ||
-      cleanData.problem_statement ||
-      cleanData.problemStatement ||
-      sharedProblemStatement ||
-      "",
-    rawText: fallbackText,
-  };
-}
 function buildPayload(empathy_data_and_context) {
   const user_input = {
     empathy_data_and_context,
@@ -327,8 +90,6 @@ export const POST = withAuth(async (req, _ctx, user) => {
   if (limited) return rateLimitedResponse(retryAfterSec);
 
   const { empathy_data_and_context } = data;
-  const targetPersonaId =
-    String(empathy_data_and_context).match(/Persona ID:\s*([0-9]+)/i)?.[1] || "";
 
   try {
     const payload = buildPayload(empathy_data_and_context);
@@ -365,12 +126,12 @@ export const POST = withAuth(async (req, _ctx, user) => {
       responseData = tryParseJSON(text) || text;
     }
 
-    const personaCard = extractPersonaCard(responseData, { targetPersonaId });
+    const { problemStatement, cards } = extractPersonaPayload(responseData);
 
     return NextResponse.json({
       success: true,
-      persona_card: personaCard,
-      raw: responseData,
+      problem_statement: problemStatement,
+      persona_cards: cards,
     });
 
   } catch (err) {
