@@ -61,26 +61,39 @@ export default function PRDSection({
 
         <div className="max-h-[84vh] overflow-auto bg-[#e8ebf0] p-5">
           {prdLoading ? (
-            <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white px-8 py-8 shadow-sm">
-              <p className="text-sm font-semibold text-slate-700">Generating PRD Document</p>
+            <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-8 py-8 shadow-sm">
+              <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-cyan-100/70 blur-3xl" />
+              <div className="pointer-events-none absolute -left-20 bottom-0 h-52 w-52 rounded-full bg-indigo-100/70 blur-3xl" />
 
-              <div className="space-y-3">
-                {prdProgress.map((step, index) => (
-                  <div key={index} className="flex items-center gap-3 text-sm">
-                    {step.done ? (
-                      <span className="font-bold text-green-600">✓</span>
-                    ) : (
-                      <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-indigo-500" />
-                    )}
+              <div className="relative">
+                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Preparing Document</p>
+                <h4 className="mt-2 text-xl font-semibold text-slate-900">Building Professional PRD View</h4>
+                <p className="mt-1 text-sm text-slate-600">Parsing sections, formatting tables, and preparing a clean stakeholder-ready layout.</p>
 
-                    <span className={step.done ? "text-green-700" : "text-slate-600"}>{step.label}</span>
-                  </div>
-                ))}
+                <div className="mt-6 space-y-3">
+                  {prdProgress.map((step, index) => (
+                    <div key={index} className="flex items-center gap-3 rounded-lg border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm shadow-sm backdrop-blur-sm">
+                      {step.done ? (
+                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-[12px] font-bold text-emerald-700">✓</span>
+                      ) : (
+                        <span className="h-5 w-5 animate-spin rounded-full border-2 border-cyan-500 border-t-transparent" />
+                      )}
+
+                      <span className={step.done ? "text-emerald-700" : "text-slate-700"}>{step.label}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="h-20 animate-pulse rounded-xl border border-slate-200 bg-slate-100" />
+                  <div className="h-20 animate-pulse rounded-xl border border-slate-200 bg-slate-100" />
+                  <div className="h-16 animate-pulse rounded-xl border border-slate-200 bg-slate-100 sm:col-span-2" />
+                </div>
+
+                {prdProgress.length < prdSteps.length && (
+                  <p className="mt-4 text-xs text-slate-500">AI is structuring your product document...</p>
+                )}
               </div>
-
-              {prdProgress.length < prdSteps.length && (
-                <p className="text-xs text-slate-400">AI is structuring your product document...</p>
-              )}
             </div>
           ) : (
             <div className="space-y-4">
@@ -99,8 +112,23 @@ export default function PRDSection({
                     <div dangerouslySetInnerHTML={{ __html: prdHtml }} />
                   </div>
                 </article>
+              ) : !prdError ? (
+                <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-8 py-8 shadow-sm">
+                  <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-cyan-100/70 blur-3xl" />
+                  <div className="pointer-events-none absolute -left-20 bottom-0 h-52 w-52 rounded-full bg-indigo-100/70 blur-3xl" />
+                  <div className="relative">
+                    <p className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Preparing Document</p>
+                    <h4 className="mt-2 text-xl font-semibold text-slate-900">Loading PRD Content</h4>
+                    <p className="mt-1 text-sm text-slate-600">Fetching and formatting your latest product requirements document.</p>
+                    <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="h-20 animate-pulse rounded-xl border border-slate-200 bg-slate-100" />
+                      <div className="h-20 animate-pulse rounded-xl border border-slate-200 bg-slate-100" />
+                      <div className="h-16 animate-pulse rounded-xl border border-slate-200 bg-slate-100 sm:col-span-2" />
+                    </div>
+                  </div>
+                </div>
               ) : (
-                <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">No PRD output available.</div>
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">Unable to load PRD output.</div>
               )}
             </div>
           )}

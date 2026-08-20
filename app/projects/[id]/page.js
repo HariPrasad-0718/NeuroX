@@ -1714,6 +1714,7 @@ try {
 
 const handleOpenPrdModal = async () => {
   setIsPrdModalOpen(true);
+  setPrdLoading(true);
 
   // Start loader (same as BRD)
   setPrdProgress([]);
@@ -1752,6 +1753,8 @@ const handleOpenPrdModal = async () => {
   } catch (err) {
     console.error("Failed to fetch existing PRD", err);
     setPrdError(err.message || "Failed to load PRD");
+  } finally {
+    setPrdLoading(false);
   }
 };
 
