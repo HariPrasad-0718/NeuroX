@@ -6,9 +6,8 @@ export default function ProjectHeader({
   project,
   showFullDesc,
   setShowFullDesc,
-  projectCompleted,
-  setProjectCompleted,
   onBack,
+  onOpenFiles,
 }) {
   return (
     <div className="border-b border-gray-200 px-6 py-6 md:px-8 md:py-8">
@@ -46,15 +45,12 @@ export default function ProjectHeader({
           </div>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-gray-200 bg-white px-4 py-2.5 hover:bg-gray-50">
-            <input
-              type="checkbox"
-              checked={projectCompleted}
-              onChange={(e) => setProjectCompleted(e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 text-[#702dff] focus:ring-[#702dff]"
-            />
-            <span className="whitespace-nowrap text-sm font-medium text-gray-700">Mark as Complete</span>
-          </label>
+          <button
+    onClick={onOpenFiles}
+    className="rounded-lg bg-[#702dff] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#5f24dc]"
+>
+    Files
+</button>
         </div>
       </div>
     </div>

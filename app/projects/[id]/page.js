@@ -2301,8 +2301,7 @@ const handleDownloadBrdDoc = async () => {
           project={project}
           showFullDesc={showFullDesc}
           setShowFullDesc={setShowFullDesc}
-          projectCompleted={projectCompleted}
-          setProjectCompleted={setProjectCompleted}
+          onOpenFiles={() => router.push(`/projects/${projectId}/files`)}
           onBack={() => router.push("/projects")}
         />
 
