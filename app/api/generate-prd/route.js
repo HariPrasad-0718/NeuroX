@@ -572,6 +572,13 @@ export const POST = withAuth(async (request, _ctx, user) => {
     };
     agentInput = sanitizeAgentInput(payload);
 
+    console.log("========== SENDING TO PRD AGENT ==========");
+    console.log("URL:", WEBHOOK_URL);
+    console.log("Username present:", Boolean(USERNAME));
+    console.log("Password present:", Boolean(PASSWORD));
+    console.log("Final PRD payload:", JSON.stringify(agentInput, null, 2));
+    console.log("==========================================");
+
     const response = await fetch(WEBHOOK_URL, {
       method: "POST",
       headers: {

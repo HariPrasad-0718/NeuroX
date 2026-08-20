@@ -17,6 +17,7 @@ export default function BRDSection({
   brdActiveSections,
   brdCollapsed,
   onToggleBrdSection,
+  onRegenerateBrd,
   isDownloadingBrd,
   onDownloadBrdDoc,
   businessOwner,
@@ -187,6 +188,14 @@ export default function BRDSection({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  onClick={onRegenerateBrd}
+                  disabled={brdLoading}
+                  className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {brdLoading ? "Regenerating..." : "Regenerate"}
+                </button>
+                <button
+                  type="button"
                   onClick={onDownloadBrdDoc}
                   disabled={!brdDoc || isDownloadingBrd}
                   className="inline-flex h-9 items-center gap-2 rounded-md border border-indigo-600 bg-indigo-600 px-3 text-xs font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
@@ -232,31 +241,33 @@ export default function BRDSection({
               ) : brdError ? (
                 <div className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">{brdError}</div>
               ) : brdDoc ? (
-                <article className="formal-doc mx-auto max-w-[920px] overflow-hidden border border-slate-300 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.18)]">
-                  <header className="doc-cover border-b border-slate-200 px-12 py-12">
-                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Business Document</p>
-                    <h2 className="text-[34px] font-bold leading-tight text-slate-900">Business Requirements Document</h2>
-                    <p className="mt-3 text-[18px] text-slate-700">{brdMeta?.project_name || "Untitled Project"}</p>
+                <article className="formal-doc mx-auto w-full max-w-[980px] overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.18)]">
+                  <header className="doc-cover border-b border-slate-200 bg-gradient-to-br from-slate-50 via-white to-emerald-50 px-6 py-8 sm:px-10 sm:py-10">
+                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Business Requirements Document</p>
+                    <h2 className="text-[30px] font-bold leading-tight text-slate-900 sm:text-[34px]">{brdMeta?.project_name || "Untitled Project"}</h2>
+                    <p className="mt-2 text-sm text-slate-600">{brdMeta?.client_name || "Client not specified"}</p>
                     {brdMeta && (
                       <div className="mt-4 flex flex-wrap gap-3 text-[12px] text-slate-500">
-                        {brdMeta.date_submitted && <span>Submitted: {brdMeta.date_submitted}</span>}
                         {brdMeta.version && <span>Version: {brdMeta.version}</span>}
                         {brdMeta.status && <span>Status: {brdMeta.status}</span>}
+                        {brdMeta.last_updated && <span>Last Updated: {brdMeta.last_updated}</span>}
                       </div>
                     )}
                   </header>
 
                   {brdMeta && (
-                    <section className="border-b border-slate-200 bg-slate-50 px-12 py-7">
+                    <section className="border-b border-slate-200 bg-slate-50 px-6 py-6 sm:px-10">
                       <h4 className="mb-4 text-[12px] font-semibold uppercase tracking-[0.16em] text-slate-500">Document Metadata</h4>
-                      <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         {[
                           { key: "project_name", label: "Project" },
-                          { key: "project_manager", label: "Project Manager" },
-                          { key: "date_submitted", label: "Submitted" },
-                          { key: "version", label: "Version" },
-                          { key: "status", label: "Status" },
+                          { key: "client_name", label: "Client" },
                           { key: "department", label: "Department" },
+                          { key: "prepared_by", label: "Prepared By" },
+                          { key: "business_owner", label: "Business Owner" },
+                          { key: "product_owner", label: "Product Owner" },
+                          { key: "created_date", label: "Created Date" },
+                          { key: "last_updated", label: "Last Updated" },
                         ].map((field) => (
                           <div key={field.key} className="rounded-md border border-slate-200 bg-white px-3.5 py-3">
                             <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-slate-500">{field.label}</p>
@@ -269,7 +280,7 @@ export default function BRDSection({
 
                   <div className="divide-y divide-slate-100">
                     {brdActiveSections.length === 0 ? (
-                      <p className="px-12 py-10 text-center text-sm text-slate-400">No BRD sections found in the agent response.</p>
+                      <p className="px-6 py-10 text-center text-sm text-slate-400 sm:px-10">No BRD sections found in the agent response.</p>
                     ) : (
                       brdActiveSections.map((section) => {
                         const collapsed = Boolean(brdCollapsed[section.key]);
@@ -278,16 +289,16 @@ export default function BRDSection({
                             <button
                               type="button"
                               onClick={() => onToggleBrdSection(section.key)}
-                              className="flex w-full items-center gap-4 px-12 py-5 text-left transition-colors hover:bg-slate-50"
+                              className="flex w-full items-center gap-4 px-6 py-5 text-left transition-colors hover:bg-slate-50 sm:px-10"
                             >
                               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-slate-100 text-[11px] font-bold text-slate-700">
                                 {section.num}
                               </span>
-                              <span className="flex-1 text-[17px] font-semibold tracking-tight text-slate-800">{section.title}</span>
+                              <span className="flex-1 text-[16px] font-semibold tracking-tight text-slate-800 sm:text-[17px]">{section.title}</span>
                               <span className="shrink-0 text-xs text-slate-400">{collapsed ? "▶" : "▼"}</span>
                             </button>
                             {!collapsed && (
-                              <div className="border-t border-slate-100 bg-white px-12 pb-8 pt-5">
+                              <div className="border-t border-slate-100 bg-white px-6 pb-8 pt-5 sm:px-10">
                                 {renderBrdContent(brdDoc[section.key], section.type)}
                               </div>
                             )}
@@ -297,8 +308,8 @@ export default function BRDSection({
                     )}
                   </div>
 
-                  <div className="border-t border-slate-200 bg-slate-50 px-12 py-4 text-xs text-slate-500">
-                    Document rendered in stakeholder review format.
+                  <div className="border-t border-slate-200 bg-slate-50 px-6 py-4 text-xs text-slate-500 sm:px-10">
+                    Structured BRD view for stakeholder review and sign-off.
                   </div>
                 </article>
               ) : (

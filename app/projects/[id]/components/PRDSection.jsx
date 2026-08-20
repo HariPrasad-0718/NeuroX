@@ -89,13 +89,13 @@ export default function PRDSection({
               )}
 
               {prdHtml ? (
-                <article className="formal-doc mx-auto max-w-[920px] overflow-hidden border border-slate-300 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.18)]">
-                  <header className="doc-cover border-b border-slate-200 px-12 py-12">
+                <article className="formal-doc mx-auto max-w-[960px] overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.18)]">
+                  <header className="doc-cover border-b border-slate-200 bg-gradient-to-br from-slate-50 via-white to-cyan-50 px-8 py-10 sm:px-12 sm:py-12">
                     <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Product Document</p>
                     <h2 className="text-[34px] font-bold leading-tight text-slate-900">Product Requirements Document</h2>
                     <p className="mt-3 text-[16px] text-slate-700">Structured output optimized for stakeholder review and publication.</p>
                   </header>
-                  <div className="doc-html px-12 py-10">
+                  <div className="doc-html px-8 py-10 sm:px-12">
                     <div dangerouslySetInnerHTML={{ __html: prdHtml }} />
                   </div>
                 </article>
@@ -106,6 +106,92 @@ export default function PRDSection({
           )}
         </div>
       </div>
+
+      <style jsx>{`
+        .doc-html :global(h1) {
+          font-size: 1.75rem;
+          font-weight: 800;
+          letter-spacing: -0.02em;
+          color: #0f172a;
+          margin: 0 0 0.9rem;
+        }
+
+        .doc-html :global(h2) {
+          font-size: 1.25rem;
+          font-weight: 700;
+          color: #1e293b;
+          margin: 1.5rem 0 0.65rem;
+          padding-bottom: 0.45rem;
+          border-bottom: 1px solid #e2e8f0;
+        }
+
+        .doc-html :global(h3) {
+          font-size: 1.05rem;
+          font-weight: 700;
+          color: #334155;
+          margin: 1.1rem 0 0.5rem;
+        }
+
+        .doc-html :global(p),
+        .doc-html :global(li) {
+          font-size: 0.95rem;
+          line-height: 1.75;
+          color: #334155;
+        }
+
+        .doc-html :global(blockquote) {
+          margin: 1rem 0;
+          padding: 0.85rem 1rem;
+          border-left: 4px solid #0f766e;
+          background: #f0fdfa;
+          color: #134e4a;
+          border-radius: 0.5rem;
+          font-style: italic;
+        }
+
+        .doc-html :global(h4) {
+          font-size: 0.95rem;
+          font-weight: 700;
+          color: #475569;
+          margin: 0.95rem 0 0.4rem;
+        }
+
+        .doc-html :global(ul),
+        .doc-html :global(ol) {
+          margin: 0.5rem 0 0.9rem 1.25rem;
+        }
+
+        .doc-html :global(table) {
+          width: 100%;
+          border-collapse: collapse;
+          margin: 1rem 0;
+          border: 1px solid #cbd5e1;
+          border-radius: 0.75rem;
+          overflow: hidden;
+        }
+
+        .doc-html :global(th) {
+          background: #0f172a;
+          color: #f8fafc;
+          text-transform: uppercase;
+          font-size: 0.7rem;
+          letter-spacing: 0.08em;
+          padding: 0.6rem 0.7rem;
+          text-align: left;
+        }
+
+        .doc-html :global(td) {
+          border-top: 1px solid #e2e8f0;
+          padding: 0.65rem 0.7rem;
+          font-size: 0.86rem;
+          color: #334155;
+          vertical-align: top;
+        }
+
+        .doc-html :global(tr:nth-child(even) td) {
+          background: #f8fafc;
+        }
+      `}</style>
     </div>
   );
 }

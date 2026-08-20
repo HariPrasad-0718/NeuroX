@@ -8,7 +8,7 @@ import { useProgressSteps } from "@/hooks/useProgressSteps";
 import { generatePersonaCard } from "@/services/personaService";
 import { generateProcessFlow } from "@/services/processFlowService";
 import { generateInformationArchitecture } from "@/services/informationArchitectureService";
-import { generateBrd } from "@/services/brdService";
+import { generateBrd, getExistingBrd } from "@/services/brdService";
 import { generatePrd as generatePrdDocument, getExistingPrd } from "@/services/prdService";
 import {
   AlignmentType,
@@ -508,13 +508,44 @@ function normalizeLooseText(value) {
     .replace(/\\r/g, "\r")
     .replace(/\\t/g, "\t");
 }
+
+function normalizeMalformedQuotedStrings(text) {
+  if (typeof text !== "string") return text;
+
+  // Fix invalid JSON values like: "quote":""Some text""
+  return text.replace(/:\s*""([\s\S]*?)""(?=\s*[,}])/g, (_match, inner) => {
+    const safeInner = String(inner || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    return `: "\\"${safeInner}\\""`;
+  });
+}
+
+function parsePossiblyBrokenPrdJson(input) {
+  if (input === null || input === undefined) return null;
+  if (typeof input !== "string") return input;
+
+  const cleaned = normalizeLooseText(input);
+
+  const direct = parseApiJson(cleaned);
+  if (direct) return direct;
+
+  const normalizedQuotes = normalizeMalformedQuotedStrings(cleaned);
+  const parsedNormalized = parseApiJson(normalizedQuotes);
+  if (parsedNormalized) return parsedNormalized;
+
+  const loose = parseLooseJson(normalizedQuotes);
+  if (loose) return loose;
+
+  return null;
+}
 // ---------- PRD OBJECT EXTRACTION ----------
 function getPrdObject(payload) {
   let cur = payload;
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 14; i++) {
     if (!cur) return null;
     if (typeof cur === "string") {
-      try { cur = JSON.parse(cur); } catch { return null; }
+      const parsed = parsePossiblyBrokenPrdJson(cur);
+      if (!parsed) return null;
+      cur = parsed;
       continue;
     }
     if (cur.document_meta) return cur; // found the actual prd object
@@ -522,6 +553,8 @@ function getPrdObject(payload) {
     if (cur.data?.prd) { cur = cur.data.prd; continue; }
     if (cur.prd_output) { cur = cur.prd_output; continue; }
     if (cur.prd_content) { cur = cur.prd_content; continue; }
+    if (cur.data?.prd_output) { cur = cur.data.prd_output; continue; }
+    if (cur.body?.prd_output) { cur = cur.body.prd_output; continue; }
     if (cur.data) { cur = cur.data; continue; }
     if (cur.agent_response?.message) { cur = cur.agent_response.message; continue; }
     return null;
@@ -880,6 +913,8 @@ const [regulatoryRequirements, setRegulatoryRequirements] = useState("");
 const [isBrdInputModalOpen, setIsBrdInputModalOpen] = useState(false);
 const [isResearchSummaryModalOpen, setIsResearchSummaryModalOpen] = useState(false);
 const [canGenerateDocuments, setCanGenerateDocuments] = useState(false);
+const [hasBrdDocument, setHasBrdDocument] = useState(false);
+const [hasPrdDocument, setHasPrdDocument] = useState(false);
 const [stepActionState, setStepActionState] = useState({});
 const BRD_STEPS = [
   "Analyzing requirements",
@@ -955,6 +990,27 @@ const PRD_STEPS = [
   }
 
   checkIAExists();
+}, [projectId]);
+
+useEffect(() => {
+  async function checkDocumentAvailability() {
+    if (!projectId) return;
+
+    try {
+      const [{ data: brdExisting }, { data: prdExisting }] = await Promise.all([
+        getExistingBrd({ projectId }),
+        getExistingPrd({ projectId }),
+      ]);
+
+      setHasBrdDocument(Boolean(brdExisting?.data?.brd || brdExisting?.brd_content));
+      setHasPrdDocument(Boolean(prdExisting?.prd_content || getPrdObject(prdExisting)));
+    } catch {
+      setHasBrdDocument(false);
+      setHasPrdDocument(false);
+    }
+  }
+
+  checkDocumentAvailability();
 }, [projectId]);
 
   const fetchProject = async () => {
@@ -1514,7 +1570,7 @@ const WireframeReviewerCard = () => {
     <WireframeSection projectId={projectId} router={router} media={media} />
   );
 };
-const handleOpenBrdModal = async () => {
+const handleOpenBrdModal = async (forceRegenerate = false) => {
   setIsBrdModalOpen(true);
   setBrdProgress([]);
   runProgressSteps(BRD_STEPS, setBrdProgress);
@@ -1531,6 +1587,7 @@ const handleOpenBrdModal = async () => {
   try {
     const { res, data } = await generateBrd({
       projectId,
+      forceRegenerate,
       businessOwner,
       productOwner,
       engineeringLead,
@@ -1550,12 +1607,21 @@ const handleOpenBrdModal = async () => {
     }
 
     setBrdData(data?.data?.brd || data?.brd || null);
+    setHasBrdDocument(true);
   } catch (err) {
     setBrdError(err.message || "Failed to generate BRD document");
     setBrdData(null);
   } finally {
     setBrdLoading(false);
   }
+};
+
+const handleRegenerateBrd = async () => {
+  setBrdData(null);
+  setBrdError("");
+  setBrdProgress([]);
+  runProgressSteps(BRD_STEPS, setBrdProgress);
+  await handleOpenBrdModal(true);
 };
 
 const generatePrdDocumentHandler = async (forceRegenerate = false) => {
@@ -1621,6 +1687,7 @@ const generatePrdDocumentHandler = async (forceRegenerate = false) => {
     }
 
     setPrdHtml(nextHtml);
+    setHasPrdDocument(true);
   } catch (err) {
     setPrdError(err.message || "Failed to generate PRD document");
     setPrdHtml("");
@@ -1669,12 +1736,14 @@ const handleOpenPrdModal = async () => {
       const html = buildPrdHtml(existingPrdObject);
       if (html) {
         setPrdHtml(html);
+        setHasPrdDocument(true);
         return;
       }
     }
     // Fallback: if it's already pre-rendered HTML in prd_content, use it directly
     if (typeof existingData?.prd_content === "string" && existingData.prd_content.includes("<h1")) {
       setPrdHtml(existingData.prd_content);
+      setHasPrdDocument(true);
       return;
     }
 
@@ -1806,20 +1875,19 @@ const handleOpenPrdModal = async () => {
   };
 
 const BRD_SECTIONS = [
-  { key: "business_problem", num: "01", title: "Business Problem", type: "prose" },
+  { key: "business_problem", num: "01", title: "Business Problem", type: "object_story" },
   { key: "objectives_and_outcomes", num: "02", title: "Objectives & Outcomes", type: "prose" },
-  { key: "users_and_personas", num: "03", title: "Users & Personas", type: "tags" },
-  { key: "business_requirements", num: "04", title: "Business Requirements", type: "requirements" },
-  { key: "functional_scope", num: "05", title: "Functional Scope", type: "prose" },
-  { key: "non_functional_expectations", num: "06", title: "Non Functional Expectations", type: "prose" },
-  { key: "integrations", num: "07", title: "Integrations", type: "tags" },
-  { key: "compliance_and_security", num: "08", title: "Compliance & Security", type: "prose" },
-  { key: "success_metrics", num: "09", title: "Success Metrics", type: "metrics_table" },
-  { key: "key_stakeholders", num: "10", title: "Key Stakeholders", type: "editable" },
-  { key: "project_constraints", num: "11", title: "Project Constraints", type: "constraints_table" },
-  { key: "cost_benefit_analysis", num: "12", title: "Cost Benefit Analysis", type: "costtable" },
-  { key: "document_approval", num: "13", title: "Document Approval", type: "editable" },
-  { key: "draft_assumptions", num: "14", title: "Draft Assumptions", type: "tags" },
+  { key: "users_and_personas", num: "03", title: "Users & Personas", type: "persona_cards" },
+  { key: "workflow_challenges", num: "04", title: "Workflow Challenges", type: "object_story" },
+  { key: "functional_scope", num: "05", title: "Functional Scope", type: "functional_scope" },
+  { key: "non_functional_expectations", num: "06", title: "Non Functional Expectations", type: "object_list" },
+  { key: "integrations", num: "07", title: "Integrations", type: "object_list" },
+  { key: "compliance_and_security", num: "08", title: "Compliance & Security", type: "object_story" },
+  { key: "success_metrics", num: "09", title: "Success Metrics", type: "metrics_objects" },
+  { key: "key_stakeholders", num: "10", title: "Key Stakeholders", type: "role_people" },
+  { key: "project_constraints", num: "11", title: "Project Constraints", type: "bullet_list" },
+  { key: "cost_benefit_analysis", num: "12", title: "Cost Benefit Analysis", type: "object_story" },
+  { key: "document_approval", num: "13", title: "Document Approval", type: "approvals" },
 ];
 
 const brdDoc = (() => {
@@ -1885,15 +1953,302 @@ const getConstraintVal = (text, label) => {
   }
   return "";
 };
+
+const normalizeBrdDisplayValue = (input) => {
+  if (input === null || input === undefined || input === "") return "Not specified";
+  if (typeof input === "string") return input;
+  if (typeof input === "number" || typeof input === "boolean") return String(input);
+  return JSON.stringify(input, null, 2);
+};
+
+const renderBrdJsonPanel = (data) => {
+  if (!data || typeof data !== "object") return null;
+
+  const entries = Object.entries(data);
+  if (!entries.length) {
+    return (
+      <p className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
+        No structured fields available.
+      </p>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {entries.map(([key, val]) => (
+        <div key={key} className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{formatKeyLabel(key)}</p>
+          <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">{normalizeBrdDisplayValue(val)}</p>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const renderObjectStory = (data) => {
+  if (!data || typeof data !== "object") return null;
+
+  return (
+    <div className="space-y-4">
+      {Object.entries(data).map(([key, val]) => {
+        if (Array.isArray(val)) {
+          return (
+            <section key={key} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h5 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{formatKeyLabel(key)}</h5>
+              <ul className="mt-3 space-y-2">
+                {val.map((item, idx) => (
+                  <li key={`${key}-${idx}`} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-700">
+                    {typeof item === "object" ? normalizeBrdDisplayValue(item) : String(item)}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          );
+        }
+
+        return (
+          <section key={key} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h5 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{formatKeyLabel(key)}</h5>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">{normalizeBrdDisplayValue(val)}</p>
+          </section>
+        );
+      })}
+    </div>
+  );
+};
+
 const renderBrdContent = (value, type) => {
+  if (type === "object_story") {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return (
+        <p className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm leading-7 text-slate-700">
+          {normalizeBrdDisplayValue(value)}
+        </p>
+      );
+    }
+    return renderObjectStory(value);
+  }
+
+  if (type === "persona_cards") {
+    if (!Array.isArray(value) || value.length === 0) return null;
+    return (
+      <div className="space-y-4">
+        {value.map((persona, index) => (
+          <section key={index} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h5 className="text-base font-semibold text-slate-900">{persona?.persona_name || `Persona ${index + 1}`}</h5>
+            {persona?.role && <p className="mt-1 text-sm text-slate-600">{persona.role}</p>}
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {Object.entries(persona || {})
+                .filter(([k]) => k !== "persona_name" && k !== "role")
+                .map(([k, v]) => (
+                  <div key={k} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{formatKeyLabel(k)}</p>
+                    {Array.isArray(v) ? (
+                      <ul className="mt-1 space-y-1 text-sm text-slate-700">
+                        {v.map((item, i) => (
+                          <li key={`${k}-${i}`}>• {typeof item === "object" ? normalizeBrdDisplayValue(item) : String(item)}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">{normalizeBrdDisplayValue(v)}</p>
+                    )}
+                  </div>
+                ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    );
+  }
+
+  if (type === "functional_scope") {
+    if (!value || typeof value !== "object") return renderBrdJsonPanel(value);
+
+    const requirements = Array.isArray(value.business_requirements) ? value.business_requirements : [];
+
+    return (
+      <div className="space-y-4">
+        {value.workflow_description && (
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h5 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Workflow Description</h5>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">{value.workflow_description}</p>
+          </section>
+        )}
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h5 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">In Scope</h5>
+            <ul className="mt-2 space-y-2 text-sm text-slate-700">
+              {(Array.isArray(value.in_scope) ? value.in_scope : []).map((item, idx) => (
+                <li key={`in-${idx}`}>• {String(item)}</li>
+              ))}
+            </ul>
+          </section>
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h5 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Out Of Scope</h5>
+            <ul className="mt-2 space-y-2 text-sm text-slate-700">
+              {(Array.isArray(value.out_of_scope) ? value.out_of_scope : []).map((item, idx) => (
+                <li key={`out-${idx}`}>• {String(item)}</li>
+              ))}
+            </ul>
+          </section>
+        </div>
+
+        {requirements.length > 0 && (
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full border-collapse text-left text-[13px] text-slate-700">
+              <thead className="bg-slate-900 text-[11px] uppercase tracking-[0.14em] text-white">
+                <tr>
+                  <th className="px-4 py-2.5">Requirement ID</th>
+                  <th className="px-4 py-2.5">Requirement</th>
+                  <th className="px-4 py-2.5">Priority</th>
+                </tr>
+              </thead>
+              <tbody>
+                {requirements.map((item, idx) => {
+                  const pri = String(item?.priority || "");
+                  const priColor =
+                    pri.toLowerCase() === "critical" || pri.toLowerCase() === "high"
+                      ? "bg-red-100 text-red-700"
+                      : pri.toLowerCase() === "medium"
+                        ? "bg-amber-100 text-amber-700"
+                        : "bg-emerald-100 text-emerald-700";
+
+                  return (
+                    <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-slate-50/70"}>
+                      <td className="border-t border-slate-200 px-4 py-3 font-semibold text-slate-800">{item?.id || `BR-${String(idx + 1).padStart(3, "0")}`}</td>
+                      <td className="border-t border-slate-200 px-4 py-3 leading-7">{item?.requirement || item?.statement || "-"}</td>
+                      <td className="border-t border-slate-200 px-4 py-3">
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase ${priColor}`}>
+                          {pri || "N/A"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (type === "object_list") {
+    if (!Array.isArray(value) || value.length === 0) return null;
+    return (
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        {value.map((item, index) => (
+          <section key={index} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            {Object.entries(item || {}).map(([k, v]) => (
+              <div key={k} className="mb-2 last:mb-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{formatKeyLabel(k)}</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">{normalizeBrdDisplayValue(v)}</p>
+              </div>
+            ))}
+          </section>
+        ))}
+      </div>
+    );
+  }
+
+  if (type === "metrics_objects") {
+    if (!Array.isArray(value) || value.length === 0) return null;
+    return (
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <table className="w-full border-collapse text-left text-[13px] text-slate-700">
+          <thead className="bg-slate-900 text-[11px] uppercase tracking-[0.14em] text-white">
+            <tr>
+              <th className="px-4 py-2.5">Metric</th>
+              <th className="px-4 py-2.5">Measure Of Success</th>
+              <th className="px-4 py-2.5">Target</th>
+              <th className="px-4 py-2.5">Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            {value.map((row, idx) => (
+              <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-slate-50/70"}>
+                <td className="border-t border-slate-200 px-4 py-3 font-semibold text-slate-800">{row?.metric || "-"}</td>
+                <td className="border-t border-slate-200 px-4 py-3 leading-7">{row?.measure_of_success || "-"}</td>
+                <td className="border-t border-slate-200 px-4 py-3">{row?.target || "-"}</td>
+                <td className="border-t border-slate-200 px-4 py-3">{row?.source || "-"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  if (type === "role_people" || type === "approvals") {
+    if (!Array.isArray(value) || value.length === 0) return null;
+    return (
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {value.map((item, idx) => (
+          <section key={idx} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{item?.role || "Role"}</p>
+            <p className="mt-1 text-sm font-medium text-slate-800">{item?.name || "Not specified"}</p>
+            {item?.status && <p className="mt-2 text-xs text-slate-500">Status: {item.status}</p>}
+          </section>
+        ))}
+      </div>
+    );
+  }
+
+  if (type === "bullet_list") {
+    if (!Array.isArray(value) || value.length === 0) return null;
+    return (
+      <ul className="space-y-2">
+        {value.map((item, idx) => (
+          <li key={idx} className="rounded-md border border-slate-200 bg-white px-4 py-3 text-sm leading-7 text-slate-700 shadow-sm">
+            • {String(item)}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  if (value && typeof value === "object" && !Array.isArray(value) && type !== "requirements" && type !== "metrics_table" && type !== "constraints_table" && type !== "costtable") {
+    return renderBrdJsonPanel(value);
+  }
+
   if (type === "prose") {
-    const text = String(value || "");
-    // Split by double newlines for paragraphs
+    const text = normalizeBrdDisplayValue(value);
+
+    const lines = text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    const keyValueLines = lines
+      .map((line) => {
+        const divider = line.indexOf(":");
+        if (divider < 1) return null;
+        return {
+          key: line.slice(0, divider).trim(),
+          val: line.slice(divider + 1).trim(),
+        };
+      })
+      .filter((item) => item && item.key && item.val);
+
+    if (keyValueLines.length >= 2) {
+      return (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {keyValueLines.map((row, index) => (
+            <div key={`${row.key}-${index}`} className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{row.key}</p>
+              <p className="mt-1 text-sm leading-6 text-slate-700">{row.val}</p>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
     const paragraphs = text.split(/\n\n+/).filter(p => p.trim());
     return (
       <div className="space-y-4">
         {paragraphs.map((paragraph, index) => (
-          <p key={index} className="whitespace-pre-wrap text-[15px] leading-8 text-slate-700">
+          <p key={index} className="rounded-lg border border-slate-200 bg-white px-4 py-3 whitespace-pre-wrap text-[15px] leading-8 text-slate-700 shadow-sm">
             {paragraph.trim()}
           </p>
         ))}
@@ -1906,7 +2261,7 @@ const renderBrdContent = (value, type) => {
     return (
       <ul className="space-y-2">
         {value.map((item, index) => {
-          let displayText = String(item);
+          let displayText = normalizeBrdDisplayValue(item);
           // If it's an object with name and description
           if (typeof item === 'object' && item !== null) {
             if (item.name && item.description) {
@@ -2199,8 +2554,8 @@ const renderBrdContent = (value, type) => {
 }
 
   return (
-    <p className="whitespace-pre-wrap text-[15px] leading-8 text-slate-700">
-      {String(value || "")}
+    <p className="rounded-lg border border-slate-200 bg-white px-4 py-3 whitespace-pre-wrap text-[15px] leading-8 text-slate-700 shadow-sm">
+      {normalizeBrdDisplayValue(value)}
     </p>
   );
 };
@@ -2470,7 +2825,15 @@ const handleDownloadBrdDoc = async () => {
       <DocumentActionBar
   canGenerateDocuments={canGenerateDocuments}
   isOpeningPrd={isOpeningPrd}
-  onGenerateBrd={() => setIsBrdInputModalOpen(true)}
+  hasBrdDocument={hasBrdDocument}
+  hasPrdDocument={hasPrdDocument}
+  onGenerateBrd={() => {
+    if (hasBrdDocument) {
+      handleOpenBrdModal();
+      return;
+    }
+    setIsBrdInputModalOpen(true);
+  }}
   onGeneratePrd={async () => {
     setIsOpeningPrd(true);
     try {
@@ -2522,6 +2885,7 @@ const handleDownloadBrdDoc = async () => {
         brdActiveSections={brdActiveSections}
         brdCollapsed={brdCollapsed}
         onToggleBrdSection={toggleBrdSection}
+        onRegenerateBrd={handleRegenerateBrd}
         isDownloadingBrd={isDownloadingBrd}
         onDownloadBrdDoc={handleDownloadBrdDoc}
         businessOwner={businessOwner}
