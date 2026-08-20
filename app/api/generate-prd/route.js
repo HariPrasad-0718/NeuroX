@@ -5,6 +5,8 @@ import { aiHeavyLimiter, rateLimitedResponse } from "@/lib/rateLimit";
 import { validateBody } from "@/lib/validate";
 import { generatePRDSchema } from "@/lib/schemas";
 import logger from "@/lib/logger";
+import { saveProjectFile } from "@/lib/fileStorage";
+import { deleteProjectFile } from "@/lib/deleteProjectFile";
 
 const WEBHOOK_URL =
   process.env.AGENT5I_WEBHOOK_URL ||
@@ -658,6 +660,24 @@ export const POST = withAuth(async (request, _ctx, user) => {
         END
       `);
 
+      // Delete old PRD if it exists
+await deleteProjectFile(
+  projectId,
+  "Product Requirements Document.html"
+);
+
+// Convert HTML to buffer
+const buffer = Buffer.from(prdOutput, "utf-8");
+
+// Upload latest PRD
+await saveProjectFile({
+  projectId,
+  fileName: "Product Requirements Document.html",
+  buffer,
+  contentType: "text/html",
+  uploadedBy: Number(user.userId),
+});
+
     return NextResponse.json({
       success: true,
       prd_output: prdOutput,
@@ -667,6 +687,11 @@ export const POST = withAuth(async (request, _ctx, user) => {
       agent_response: agentResponse,
     });
   } catch (error) {
+    console.log("CAUSE:");
+  console.log(error.cause);
+
+  console.log("ERROR:");
+  console.log(error);
     if (error?.name === "AbortError") {
       logger.error("POST /api/generate-prd timeout", { error });
       return NextResponse.json(

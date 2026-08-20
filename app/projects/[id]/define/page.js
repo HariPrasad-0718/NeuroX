@@ -135,8 +135,8 @@ function CardBox({ title, borderColor, bgColor, titleColor, children }) {
 // ✅ UPDATED: Uses direct arrays from card (now {theme, description} objects)
 function AgentPersonaCard({ card, personaName }) {
   const header = parseHeaderText(card.header, card.name || personaName);
-  const name = header.name || personaName || "Persona";
-  const role = header.role || card.demographics?.occupation || "";
+const fullName = header.name || personaName || "Persona";
+const name = fullName.trim().split(/\s+/)[0];  const role = header.role || card.demographics?.occupation || "";
   const quote = header.quote || card.quote || "";
 
   const personality = toList(card.personality);
