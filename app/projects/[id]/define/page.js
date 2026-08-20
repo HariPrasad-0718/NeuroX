@@ -60,20 +60,42 @@ function parseHeaderText(rawHeader, fallbackName) {
 // ✅ REPLACED: New normalize function with correct field mapping
 function normalizeAgentCard(raw = {}) {
   return {
-    personaId: raw.persona_id || "",
+    personaId: raw.persona_id || raw.personaId || "",
     header: raw.header || "",
     background: raw.background || "",
     scenario: raw.scenario || "",
     demographics: raw.demographics || {},
+
     personality: raw.personality || [],
-    behaviours: raw.behaviours_and_habits || [],
+
+    behaviours:
+      raw.behaviours_and_habits ||
+      raw.behaviours ||
+      [],
+
     goals: raw.goals || [],
     frustrations: raw.frustrations || [],
     motivations: raw.motivations || [],
-    previousExperience: raw.previous_experience || [],
-    positiveThemes: raw.positive_themes || [],
-    negativeThemes: raw.negative_themes || [],
-    needs: raw.needs_and_expectations || [],
+
+    previousExperience:
+      raw.previous_experience ||
+      raw.previousExperience ||
+      [],
+
+    positiveThemes:
+      raw.positive_themes ||
+      raw.positiveThemes ||
+      [],
+
+    negativeThemes:
+      raw.negative_themes ||
+      raw.negativeThemes ||
+      [],
+
+    needs:
+      raw.needs_and_expectations ||
+      raw.needs ||
+      [],
   };
 }
 
@@ -135,8 +157,8 @@ function CardBox({ title, borderColor, bgColor, titleColor, children }) {
 // ✅ UPDATED: Uses direct arrays from card (now {theme, description} objects)
 function AgentPersonaCard({ card, personaName }) {
   const header = parseHeaderText(card.header, card.name || personaName);
-  const name = header.name || personaName || "Persona";
-  const role = header.role || card.demographics?.occupation || "";
+const fullName = header.name || personaName || "Persona";
+const name = fullName.trim().split(/\s+/)[0];  const role = header.role || card.demographics?.occupation || "";
   const quote = header.quote || card.quote || "";
 
   const personality = toList(card.personality);
