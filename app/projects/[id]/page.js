@@ -8,7 +8,7 @@ import { useProgressSteps } from "@/hooks/useProgressSteps";
 import { generatePersonaCard } from "@/services/personaService";
 import { generateProcessFlow } from "@/services/processFlowService";
 import { generateInformationArchitecture } from "@/services/informationArchitectureService";
-import { generateBrd, getExistingBrd } from "@/services/brdService";
+import { generateBrd, getExistingBrd, updateBrd } from "@/services/brdService";
 import { generatePrd as generatePrdDocument, getExistingPrd } from "@/services/prdService";
 import {
   AlignmentType,
@@ -911,6 +911,9 @@ const [budgetRange, setBudgetRange] = useState("");
 const [expectedTimeline, setExpectedTimeline] = useState("");
 const [regulatoryRequirements, setRegulatoryRequirements] = useState("");
 const [isBrdInputModalOpen, setIsBrdInputModalOpen] = useState(false);
+const [brdMissingFields, setBrdMissingFields] = useState([]);
+const [isApplyingBrdInputs, setIsApplyingBrdInputs] = useState(false);
+const [isSavingBrdEdits, setIsSavingBrdEdits] = useState(false);
 const [isResearchSummaryModalOpen, setIsResearchSummaryModalOpen] = useState(false);
 const [canGenerateDocuments, setCanGenerateDocuments] = useState(false);
 const [hasBrdDocument, setHasBrdDocument] = useState(false);
@@ -930,6 +933,17 @@ const PRD_STEPS = [
   "Structuring PRD sections",
   "Adding technical details",
   "Finalizing document",
+];
+
+const BRD_INPUT_FIELDS = [
+  { key: "businessOwner", label: "Business Owner" },
+  { key: "productOwner", label: "Product Owner" },
+  { key: "engineeringLead", label: "Engineering Lead" },
+  { key: "complianceOwner", label: "Compliance Owner" },
+  { key: "endUsers", label: "End Users" },
+  { key: "budgetRange", label: "Budget Range" },
+  { key: "expectedTimeline", label: "Expected Timeline" },
+  { key: "regulatoryRequirements", label: "Regulatory Requirements" },
 ];
 
   useEffect(() => {
@@ -1570,7 +1584,7 @@ const WireframeReviewerCard = () => {
     <WireframeSection projectId={projectId} router={router} media={media} />
   );
 };
-const handleOpenBrdModal = async (forceRegenerate = false) => {
+const handleOpenBrdModal = async ({ forceRegenerate = false, promptForMissing = false } = {}) => {
   setIsBrdModalOpen(true);
   setBrdProgress([]);
   runProgressSteps(BRD_STEPS, setBrdProgress);
@@ -1606,7 +1620,45 @@ const handleOpenBrdModal = async (forceRegenerate = false) => {
       throw new Error(data?.error?.message || data?.error || "Failed to generate BRD document");
     }
 
-    setBrdData(data?.data?.brd || data?.brd || null);
+    const nextBrd = data?.data?.brd || data?.brd || null;
+    setBrdData(nextBrd);
+
+    if (promptForMissing && nextBrd) {
+      const doc = typeof nextBrd === "object" ? nextBrd : tryParseJsonString(nextBrd);
+      if (doc && typeof doc === "object") {
+        const lowerBlob = JSON.stringify(doc).toLowerCase();
+        const maybeMissing = [];
+
+        const isMissingText = (val) => {
+          const t = String(val || "").trim().toLowerCase();
+          return !t || t === "not specified" || t === "not provided" || t === "not provided in input" || t === "n/a";
+        };
+
+        const stakeholderNameByRole = (role) => {
+          const rows = Array.isArray(doc.key_stakeholders) ? doc.key_stakeholders : [];
+          const row = rows.find((item) => String(item?.role || "").trim().toLowerCase() === role);
+          return row?.name || "";
+        };
+
+        const businessOwnerValue = doc?.document_meta?.business_owner || stakeholderNameByRole("business owner");
+        const productOwnerValue = doc?.document_meta?.product_owner || stakeholderNameByRole("product owner");
+        const engineeringLeadValue = stakeholderNameByRole("engineering lead");
+        const complianceOwnerValue = doc?.document_meta?.compliance_owner || stakeholderNameByRole("compliance owner");
+
+        if (isMissingText(businessOwnerValue)) maybeMissing.push("businessOwner");
+        if (isMissingText(productOwnerValue)) maybeMissing.push("productOwner");
+        if (isMissingText(engineeringLeadValue)) maybeMissing.push("engineeringLead");
+        if (isMissingText(complianceOwnerValue)) maybeMissing.push("complianceOwner");
+        if (!doc.users_and_personas || isMissingText(doc.users_and_personas)) maybeMissing.push("endUsers");
+        if (!lowerBlob.includes("budget")) maybeMissing.push("budgetRange");
+        if (!lowerBlob.includes("timeline") && !lowerBlob.includes("delivery")) maybeMissing.push("expectedTimeline");
+        if (!lowerBlob.includes("regulatory") && !lowerBlob.includes("compliance")) maybeMissing.push("regulatoryRequirements");
+
+        setBrdMissingFields(maybeMissing);
+        setIsBrdInputModalOpen(maybeMissing.length > 0);
+      }
+    }
+
     setHasBrdDocument(true);
   } catch (err) {
     setBrdError(err.message || "Failed to generate BRD document");
@@ -1620,8 +1672,68 @@ const handleRegenerateBrd = async () => {
   setBrdData(null);
   setBrdError("");
   setBrdProgress([]);
+  setBrdMissingFields([]);
   runProgressSteps(BRD_STEPS, setBrdProgress);
-  await handleOpenBrdModal(true);
+  await handleOpenBrdModal({ forceRegenerate: true, promptForMissing: false });
+};
+
+const handleSubmitMissingBrdInputs = async () => {
+  if (!projectId || isApplyingBrdInputs) return;
+
+  setIsApplyingBrdInputs(true);
+  setBrdError("");
+  try {
+    const { res, data } = await updateBrd({
+      projectId,
+      businessOwner,
+      productOwner,
+      engineeringLead,
+      complianceOwner,
+      endUsers,
+      budgetRange,
+      expectedTimeline,
+      regulatoryRequirements,
+    });
+
+    if (!res.ok || !data?.success) {
+      throw new Error(data?.error?.message || data?.error || "Failed to apply missing BRD inputs");
+    }
+
+    setBrdData(data?.data?.brd || null);
+    setIsBrdInputModalOpen(false);
+    setBrdMissingFields([]);
+  } catch (err) {
+    setBrdError(err.message || "Failed to apply missing BRD inputs");
+  } finally {
+    setIsApplyingBrdInputs(false);
+  }
+};
+
+const handleSaveBrdDocumentEdit = async (nextBrdDocument) => {
+  if (!projectId || isSavingBrdEdits) {
+    return { success: false, message: "Save already in progress." };
+  }
+
+  setIsSavingBrdEdits(true);
+  setBrdError("");
+  try {
+    const { res, data } = await updateBrd({
+      projectId,
+      brdDocument: nextBrdDocument,
+    });
+
+    if (!res.ok || !data?.success) {
+      throw new Error(data?.error?.message || data?.error || "Failed to save BRD edits");
+    }
+
+    setBrdData(data?.data?.brd || nextBrdDocument);
+    return { success: true };
+  } catch (err) {
+    setBrdError(err.message || "Failed to save BRD edits");
+    return { success: false, message: err.message || "Failed to save BRD edits" };
+  } finally {
+    setIsSavingBrdEdits(false);
+  }
 };
 
 const generatePrdDocumentHandler = async (forceRegenerate = false) => {
@@ -2835,7 +2947,7 @@ const handleDownloadBrdDoc = async () => {
       handleOpenBrdModal();
       return;
     }
-    setIsBrdInputModalOpen(true);
+    handleOpenBrdModal({ forceRegenerate: false, promptForMissing: true });
   }}
   onGeneratePrd={async () => {
     setIsOpeningPrd(true);
@@ -2873,10 +2985,7 @@ const handleDownloadBrdDoc = async () => {
       <BRDSection
         isBrdInputModalOpen={isBrdInputModalOpen}
         onCloseBrdInputModal={() => setIsBrdInputModalOpen(false)}
-        onGenerateBrd={() => {
-          setIsBrdInputModalOpen(false);
-          handleOpenBrdModal();
-        }}
+        onSubmitBrdMissingInputs={handleSubmitMissingBrdInputs}
         isBrdModalOpen={isBrdModalOpen}
         onCloseBrdModal={() => setIsBrdModalOpen(false)}
         brdLoading={brdLoading}
@@ -2907,6 +3016,11 @@ const handleDownloadBrdDoc = async () => {
         setExpectedTimeline={setExpectedTimeline}
         regulatoryRequirements={regulatoryRequirements}
         setRegulatoryRequirements={setRegulatoryRequirements}
+        brdMissingFields={brdMissingFields}
+        brdInputFields={BRD_INPUT_FIELDS}
+        isApplyingBrdInputs={isApplyingBrdInputs}
+        onSaveBrdDocumentEdit={handleSaveBrdDocumentEdit}
+        isSavingBrdEdits={isSavingBrdEdits}
         renderBrdContent={renderBrdContent}
         formatKeyLabel={formatKeyLabel}
       />

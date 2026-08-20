@@ -40,3 +40,45 @@ export async function getExistingBrd({ projectId, fetchImpl = fetch }) {
 
   return { res, data };
 }
+
+export async function updateBrd({
+  projectId,
+  brdDocument,
+  businessOwner,
+  productOwner,
+  engineeringLead,
+  complianceOwner,
+  endUsers,
+  budgetRange,
+  expectedTimeline,
+  regulatoryRequirements,
+  fetchImpl = fetch,
+}) {
+  const res = await fetchImpl("/api/generate-brd", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      projectId: Number(projectId),
+      brdDocument,
+      businessOwner,
+      productOwner,
+      engineeringLead,
+      complianceOwner,
+      endUsers,
+      budgetRange,
+      expectedTimeline,
+      regulatoryRequirements,
+    }),
+  });
+
+  const bodyText = await res.text();
+  let data = null;
+
+  try {
+    data = JSON.parse(bodyText);
+  } catch {
+    data = null;
+  }
+
+  return { res, data, bodyText };
+}

@@ -3,7 +3,7 @@ import { getPool, sql } from "@/lib/db";
 import { withAuth } from "@/lib/withAuth";
 import { aiHeavyLimiter, rateLimitedResponse } from "@/lib/rateLimit";
 import { validateBody } from "@/lib/validate";
-import { generateBRDSchema } from "@/lib/schemas";
+import { generateBRDSchema, updateBRDSchema } from "@/lib/schemas";
 import logger from "@/lib/logger";
 
 const WEBHOOK_URL =
@@ -1429,6 +1429,109 @@ export const GET = withAuth(async (request, _ctx, user) => {
     });
   } catch (error) {
     logger.error("GET /api/generate-brd error", { error });
+    return NextResponse.json(
+      { success: false, error: { message: error?.message || "Internal server error" } },
+      { status: 500 }
+    );
+  }
+});
+
+export const PATCH = withAuth(async (request, _ctx, user) => {
+  const { data: input, error: validationError } = await validateBody(request, updateBRDSchema);
+  if (validationError) return validationError;
+
+  try {
+    const projectId = Number(input.projectId);
+
+    if (!projectId) {
+      return NextResponse.json(
+        { success: false, error: { message: "projectId is required." } },
+        { status: 400 }
+      );
+    }
+
+    const pool = await getPool();
+
+    const projectResult = await pool
+      .request()
+      .input("projectId", sql.Int, projectId)
+      .input("userId", sql.Int, Number(user.userId))
+      .query(`
+        SELECT TOP 1 project_id
+        FROM projectss
+        WHERE project_id = @projectId AND created_by = @userId
+      `);
+
+    if (!projectResult.recordset?.length) {
+      return NextResponse.json(
+        { success: false, error: { message: "Project not found." } },
+        { status: 404 }
+      );
+    }
+
+    await ensureBrdStorageTable(pool);
+
+    const existingResult = await pool
+      .request()
+      .input("projectId", sql.Int, projectId)
+      .query(`
+        SELECT TOP 1 brd_content
+        FROM BusinessRequirementsDocuments
+        WHERE project_id = @projectId
+      `);
+
+    const existingRaw = existingResult.recordset?.[0]?.brd_content || null;
+    const existingParsed = existingRaw ? tryParseJsonString(existingRaw) : null;
+
+    let updatedBrd = null;
+    if (input.brdDocument && typeof input.brdDocument === "object" && !Array.isArray(input.brdDocument)) {
+      updatedBrd = input.brdDocument;
+    } else if (existingParsed && typeof existingParsed === "object") {
+      updatedBrd = enrichBrdWithStakeholderInput(existingParsed, input);
+    }
+
+    if (!updatedBrd || typeof updatedBrd !== "object") {
+      return NextResponse.json(
+        { success: false, error: { message: "No BRD available to update. Generate BRD first." } },
+        { status: 400 }
+      );
+    }
+
+    await pool
+      .request()
+      .input("projectId", sql.Int, projectId)
+      .input("brdOutput", sql.NVarChar(sql.MAX), JSON.stringify(updatedBrd))
+      .query(`
+        IF EXISTS (
+          SELECT 1
+          FROM BusinessRequirementsDocuments
+          WHERE project_id = @projectId
+        )
+        BEGIN
+          UPDATE BusinessRequirementsDocuments
+          SET
+            brd_content = @brdOutput,
+            updated_at = SYSUTCDATETIME()
+          WHERE project_id = @projectId
+        END
+        ELSE
+        BEGIN
+          INSERT INTO BusinessRequirementsDocuments
+          (
+            project_id,
+            brd_content
+          )
+          VALUES
+          (
+            @projectId,
+            @brdOutput
+          )
+        END
+      `);
+
+    return NextResponse.json({ success: true, data: { brd: updatedBrd } });
+  } catch (error) {
+    logger.error("PATCH /api/generate-brd error", { error });
     return NextResponse.json(
       { success: false, error: { message: error?.message || "Internal server error" } },
       { status: 500 }
