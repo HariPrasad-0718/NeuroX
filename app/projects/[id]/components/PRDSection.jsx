@@ -92,7 +92,7 @@ export default function PRDSection({
 
               {prdHtml ? (
                 <article className="formal-doc mx-auto max-w-[960px] overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.18)]">
-                  <header className="doc-cover border-b border-slate-200 bg-gradient-to-br from-slate-50 via-white to-cyan-50 px-8 py-10 sm:px-12 sm:py-12">
+                  <header className="doc-cover border-b border-slate-200 bg-white px-8 py-10 sm:px-12 sm:py-12">
                     <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Product Document</p>
                     <h2 className="text-[34px] font-bold leading-tight text-slate-900">Product Requirements Document</h2>
                     <p className="mt-3 text-[16px] text-slate-700">Structured output optimized for stakeholder review and publication.</p>
@@ -102,19 +102,8 @@ export default function PRDSection({
                   </div>
                 </article>
               ) : !prdError ? (
-                <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-8 py-8 shadow-sm">
-                  <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-cyan-100/70 blur-3xl" />
-                  <div className="pointer-events-none absolute -left-20 bottom-0 h-52 w-52 rounded-full bg-indigo-100/70 blur-3xl" />
-                  <div className="relative">
-                    <p className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Preparing Document</p>
-                    <h4 className="mt-2 text-xl font-semibold text-slate-900">Loading PRD Content</h4>
-                    <p className="mt-1 text-sm text-slate-600">Fetching and formatting your latest product requirements document.</p>
-                    <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div className="h-20 animate-pulse rounded-xl border border-slate-200 bg-slate-100" />
-                      <div className="h-20 animate-pulse rounded-xl border border-slate-200 bg-slate-100" />
-                      <div className="h-16 animate-pulse rounded-xl border border-slate-200 bg-slate-100 sm:col-span-2" />
-                    </div>
-                  </div>
+                <div className="rounded-xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-400 shadow-sm">
+                  No PRD data available.
                 </div>
               ) : (
                 <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">Unable to load PRD output.</div>
@@ -125,6 +114,7 @@ export default function PRDSection({
       </div>
 
       <style jsx>{`
+
         .premium-loader-glow {
           position: absolute;
           width: 16rem;

@@ -483,7 +483,6 @@ const BRD_STEPS = [
 ];
 
 const PRD_STEPS = [
-  "Analyzing system flow",
   "Mapping product features",
   "Structuring PRD sections",
   "Adding technical details",

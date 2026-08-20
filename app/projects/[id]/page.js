@@ -913,7 +913,6 @@ const [regulatoryRequirements, setRegulatoryRequirements] = useState("");
 const [isBrdInputModalOpen, setIsBrdInputModalOpen] = useState(false);
 const [brdMissingFields, setBrdMissingFields] = useState([]);
 const [isApplyingBrdInputs, setIsApplyingBrdInputs] = useState(false);
-const [isSavingBrdEdits, setIsSavingBrdEdits] = useState(false);
 const [isResearchSummaryModalOpen, setIsResearchSummaryModalOpen] = useState(false);
 const [canGenerateDocuments, setCanGenerateDocuments] = useState(false);
 const [hasBrdDocument, setHasBrdDocument] = useState(false);
@@ -1709,33 +1708,6 @@ const handleSubmitMissingBrdInputs = async () => {
   }
 };
 
-const handleSaveBrdDocumentEdit = async (nextBrdDocument) => {
-  if (!projectId || isSavingBrdEdits) {
-    return { success: false, message: "Save already in progress." };
-  }
-
-  setIsSavingBrdEdits(true);
-  setBrdError("");
-  try {
-    const { res, data } = await updateBrd({
-      projectId,
-      brdDocument: nextBrdDocument,
-    });
-
-    if (!res.ok || !data?.success) {
-      throw new Error(data?.error?.message || data?.error || "Failed to save BRD edits");
-    }
-
-    setBrdData(data?.data?.brd || nextBrdDocument);
-    return { success: true };
-  } catch (err) {
-    setBrdError(err.message || "Failed to save BRD edits");
-    return { success: false, message: err.message || "Failed to save BRD edits" };
-  } finally {
-    setIsSavingBrdEdits(false);
-  }
-};
-
 const generatePrdDocumentHandler = async (forceRegenerate = false) => {
   console.log("🔥 GENERATE PRD CALLED");
 
@@ -1998,7 +1970,6 @@ const BRD_SECTIONS = [
   { key: "non_functional_expectations", num: "06", title: "Non Functional Expectations", type: "object_list" },
   { key: "integrations", num: "07", title: "Integrations", type: "object_list" },
   { key: "compliance_and_security", num: "08", title: "Compliance & Security", type: "object_story" },
-  { key: "success_metrics", num: "09", title: "Success Metrics", type: "metrics_objects" },
   { key: "key_stakeholders", num: "10", title: "Key Stakeholders", type: "role_people" },
   { key: "project_constraints", num: "11", title: "Project Constraints", type: "bullet_list" },
   { key: "cost_benefit_analysis", num: "12", title: "Cost Benefit Analysis", type: "object_story" },
@@ -3019,8 +2990,6 @@ const handleDownloadBrdDoc = async () => {
         brdMissingFields={brdMissingFields}
         brdInputFields={BRD_INPUT_FIELDS}
         isApplyingBrdInputs={isApplyingBrdInputs}
-        onSaveBrdDocumentEdit={handleSaveBrdDocumentEdit}
-        isSavingBrdEdits={isSavingBrdEdits}
         renderBrdContent={renderBrdContent}
         formatKeyLabel={formatKeyLabel}
       />
