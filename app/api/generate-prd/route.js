@@ -398,7 +398,7 @@ export const POST = withAuth(async (request, _ctx, user) => {
 
   try {
     const projectId = Number(input.projectId);
-    const forceRegenerate = input.forceRegenerate ?? false;
+    const forceRegenerate = Boolean(input.forceRegenerate || input.regenerate);
 
     if (!projectId) {
       return NextResponse.json(
@@ -418,24 +418,26 @@ export const POST = withAuth(async (request, _ctx, user) => {
     }
 
     const pool = await getPool();
-    const existingPrdResult = await pool
-      .request()
-      .input("projectId", sql.Int, projectId)
-      .query(`
-        SELECT TOP 1 prd_content
-        FROM ProductRequirementsDocuments
-        WHERE project_id = @projectId
-      `);
+    if (!forceRegenerate) {
+      const existingPrdResult = await pool
+        .request()
+        .input("projectId", sql.Int, projectId)
+        .query(`
+          SELECT TOP 1 prd_content
+          FROM ProductRequirementsDocuments
+          WHERE project_id = @projectId
+        `);
 
-    if (existingPrdResult.recordset.length > 0 && !forceRegenerate) {
-      return NextResponse.json({
-        success: true,
-        source: "database",
-        prd_output: existingPrdResult.recordset[0].prd_content,
-        data: {
+      if (existingPrdResult.recordset.length > 0) {
+        return NextResponse.json({
+          success: true,
+          source: "database",
           prd_output: existingPrdResult.recordset[0].prd_content,
-        },
-      });
+          data: {
+            prd_output: existingPrdResult.recordset[0].prd_content,
+          },
+        });
+      }
     }
 
     const [

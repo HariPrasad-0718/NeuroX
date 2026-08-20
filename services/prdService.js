@@ -5,6 +5,7 @@ export async function generatePrd({ projectId, forceRegenerate = false, fetchImp
     body: JSON.stringify({
       projectId: Number(projectId),
       forceRegenerate,
+      regenerate: forceRegenerate,
     }),
   });
 

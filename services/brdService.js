@@ -5,6 +5,7 @@ export async function generateBrd({ projectId, forceRegenerate = false, business
     body: JSON.stringify({
       projectId: Number(projectId),
       forceRegenerate,
+      regenerate: forceRegenerate,
       businessOwner,
       productOwner,
       engineeringLead,

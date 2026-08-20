@@ -853,6 +853,38 @@ function buildPrdHtml(prd) {
   return html;
 }
 
+function normalizePrdHtmlOutput(rawValue, fallbackPayload = null) {
+  const text = String(rawValue || "").trim();
+  if (!text) return "";
+
+  const looksLikeHtml = /<[^>]+>/.test(text) && (text.includes("<h1") || text.includes("<h2") || text.includes("<p") || text.includes("<table"));
+  if (looksLikeHtml) {
+    return cleanPrdHtml(text);
+  }
+
+  const parsedFromText = parsePossiblyBrokenPrdJson(text);
+  if (parsedFromText && typeof parsedFromText === "object") {
+    const prdFromParsed = getPrdObject(parsedFromText) || parsedFromText;
+    const htmlFromParsed = buildPrdHtml(prdFromParsed);
+    if (htmlFromParsed) return htmlFromParsed;
+  }
+
+  if (fallbackPayload) {
+    const prdFromFallback = getPrdObject(fallbackPayload);
+    if (prdFromFallback) {
+      const htmlFromFallback = buildPrdHtml(prdFromFallback);
+      if (htmlFromFallback) return htmlFromFallback;
+    }
+  }
+
+  const extractedMarkup = extractPrdMarkup(parsedFromText || text);
+  if (extractedMarkup && /<[^>]+>/.test(extractedMarkup)) {
+    return cleanPrdHtml(extractedMarkup);
+  }
+
+  return cleanPrdHtml(text);
+}
+
 export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -1764,6 +1796,8 @@ const generatePrdDocumentHandler = async (forceRegenerate = false) => {
       }
     }
 
+    nextHtml = normalizePrdHtmlOutput(nextHtml, data);
+
     if (!nextHtml) {
       setPrdError("PRD output is empty.");
       setPrdHtml("");
@@ -1825,9 +1859,28 @@ const handleOpenPrdModal = async () => {
         return;
       }
     }
-    // Fallback: if it's already pre-rendered HTML in prd_content, use it directly
+    // Fallback: normalize stored payload (HTML, JSON string, or nested wrappers)
+    if (typeof existingData?.prd_content === "string") {
+      const normalizedStoredHtml = normalizePrdHtmlOutput(existingData.prd_content, existingData);
+      if (normalizedStoredHtml) {
+        setPrdHtml(normalizedStoredHtml);
+        setHasPrdDocument(true);
+        return;
+      }
+    }
+
+    if (existingData?.data?.prd || existingData?.prd || existingData?.prd_output) {
+      const normalizedExistingHtml = normalizePrdHtmlOutput(existingData, existingData);
+      if (normalizedExistingHtml) {
+        setPrdHtml(normalizedExistingHtml);
+        setHasPrdDocument(true);
+        return;
+      }
+    }
+
+    // Fallback for pre-rendered HTML in legacy records
     if (typeof existingData?.prd_content === "string" && existingData.prd_content.includes("<h1")) {
-      setPrdHtml(existingData.prd_content);
+      setPrdHtml(cleanPrdHtml(existingData.prd_content));
       setHasPrdDocument(true);
       return;
     }

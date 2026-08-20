@@ -895,7 +895,7 @@ export const POST = withAuth(async (request, _ctx, user) => {
 
   try {
     const projectId = Number(input.projectId);
-    const forceRegenerate = input.forceRegenerate ?? false;
+    const forceRegenerate = Boolean(input.forceRegenerate || input.regenerate);
 
     if (!projectId) {
       return NextResponse.json(

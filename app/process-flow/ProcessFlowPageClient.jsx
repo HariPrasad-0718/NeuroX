@@ -64,40 +64,64 @@ export default function ProcessFlowPageClient() {
   };
 
   const handleDownload = async () => {
-    try {
-      const element = document.getElementById("process-flow-download");
-      if (!element) return;
-      const { toPng } = await import("html-to-image");
-      const jsPDFModule = await import("jspdf");
-      const jsPDF = jsPDFModule.default;
-      const dataUrl = await toPng(element, {
-        cacheBust: true,
-        backgroundColor: "#ffffff",
-        pixelRatio: 2,
-      });
-      const pdf = new jsPDF("p", "mm", "a4");
-      const img = new Image();
-      img.src = dataUrl;
-      img.onload = () => {
-        const pdfWidth = 210;
-        const imgHeight = (img.height * pdfWidth) / img.width;
-        let heightLeft = imgHeight;
-        let position = 0;
-        pdf.addImage(dataUrl, "PNG", 0, position, pdfWidth, imgHeight);
-        heightLeft -= 297;
-        while (heightLeft > 0) {
-          position = heightLeft - imgHeight;
-          pdf.addPage();
-          pdf.addImage(dataUrl, "PNG", 0, position, pdfWidth, imgHeight);
-          heightLeft -= 297;
-        }
-        pdf.save("process-flow.pdf");
-      };
-    } catch (err) {
-      console.error("PDF DOWNLOAD ERROR:", err);
-    }
-  };
+  try {
+    const element = document.getElementById("process-flow-download");
+    if (!element) return;
 
+    const { toJpeg } = await import("html-to-image");
+    const { default: jsPDF } = await import("jspdf");
+
+    // Get the full rendered size of the element
+    const width = element.scrollWidth;
+    const height = element.scrollHeight;
+
+    // Capture the entire element
+    const dataUrl = await toJpeg(element, {
+      cacheBust: true,
+      backgroundColor: "#ffffff",
+      width,
+      height,
+      canvasWidth: width,
+      canvasHeight: height,
+      pixelRatio: 2, // Higher quality
+      quality: 1,
+      style: {
+        transform: "scale(1)",
+        transformOrigin: "top left",
+      },
+    });
+
+    const img = new Image();
+    img.src = dataUrl;
+
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+    });
+
+    // Create PDF matching image size
+    const pdf = new jsPDF({
+      orientation: img.width > img.height ? "landscape" : "portrait",
+      unit: "px",
+      format: [img.width, img.height],
+    });
+
+    pdf.addImage(
+      dataUrl,
+      "JPEG",
+      0,
+      0,
+      img.width,
+      img.height,
+      undefined,
+      "FAST"
+    );
+
+    pdf.save("process-flow.pdf");
+  } catch (err) {
+    console.error("PDF DOWNLOAD ERROR:", err);
+  }
+};
   return (
     <div className="min-h-screen bg-[#f8fafc] px-3 py-3">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
@@ -132,9 +156,16 @@ export default function ProcessFlowPageClient() {
         ) : (
           <div>
             <div
-              id="process-flow-download"
-              style={{ background: "#ffffff", color: "#000000", padding: "20px" }}
-            >
+  id="process-flow-download"
+  style={{
+    background: "#ffffff",
+    color: "#000000",
+    padding: "20px",
+    width: "max-content",
+    minWidth: "100%",
+    overflow: "visible",
+  }}
+>
               <UXJourneyFlow flow={flowData} />
             </div>
 

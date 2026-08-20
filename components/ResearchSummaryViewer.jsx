@@ -93,7 +93,7 @@ export default function ResearchSummaryViewer({
   console.log(document.sections);
   return (
     <>
-      <article className="research-document mx-auto max-w-[920px] overflow-hidden rounded-xl border border-slate-300 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.18)]">
+      <article data-research-summary-document className="research-document mx-auto max-w-[920px] overflow-hidden rounded-xl border border-slate-300 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.18)]">
 
         {/* COVER PAGE */}
 
