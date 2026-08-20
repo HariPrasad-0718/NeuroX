@@ -1,7 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 
 const WEBHOOK_URL =
-  "https://agent5idev.c5ailabs.com/api/recipes/webhook/agent/";
+  "https://agent5i.c5ailabs.com/api/recipes/webhook/agent/";
 
 export async function POST(request) {
   try {
@@ -82,28 +82,47 @@ export async function POST(request) {
       });
     }
 
-    // Agent returns {"WIREFRAME SUMMARY": "...", "UI/UX ENHANCEMENTS": "1.\n2...."}
-    let cleaned = rawMessage.trim().replace(/```/g, "");
-
-    try {
-      const parsed = JSON.parse(cleaned);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        const keys = Object.keys(parsed);
-        const summaryKey = keys.find(k => /wireframe\s+summary/i.test(k));
-        const enhKey = keys.find(k => /ui\s*\/\s*ux\s+enhancements/i.test(k));
-        const summaryText = summaryKey ? String(parsed[summaryKey]).trim() : "";
-        const enhText = enhKey ? String(parsed[enhKey]).trim() : "";
-        const parts = [];
-        if (summaryText) parts.push(`WIREFRAME SUMMARY\n${summaryText}`);
-        if (enhText) parts.push(`UI/UX ENHANCEMENTS\n${enhText.replace(/\\n/g, "\n")}`);
-        cleaned = parts.join("\n\n");
-      } else if (typeof parsed === "string") {
-        cleaned = parsed;
-      } else if (Array.isArray(parsed)) {
-        cleaned = parsed.join("\n");
+    const toObject = (value) => {
+      if (!value) return null;
+      if (typeof value === "object") return value;
+      if (typeof value !== "string") return null;
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (typeof parsed === "string") return toObject(parsed);
+        return parsed && typeof parsed === "object" ? parsed : null;
+      } catch {
+        return null;
       }
-    } catch (_) {
-      cleaned = cleaned.replace(/^["'\s]+|["'\s]+$/g, "").trim();
+    };
+
+    const asObject = toObject(rawMessage);
+    let normalized = asObject;
+
+    if (asObject?.result) {
+      normalized = toObject(asObject.result) || asObject;
+    }
+
+    if (normalized?.wireframe_summary && typeof normalized.wireframe_summary === "string") {
+      const nestedSummary = toObject(normalized.wireframe_summary);
+      if (nestedSummary) {
+        normalized = {
+          ...normalized,
+          ...nestedSummary,
+        };
+      }
+    }
+
+    let cleaned = "";
+    if (normalized && typeof normalized === "object") {
+      cleaned = JSON.stringify(normalized);
+    } else {
+      cleaned = String(rawMessage || "")
+        .trim()
+        .replace(/```/g, "")
+        .replace(/^["'\s]+|["'\s]+$/g, "")
+        .trim();
     }
 
     return NextResponse.json({

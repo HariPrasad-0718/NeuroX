@@ -68,32 +68,122 @@ export function parseWireframeResult(raw) {
   const text = decodeUnicode(raw || "");
   const normalized = text.replace(/\r\n/g, "\n");
 
-  const summaryMatch = normalized.match(
-    /WIREFRAME\s+SUMMARY[:\s]*([\s\S]*?)(?=\n\s*(?:##\s*)?UI\s*\/\s*UX\s+ENHANCEMENTS|$)/i
-  );
-  const enhancementsMatch = normalized.match(/UI\s*\/\s*UX\s+ENHANCEMENTS[:\s]*([\s\S]*)$/i);
+  const toObject = (value) => {
+    if (!value) return null;
+    if (typeof value === "object") return value;
+    if (typeof value !== "string") return null;
 
-  const summary = summaryMatch ? summaryMatch[1].trim() : "";
-  const enhancementsRaw = enhancementsMatch ? enhancementsMatch[1].trim() : "";
-  const enhancements = [];
+    const trimmed = value.trim();
+    if (!trimmed) return null;
 
-  if (enhancementsRaw) {
-    const chunks = enhancementsRaw.split(/\n(?=\s*(?:\*{1,2})?\d+[.)]\s)/);
-    for (const chunk of chunks) {
-      const trimmed = chunk.trim();
-      if (!trimmed) continue;
-      const lineMatch = trimmed.match(/^\*{0,2}\d+[.)]\*{0,2}\s+([\s\S]*)/);
-      if (lineMatch) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (typeof parsed === "string") {
+        return toObject(parsed);
+      }
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const normalizeEnhancements = (value) => {
+    if (!value) return [];
+
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => {
+          if (typeof item === "string") {
+            const line = item.trim();
+            if (!line) return null;
+            return { title: line, detail: "" };
+          }
+          if (!item || typeof item !== "object") return null;
+
+          const title = String(item.what || item.title || item.label || "").trim();
+          const detail = String(item.why || item.detail || item.description || "").trim();
+
+          if (!title && !detail) return null;
+          return { title: title || detail, detail: title && detail ? detail : "" };
+        })
+        .filter(Boolean);
+    }
+
+    const textValue = String(value).trim();
+    if (!textValue) return [];
+
+    return textValue
+      .split(/\n(?=\s*(?:\*{1,2})?\d+[.)]\s)/)
+      .map((chunk) => chunk.trim())
+      .filter(Boolean)
+      .map((chunk) => {
+        const lineMatch = chunk.match(/^\*{0,2}\d+[.)]\*{0,2}\s+([\s\S]*)/);
+        if (!lineMatch) return { title: chunk, detail: "" };
         const body = lineMatch[1].replace(/^\*+|\*+$/g, "").trim();
         const [title, ...rest] = body.split("\n");
-        enhancements.push({ title: title.trim(), detail: rest.join("\n").trim() });
-      } else if (trimmed) {
-        enhancements.push({ title: trimmed, detail: "" });
-      }
-    }
+        return { title: title.trim(), detail: rest.join("\n").trim() };
+      });
+  };
+
+  const root = toObject(normalized);
+  const firstLayer = root && root.result ? toObject(root.result) || root : root;
+
+  let payload = firstLayer;
+  const nestedSummaryObject = firstLayer && typeof firstLayer.wireframe_summary === "string"
+    ? toObject(firstLayer.wireframe_summary)
+    : null;
+  if (nestedSummaryObject) {
+    payload = {
+      ...firstLayer,
+      ...nestedSummaryObject,
+    };
   }
 
-  return { summary, enhancements, raw: normalized };
+  const summary = String(
+    payload?.wireframe_summary ||
+    payload?.summary ||
+    ""
+  ).trim();
+
+  const figmaPrompt = String(
+    payload?.figma_prompt ||
+    payload?.prompt ||
+    ""
+  ).trim();
+
+  const enhancements = normalizeEnhancements(
+    payload?.ux_enhancements || payload?.enhancements || ""
+  );
+
+  if (summary || enhancements.length || figmaPrompt) {
+    return {
+      summary,
+      enhancements,
+      figmaPrompt,
+      raw: normalized,
+      structured: payload,
+    };
+  }
+
+  const summaryMatch = normalized.match(
+    /WIREFRAME\s+SUMMARY[:\s]*([\s\S]*?)(?=\n\s*(?:##\s*)?(?:UI\s*\/\s*UX\s+ENHANCEMENTS|FIGMA\s+PROMPT)|$)/i
+  );
+  const enhancementsMatch = normalized.match(
+    /UI\s*\/\s*UX\s+ENHANCEMENTS[:\s]*([\s\S]*?)(?=\n\s*(?:##\s*)?FIGMA\s+PROMPT|$)/i
+  );
+  const figmaPromptMatch = normalized.match(/FIGMA\s+PROMPT[:\s]*([\s\S]*)$/i);
+
+  const fallbackSummary = summaryMatch ? summaryMatch[1].trim() : "";
+  const fallbackEnhancementsRaw = enhancementsMatch ? enhancementsMatch[1].trim() : "";
+  const fallbackPrompt = figmaPromptMatch ? figmaPromptMatch[1].trim() : "";
+
+  return {
+    summary: fallbackSummary,
+    enhancements: normalizeEnhancements(fallbackEnhancementsRaw),
+    figmaPrompt: fallbackPrompt,
+    raw: normalized,
+    structured: null,
+  };
 }
 
 function decodeUnicode(str) {

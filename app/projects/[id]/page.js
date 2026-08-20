@@ -98,6 +98,12 @@ const IDEATE_CARD_MEDIA = {
     description: "Generate BRD and PRD from project context.",
   },
 };
+
+const STEP_BLOCKED_BASE_MESSAGE =
+  "This step is not available yet. Please complete the previous required steps before accessing it.";
+
+const buildStepKey = (stageId, templateId) => `${stageId}:${templateId}`;
+
 function stripFence(text) {
   return String(text || "")
     .replace(/^```(?:json|html)?\s*/i, "")
@@ -874,6 +880,7 @@ const [regulatoryRequirements, setRegulatoryRequirements] = useState("");
 const [isBrdInputModalOpen, setIsBrdInputModalOpen] = useState(false);
 const [isResearchSummaryModalOpen, setIsResearchSummaryModalOpen] = useState(false);
 const [canGenerateDocuments, setCanGenerateDocuments] = useState(false);
+const [stepActionState, setStepActionState] = useState({});
 const BRD_STEPS = [
   "Analyzing requirements",
   "Extracting business requirements",
@@ -1059,6 +1066,128 @@ const PRD_STEPS = [
   const getWorkspaceUrl = (templateName) => {
     return `/projects/${projectId}/workspace?template=${encodeURIComponent(templateName)}&projectName=${encodeURIComponent(project.projectName)}&description=${encodeURIComponent(project.projectDescription)}`;
   };
+
+    const setStepLoading = (stepKey, loading) => {
+      setStepActionState((prev) => ({
+        ...prev,
+        [stepKey]: {
+          ...(prev[stepKey] || {}),
+          loading,
+        },
+      }));
+    };
+
+    const setStepError = (stepKey, errorMessage) => {
+      setStepActionState((prev) => ({
+        ...prev,
+        [stepKey]: {
+          ...(prev[stepKey] || {}),
+          error: errorMessage || "",
+        },
+      }));
+    };
+
+    const checkEmpathyMapAvailability = async () => {
+      const res = await fetch(
+        `/api/personas?projectId=${encodeURIComponent(projectId)}&includeGenerated=true&groupByInterviewee=true`
+      );
+      const data = await res.json();
+
+      if (!data?.success) {
+        throw new Error(data?.error?.message || "Failed to verify empathy phase outputs.");
+      }
+
+      const rows = Array.isArray(data?.data) ? data.data : [];
+      const hasPersonaOutput = rows.some((row) => {
+        const output = String(row?.generated_output || "").trim();
+        return output && output.toLowerCase() !== "no persona output available";
+      });
+
+      return { hasPersonaOutput };
+    };
+
+    const checkDefineAvailability = async () => {
+      const res = await fetch(`/api/save-generated-persona?projectId=${encodeURIComponent(projectId)}`);
+      const data = await res.json();
+
+      if (!data?.success) {
+        throw new Error(data?.error || "Failed to verify define phase outputs.");
+      }
+
+      const hasDefinePersonas = Boolean(data?.exists) && Array.isArray(data?.personas) && data.personas.length > 0;
+      const hasProblemStatement = Boolean(String(data?.problemStatement || "").trim());
+
+      return { hasDefinePersonas, hasProblemStatement };
+    };
+
+    const handleOpenStepFromProject = async ({ stageId, template, workspaceUrl }) => {
+      const stepKey = buildStepKey(stageId, template.id);
+      setStepError(stepKey, "");
+      setStepLoading(stepKey, true);
+
+      try {
+        if (stageId === "empathize") {
+          if (template.id === "user-persona") {
+            const { hasPersonaOutput } = await checkEmpathyMapAvailability();
+            if (!hasPersonaOutput) {
+              throw new Error(
+                `${STEP_BLOCKED_BASE_MESSAGE} Complete Interview Assist before opening Empathy Map.`
+              );
+            }
+
+            router.push(
+              `/view-persona?projectId=${encodeURIComponent(projectId)}&projectName=${encodeURIComponent(project?.projectName || "")}`
+            );
+            return;
+          }
+
+          router.push(workspaceUrl);
+          return;
+        }
+
+        if (stageId === "define") {
+          if (template.id === "problem-statement") {
+            const { hasPersonaOutput } = await checkEmpathyMapAvailability();
+            if (!hasPersonaOutput) {
+              throw new Error(
+                `${STEP_BLOCKED_BASE_MESSAGE} Complete Empathize phase outputs before opening Problem Statement.`
+              );
+            }
+
+            router.push(`/projects/${projectId}/define#problem-definition-card`);
+            return;
+          }
+
+          if (template.id === "process-flow") {
+            const { hasDefinePersonas, hasProblemStatement } = await checkDefineAvailability();
+            if (!hasDefinePersonas || !hasProblemStatement) {
+              throw new Error(
+                `${STEP_BLOCKED_BASE_MESSAGE} Complete Problem Statement first before opening Process Flow.`
+              );
+            }
+
+            router.push(`/process-flow?projectId=${encodeURIComponent(projectId)}`);
+            return;
+          }
+        }
+
+        if (stageId === "ideate" && template.id === "information-architecture") {
+          const { hasDefinePersonas, hasProblemStatement } = await checkDefineAvailability();
+          if (!hasDefinePersonas || !hasProblemStatement) {
+            throw new Error(
+              `${STEP_BLOCKED_BASE_MESSAGE} Complete Problem Statement first before opening Information Architecture.`
+            );
+          }
+
+          router.push(`/information-architecture?projectId=${encodeURIComponent(projectId)}`);
+          return;
+        }
+      } catch (err) {
+        setStepError(stepKey, err?.message || "Unable to open this step right now.");
+      } finally {
+        setStepLoading(stepKey, false);
+      }
+    };
 
   const parsePersonaOutput = (rawOutput, fallbackName) => {
     const normalized = String(rawOutput || "").replace(/\r\n/g, "\n").trim();
@@ -2223,9 +2352,19 @@ const handleDownloadBrdDoc = async () => {
                                   onGenerateInformationArchitecture={handleGenerateInformationArchitecture}
                                   isGeneratingIA={isGeneratingIA}
                                   informationArchitectureError={informationArchitectureError}
+                                  onOpenStep={(currentStageId, templateId) =>
+                                    handleOpenStepFromProject({
+                                      stageId: currentStageId,
+                                      template,
+                                      workspaceUrl: getWorkspaceUrl(template.name),
+                                    })
+                                  }
+                                  isActionLoading={Boolean(stepActionState[buildStepKey(stage.id, template.id)]?.loading)}
+                                  stepError={stepActionState[buildStepKey(stage.id, template.id)]?.error || ""}
                                   empathizeCardMedia={EMPATHIZE_CARD_MEDIA}
                                   defineCardMedia={DEFINE_CARD_MEDIA}
                                   ideateCardMedia={IDEATE_CARD_MEDIA}
+                                  projectId={projectId}
                                 />
                               </div>
                             );
@@ -2251,9 +2390,19 @@ const handleDownloadBrdDoc = async () => {
                                   onGenerateInformationArchitecture={handleGenerateInformationArchitecture}
                                   isGeneratingIA={isGeneratingIA}
                                   informationArchitectureError={informationArchitectureError}
+                                  onOpenStep={(currentStageId, templateId) =>
+                                    handleOpenStepFromProject({
+                                      stageId: currentStageId,
+                                      template,
+                                      workspaceUrl: getWorkspaceUrl(template.name),
+                                    })
+                                  }
+                                  isActionLoading={Boolean(stepActionState[buildStepKey(stage.id, template.id)]?.loading)}
+                                  stepError={stepActionState[buildStepKey(stage.id, template.id)]?.error || ""}
                                   empathizeCardMedia={EMPATHIZE_CARD_MEDIA}
                                   defineCardMedia={DEFINE_CARD_MEDIA}
                                   ideateCardMedia={IDEATE_CARD_MEDIA}
+                                  projectId={projectId}
                                 />
                               </div>
                             );
@@ -2287,9 +2436,19 @@ const handleDownloadBrdDoc = async () => {
                                   onGenerateInformationArchitecture={handleGenerateInformationArchitecture}
                                   isGeneratingIA={isGeneratingIA}
                                   informationArchitectureError={informationArchitectureError}
+                                  onOpenStep={(currentStageId, templateId) =>
+                                    handleOpenStepFromProject({
+                                      stageId: currentStageId,
+                                      template,
+                                      workspaceUrl: getWorkspaceUrl(template.name),
+                                    })
+                                  }
+                                  isActionLoading={Boolean(stepActionState[buildStepKey(stage.id, template.id)]?.loading)}
+                                  stepError={stepActionState[buildStepKey(stage.id, template.id)]?.error || ""}
                                   empathizeCardMedia={EMPATHIZE_CARD_MEDIA}
                                   defineCardMedia={DEFINE_CARD_MEDIA}
                                   ideateCardMedia={IDEATE_CARD_MEDIA}
+                                  projectId={projectId}
                                 />
                               </div>
                             );

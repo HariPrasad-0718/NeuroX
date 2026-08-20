@@ -15,6 +15,9 @@ const renderUploadButton = (label) => (
 export default function StageTemplateCard({
   stageId,
   template,
+  onOpenStep,
+  isActionLoading,
+  stepError,
   isCompleted,
   downloadableTemplateId,
   documents = [],
@@ -66,15 +69,20 @@ export default function StageTemplateCard({
             <button
               onClick={(e) => {
                 e.stopPropagation();
+                if (typeof onOpenStep === "function") {
+                  onOpenStep(stageId, template.id);
+                  return;
+                }
                 if (template.id === "user-persona") {
                   router.push(`/view-persona?projectId=${encodeURIComponent(projectId)}&projectName=${encodeURIComponent(projectName)}`);
                   return;
                 }
                 router.push(workspaceUrl);
               }}
+              disabled={Boolean(isActionLoading)}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-200 active:scale-[0.98]"
             >
-              {topActionLabel}
+              {isActionLoading ? "Checking..." : topActionLabel}
             </button>
             <button
               onClick={(e) => {
@@ -88,6 +96,9 @@ export default function StageTemplateCard({
               <Download className="h-4 w-4" />{primaryFooterLabel}
             </button>
             {renderUploadButton(uploadLabel)}
+            {stepError && (
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">{stepError}</p>
+            )}
           </div>
         </div>
         {documents.length > 0 && (
@@ -158,12 +169,16 @@ export default function StageTemplateCard({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (typeof onOpenStep === "function") {
+                      onOpenStep(stageId, template.id);
+                      return;
+                    }
                     onGenerateProcessFlow();
                   }}
-                  disabled={isGeneratingProcessFlow}
+                  disabled={isGeneratingProcessFlow || Boolean(isActionLoading)}
                   className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {isGeneratingProcessFlow ? "Generating..." : "Generate"}
+                  {isActionLoading ? "Checking..." : isGeneratingProcessFlow ? "Generating..." : "Generate"}
                 </button>
                 {processFlowError && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600">{processFlowError}</p>}
               </>
@@ -171,11 +186,16 @@ export default function StageTemplateCard({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (typeof onOpenStep === "function") {
+                    onOpenStep(stageId, template.id);
+                    return;
+                  }
                   router.push(`/projects/${projectId}/define#problem-definition-card`);
                 }}
+                disabled={Boolean(isActionLoading)}
                 className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-200 active:scale-[0.98]"
               >
-                Define
+                {isActionLoading ? "Checking..." : "Define"}
               </button>
             )}
             <button
@@ -190,6 +210,9 @@ export default function StageTemplateCard({
               <Download className="h-4 w-4" />Use Standard Template
             </button>
             {renderUploadButton("Upload Template")}
+            {stepError && (
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">{stepError}</p>
+            )}
           </div>
         </div>
       </div>
@@ -227,12 +250,18 @@ export default function StageTemplateCard({
           <button
             onClick={(e) => {
               e.stopPropagation();
+              if (typeof onOpenStep === "function") {
+                onOpenStep(stageId, template.id);
+                return;
+              }
               onGenerateInformationArchitecture();
             }}
-            disabled={isGeneratingIA}
+            disabled={isGeneratingIA || Boolean(isActionLoading)}
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
           >
-            {isGeneratingIA ? (
+            {isActionLoading ? (
+              "Checking..."
+            ) : isGeneratingIA ? (
               <>
                 <svg className="h-4 w-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
@@ -247,6 +276,9 @@ export default function StageTemplateCard({
 
           {informationArchitectureError && (
             <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{informationArchitectureError}</p>
+          )}
+          {stepError && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">{stepError}</p>
           )}
         </div>
       </div>

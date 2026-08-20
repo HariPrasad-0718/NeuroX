@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, AlertTriangle, Loader2, Sparkles } from "lucide-react";
 import jsPDF from "jspdf";
@@ -392,6 +392,7 @@ export default function DefinePhasePage() {
   const [loadedFromDb, setLoadedFromDb] = useState(false);
   const [iaError, setIaError] = useState("");
   const [isGeneratingProcessFlow, setIsGeneratingProcessFlow] = useState(false);
+  const hasAttemptedAutoGenerateRef = useRef(false);
 
   useEffect(() => {
     if (!projectId) return;
@@ -596,6 +597,15 @@ export default function DefinePhasePage() {
       ),
     [personas]
   );
+
+  useEffect(() => {
+    if (loading || generating || generated || loadedFromDb || error) return;
+    if (!hasAnyOutput) return;
+    if (hasAttemptedAutoGenerateRef.current) return;
+
+    hasAttemptedAutoGenerateRef.current = true;
+    handleGenerate();
+  }, [loading, generating, generated, loadedFromDb, error, hasAnyOutput]);
 
   const totalInterviewees = useMemo(
     () => personas.reduce((acc, p) => acc + (p.outputs?.length || 0), 0),

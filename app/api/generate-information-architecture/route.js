@@ -3,11 +3,11 @@ import { getPool, sql } from "@/lib/db";
 
 const WEBHOOK_URL =
   process.env.AGENT5I_WEBHOOK_URL ||
-  "https://agent5idev.c5ailabs.com/api/recipes/webhook/agent/";
+  "https://agent5i.c5ailabs.com/api/recipes/webhook/agent/";
 
 const USERNAME = process.env.AGENT5I_USERNAME || process.env.AGENT_USERNAME || "";
 const PASSWORD = process.env.AGENT5I_PASSWORD || process.env.AGENT_PASSWORD || "";
-const IA_AGENT_NAME = process.env.AGENT5I_IA_AGENT_NAME || "IA Agent";
+const IA_AGENT_NAME = process.env.AGENT5I_IA_AGENT_NAME || "Information Architecture Agent";
 
 const IA_PROMPT = `
 You are a Senior UX Information Architect.
