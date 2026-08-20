@@ -61,37 +61,26 @@ export default function PRDSection({
 
         <div className="max-h-[84vh] overflow-auto bg-[#e8ebf0] p-5">
           {prdLoading ? (
-            <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-8 py-8 shadow-sm">
-              <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-cyan-100/70 blur-3xl" />
-              <div className="pointer-events-none absolute -left-20 bottom-0 h-52 w-52 rounded-full bg-indigo-100/70 blur-3xl" />
+            <div className="premium-loader relative overflow-hidden rounded-2xl border border-[#3730a3] bg-[#172554] px-6 py-8 text-white shadow-[0_24px_70px_rgba(49,46,129,0.3)] sm:px-10">
+              <div className="premium-loader-glow premium-loader-glow-one" />
+              <div className="premium-loader-glow premium-loader-glow-two" />
 
               <div className="relative">
-                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Preparing Document</p>
-                <h4 className="mt-2 text-xl font-semibold text-slate-900">Building Professional PRD View</h4>
-                <p className="mt-1 text-sm text-slate-600">Parsing sections, formatting tables, and preparing a clean stakeholder-ready layout.</p>
-
-                <div className="mt-6 space-y-3">
-                  {prdProgress.map((step, index) => (
-                    <div key={index} className="flex items-center gap-3 rounded-lg border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm shadow-sm backdrop-blur-sm">
-                      {step.done ? (
-                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-[12px] font-bold text-emerald-700">✓</span>
-                      ) : (
-                        <span className="h-5 w-5 animate-spin rounded-full border-2 border-cyan-500 border-t-transparent" />
-                      )}
-
-                      <span className={step.done ? "text-emerald-700" : "text-slate-700"}>{step.label}</span>
-                    </div>
-                  ))}
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-indigo-300">NeuroX document engine</p>
+                    <h4 className="mt-2 text-2xl font-semibold tracking-tight">Generating your PRD</h4>
+                    <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">Turning system flow and product context into a clear, publication-ready document.</p>
+                  </div>
+                  <div className="premium-loader-orbit" aria-hidden="true"><div className="premium-loader-core" /></div>
                 </div>
 
-                <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="h-20 animate-pulse rounded-xl border border-slate-200 bg-slate-100" />
-                  <div className="h-20 animate-pulse rounded-xl border border-slate-200 bg-slate-100" />
-                  <div className="h-16 animate-pulse rounded-xl border border-slate-200 bg-slate-100 sm:col-span-2" />
+                <div className="mt-8 h-1 overflow-hidden rounded-full bg-white/10">
+                  <div className="premium-loader-progress h-full rounded-full" />
                 </div>
 
                 {prdProgress.length < prdSteps.length && (
-                  <p className="mt-4 text-xs text-slate-500">AI is structuring your product document...</p>
+                  <p className="mt-4 text-xs text-slate-400">AI is structuring your product document<span className="premium-loader-dots">...</span></p>
                 )}
               </div>
             </div>
@@ -136,6 +125,43 @@ export default function PRDSection({
       </div>
 
       <style jsx>{`
+        .premium-loader-glow {
+          position: absolute;
+          width: 16rem;
+          height: 16rem;
+          border-radius: 999px;
+          filter: blur(54px);
+          opacity: 0.3;
+          pointer-events: none;
+        }
+
+        .premium-loader-glow-one { top: -9rem; right: -4rem; background: #818cf8; }
+        .premium-loader-glow-two { bottom: -10rem; left: -5rem; background: #6366f1; }
+        .premium-loader-orbit {
+          display: flex;
+          width: 3.5rem;
+          height: 3.5rem;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid rgba(165, 180, 252, 0.45);
+          border-radius: 999px;
+          animation: premium-orbit 3s linear infinite;
+        }
+        .premium-loader-core {
+          width: 1.1rem;
+          height: 1.1rem;
+          border-radius: 999px;
+          background: #a5b4fc;
+          box-shadow: 0 0 24px #6366f1;
+          animation: premium-breathe 1.8s ease-in-out infinite;
+        }
+        .premium-loader-progress { width: 42%; background: linear-gradient(90deg, #6366f1, #a5b4fc, #6366f1); background-size: 200% 100%; animation: premium-progress 2.2s ease-in-out infinite; }
+        .premium-loader-dots { display: inline-block; width: 1.2rem; overflow: hidden; vertical-align: bottom; animation: premium-dots 1.4s steps(4, end) infinite; }
+        @keyframes premium-orbit { to { transform: rotate(360deg); } }
+        @keyframes premium-breathe { 0%, 100% { transform: scale(0.72); opacity: 0.55; } 50% { transform: scale(1); opacity: 1; } }
+        @keyframes premium-progress { 0% { transform: translateX(-65%); background-position: 0% 50%; } 50% { transform: translateX(95%); background-position: 100% 50%; } 100% { transform: translateX(-65%); background-position: 0% 50%; } }
+        @keyframes premium-dots { 0% { width: 0; } 25% { width: 0.4rem; } 50% { width: 0.8rem; } 75%, 100% { width: 1.2rem; } }
+
         .doc-html :global(h1) {
           font-size: 1.75rem;
           font-weight: 800;

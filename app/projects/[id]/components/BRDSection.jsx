@@ -216,27 +216,28 @@ export default function BRDSection({
 
             <div className="max-h-[84vh] overflow-y-auto bg-[#e8ebf0] px-6 py-6">
               {brdLoading ? (
-                <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white px-8 py-8 shadow-sm">
-                  <p className="text-sm font-semibold text-slate-700">Generating BRD Document</p>
+                <div className="premium-loader relative overflow-hidden rounded-2xl border border-[#3730a3] bg-[#172554] px-6 py-8 text-white shadow-[0_24px_70px_rgba(49,46,129,0.3)] sm:px-10">
+                  <div className="premium-loader-glow premium-loader-glow-one" />
+                  <div className="premium-loader-glow premium-loader-glow-two" />
 
-                  <div className="space-y-3">
-                    {brdProgress.map((step, index) => (
-                      <div key={index} className="flex items-center gap-3 text-sm">
-                        {step.done ? (
-                          <span className="font-bold text-green-600">✓</span>
-                        ) : (
-                          <div className="relative flex h-5 w-5 items-center justify-center">
-                            <div className="absolute h-5 w-5 animate-ping rounded-full bg-indigo-200 opacity-50" />
-                            <div className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
-                          </div>
-                        )}
-
-                        <span className={step.done ? "text-green-700" : "text-slate-600"}>{step.label}</span>
+                  <div className="relative">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-indigo-300">NeuroX document engine</p>
+                        <h4 className="mt-2 text-2xl font-semibold tracking-tight">Generating your BRD</h4>
+                        <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">Synthesizing project context into a polished, stakeholder-ready document.</p>
                       </div>
-                    ))}
+                      <div className="premium-loader-orbit" aria-hidden="true">
+                        <div className="premium-loader-core" />
+                      </div>
+                    </div>
+
+                    <div className="mt-8 h-1 overflow-hidden rounded-full bg-white/10">
+                      <div className="premium-loader-progress h-full rounded-full" />
+                    </div>
                   </div>
 
-                  {brdProgress.length < brdSteps.length && <p className="text-xs text-slate-400">AI is structuring your document...</p>}
+                  {brdProgress.length < brdSteps.length && <p className="relative mt-4 text-xs text-slate-400">AI is structuring your document<span className="premium-loader-dots">...</span></p>}
                 </div>
               ) : brdError ? (
                 <div className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">{brdError}</div>
@@ -321,6 +322,87 @@ export default function BRDSection({
           </div>
         </div>
       )}
+
+      <style jsx>{`
+        .premium-loader-glow {
+          position: absolute;
+          width: 16rem;
+          height: 16rem;
+          border-radius: 999px;
+          filter: blur(54px);
+          opacity: 0.3;
+          pointer-events: none;
+        }
+
+        .premium-loader-glow-one {
+          top: -9rem;
+          right: -4rem;
+          background: #818cf8;
+        }
+
+        .premium-loader-glow-two {
+          bottom: -10rem;
+          left: -5rem;
+          background: #6366f1;
+        }
+
+        .premium-loader-orbit {
+          display: flex;
+          width: 3.5rem;
+          height: 3.5rem;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid rgba(165, 180, 252, 0.45);
+          border-radius: 999px;
+          animation: premium-orbit 3s linear infinite;
+        }
+
+        .premium-loader-core {
+          width: 1.1rem;
+          height: 1.1rem;
+          border-radius: 999px;
+          background: #a5b4fc;
+          box-shadow: 0 0 24px #6366f1;
+          animation: premium-breathe 1.8s ease-in-out infinite;
+        }
+
+        .premium-loader-progress {
+          width: 42%;
+          background: linear-gradient(90deg, #6366f1, #a5b4fc, #6366f1);
+          background-size: 200% 100%;
+          animation: premium-progress 2.2s ease-in-out infinite;
+        }
+
+        .premium-loader-dots {
+          display: inline-block;
+          width: 1.2rem;
+          overflow: hidden;
+          vertical-align: bottom;
+          animation: premium-dots 1.4s steps(4, end) infinite;
+        }
+
+        @keyframes premium-orbit {
+          to { transform: rotate(360deg); }
+        }
+
+        @keyframes premium-breathe {
+          0%, 100% { transform: scale(0.72); opacity: 0.55; }
+          50% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes premium-progress {
+          0% { transform: translateX(-65%); background-position: 0% 50%; }
+          50% { transform: translateX(95%); background-position: 100% 50%; }
+          100% { transform: translateX(-65%); background-position: 0% 50%; }
+        }
+
+        @keyframes premium-dots {
+          0% { width: 0; }
+          25% { width: 0.4rem; }
+          50% { width: 0.8rem; }
+          75%, 100% { width: 1.2rem; }
+        }
+      `}</style>
     </>
   );
 }
