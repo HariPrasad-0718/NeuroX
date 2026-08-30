@@ -147,6 +147,15 @@ function parseBrdDocument(brdDocRaw) {
   if (brdDocRaw && typeof brdDocRaw === "object") return brdDocRaw;
 
   if (typeof brdDocRaw === "string") {
+    // Try to parse as JSON string first (handles both regular and escaped JSON)
+    const parsed = tryParseJsonString(brdDocRaw);
+    if (parsed && typeof parsed === "object") {
+      // If it has brd_document, recurse (may be double-wrapped)
+      if (parsed.brd_document) return parseBrdDocument(parsed.brd_document);
+      return parsed;
+    }
+
+    // Fallback: try to extract balanced JSON object
     const balanced = extractBalancedJsonObjectString(brdDocRaw);
     if (balanced) {
       const parsedBalanced = tryParseJsonString(balanced);
@@ -154,9 +163,6 @@ function parseBrdDocument(brdDocRaw) {
     }
   }
 
-  const parsed = tryParseJsonString(brdDocRaw);
-  if (parsed?.brd_document) return parseBrdDocument(parsed.brd_document);
-  if (parsed && typeof parsed === "object") return parsed;
   return null;
 }
 
@@ -1303,9 +1309,14 @@ console.log("========================================");
     const brdData = extractBrdDocument(data);
     if (!brdData) {
       const extractionDiagnostics = collectBrdExtractionDiagnostics(data);
+      const topMessage = data?.message;
+      const brdDocFromMessage = topMessage ? tryExtractBrdPayloadFromMessageString(topMessage)?.brd_document : null;
+      const previewBrd = typeof brdDocFromMessage === "string" ? brdDocFromMessage.slice(0, 500) : JSON.stringify(brdDocFromMessage)?.slice(0, 500);
+
       logger.error("POST /api/generate-brd failed to extract brd_document", {
         hasTopMessage: Boolean(data?.message),
         hasMessages: Array.isArray(data?.response?.messages),
+        brdDocumentPreview: previewBrd,
         extractionDiagnostics,
       });
       return NextResponse.json(
@@ -1314,6 +1325,7 @@ console.log("========================================");
           error: { message: "Could not extract brd_document from agent response." },
           raw_response: data,
           extraction_diagnostics: extractionDiagnostics,
+          brd_document_preview: previewBrd,
           agent_input: agentInput,
           agent_response: agentResponse,
         },

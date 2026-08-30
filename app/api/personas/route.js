@@ -22,13 +22,30 @@ export const GET = withAuth(async (req) => {
     const pool = await getPool();
 
     // =========================================================
-    // AGGREGATED COMBINED OUTPUT
+    // AGGREGATED COMBINED OUTPUT - OPTIMIZED (N+1 ELIMINATED)
+    // Uses ROW_NUMBER() window function for single-pass execution
+    // instead of OUTER APPLY correlated subquery (was 250+ queries)
     // =========================================================
     if (aggGen) {
       const result = await pool
         .request()
         .input("projectId", sql.Int, projectId)
         .query(`
+          WITH ranked_interviews AS (
+            SELECT
+              i.interview_id,
+              i.interviewee_id,
+              i.transcript,
+              i.persona_output,
+              i.interview_outcome,
+              i.summary,
+              i.created_at,
+              ROW_NUMBER() OVER (
+                PARTITION BY i.interviewee_id
+                ORDER BY i.created_at DESC
+              ) AS interview_rank
+            FROM interviewss i
+          )
           SELECT
             p.persona_id,
             p.persona_name,
@@ -42,21 +59,18 @@ export const GET = withAuth(async (req) => {
             ie.relationship_status,
             ie.title,
             ie.education,
-            i.interview_id,
-            i.transcript,
-            i.persona_output AS generated_output,
-            i.interview_outcome,
-            i.summary,
-            i.created_at AS generated_at
+            ri.interview_id,
+            ri.transcript,
+            ri.persona_output AS generated_output,
+            ri.interview_outcome,
+            ri.summary,
+            ri.created_at AS generated_at
           FROM personass p
           INNER JOIN projectss pr ON pr.project_id = p.project_id
           LEFT JOIN intervieweess ie ON ie.persona_id = p.persona_id
-          OUTER APPLY (
-            SELECT TOP 1 *
-            FROM interviewss i
-            WHERE i.interviewee_id = ie.interviewee_id
-            ORDER BY i.created_at DESC
-          ) i
+          LEFT JOIN ranked_interviews ri
+            ON ri.interviewee_id = ie.interviewee_id
+            AND ri.interview_rank = 1
           WHERE p.project_id = @projectId
           ORDER BY p.persona_id ASC, ie.interviewee_id ASC
         `);
@@ -152,7 +166,8 @@ export const GET = withAuth(async (req) => {
     }
 
     // =========================================================
-    // NORMAL FETCH
+    // NORMAL FETCH - OPTIMIZED (N+1 ELIMINATED)
+    // Uses ROW_NUMBER() window function for single-pass execution
     // =========================================================
     const result =
       incGen && groupByIE
@@ -160,6 +175,19 @@ export const GET = withAuth(async (req) => {
             .request()
             .input("projectId", sql.Int, projectId)
             .query(`
+              WITH ranked_interviews AS (
+                SELECT
+                  i.interview_id,
+                  i.interviewee_id,
+                  i.persona_output,
+                  i.summary,
+                  i.created_at,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY i.interviewee_id
+                    ORDER BY i.created_at DESC
+                  ) AS interview_rank
+                FROM interviewss i
+              )
               SELECT
                 p.persona_id,
                 p.persona_name,
@@ -172,22 +200,15 @@ export const GET = withAuth(async (req) => {
                 ie.relationship_status,
                 ie.title,
                 ie.education,
-                latest.interview_id,
-                latest.generated_output,
-                latest.summary,
-                latest.generated_at
+                ri.interview_id,
+                ri.persona_output AS generated_output,
+                ri.summary,
+                ri.created_at AS generated_at
               FROM personass p
               LEFT JOIN intervieweess ie ON ie.persona_id = p.persona_id
-              OUTER APPLY (
-                SELECT TOP 1
-                  i.interview_id,
-                  i.persona_output AS generated_output,
-                  i.summary,
-                  i.created_at AS generated_at
-                FROM interviewss i
-                WHERE i.interviewee_id = ie.interviewee_id
-                ORDER BY i.created_at DESC
-              ) latest
+              LEFT JOIN ranked_interviews ri
+                ON ri.interviewee_id = ie.interviewee_id
+                AND ri.interview_rank = 1
               WHERE p.project_id = @projectId
             `)
         : await pool

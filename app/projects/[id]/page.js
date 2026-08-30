@@ -2698,6 +2698,392 @@ const renderBrdContent = (value, type) => {
     </p>
   );
 };
+// ---------- DOCX BRD HELPERS (mirror renderBrdContent, but emit docx nodes) ----------
+
+const docxHeading = (text, level = HeadingLevel.HEADING_2, opts = {}) =>
+  new Paragraph({ text: String(text ?? ""), heading: level, spacing: { before: 200, after: 100 }, ...opts });
+
+const docxPara = (text, opts = {}) =>
+  new Paragraph({ text: String(text ?? "") || "\u00A0", spacing: { after: 100 }, ...opts });
+
+const docxBullet = (text, opts = {}) =>
+  new Paragraph({ text: String(text ?? ""), bullet: { level: 0 }, spacing: { after: 60 }, ...opts });
+
+const docxLabelValue = (label, value) =>
+  new Paragraph({
+    children: [
+      new TextRun({ text: `${formatKeyLabel(label)}: `, bold: true }),
+      new TextRun({ text: String(value ?? "") || "Not specified" }),
+    ],
+    spacing: { after: 80 },
+  });
+
+const docxCell = (text, { header = false, width } = {}) =>
+  new TableCell({
+    width: width ? { size: width, type: WidthType.PERCENTAGE } : undefined,
+    shading: header ? { fill: "0F172A" } : undefined,
+    children: [
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: String(text ?? "") || "-",
+            bold: header,
+            color: header ? "FFFFFF" : undefined,
+          }),
+        ],
+      }),
+    ],
+  });
+
+const docxTable = (headers, rows) => {
+  if (!rows.length) return null;
+  const width = Math.floor(100 / headers.length);
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: [
+      new TableRow({ children: headers.map((h) => docxCell(h, { header: true, width })) }),
+      ...rows.map(
+        (row) => new TableRow({ children: row.map((cell) => docxCell(cell, { width })) })
+      ),
+    ],
+  });
+};
+
+// Generic fallback: walks any object/array and prints it as labeled paragraphs.
+function appendDocxJsonPanel(paragraphs, value, depth = 0) {
+  if (value === null || value === undefined || value === "") {
+    paragraphs.push(docxPara("Not specified"));
+    return;
+  }
+  if (Array.isArray(value)) {
+    if (!value.length) {
+      paragraphs.push(docxPara("Not specified"));
+      return;
+    }
+    value.forEach((item) => {
+      if (item && typeof item === "object") {
+        appendDocxJsonPanel(paragraphs, item, depth + 1);
+      } else {
+        paragraphs.push(docxBullet(String(item)));
+      }
+    });
+    return;
+  }
+  if (typeof value === "object") {
+    Object.entries(value).forEach(([key, val]) => {
+      if (Array.isArray(val) || (val && typeof val === "object")) {
+        paragraphs.push(docxHeading(formatKeyLabel(key), HeadingLevel.HEADING_4, { spacing: { before: 120, after: 60 } }));
+        appendDocxJsonPanel(paragraphs, val, depth + 1);
+      } else {
+        paragraphs.push(docxLabelValue(key, val));
+      }
+    });
+    return;
+  }
+  paragraphs.push(docxPara(String(value)));
+}
+
+function appendDocxObjectStory(paragraphs, data) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    paragraphs.push(docxPara(String(data ?? "Not specified")));
+    return;
+  }
+  Object.entries(data).forEach(([key, val]) => {
+    paragraphs.push(docxHeading(formatKeyLabel(key), HeadingLevel.HEADING_3, { spacing: { before: 140, after: 80 } }));
+    if (Array.isArray(val)) {
+      if (!val.length) paragraphs.push(docxPara("Not specified"));
+      val.forEach((item) =>
+        paragraphs.push(docxBullet(typeof item === "object" ? JSON.stringify(item) : String(item)))
+      );
+    } else {
+      paragraphs.push(docxPara(val && typeof val === "object" ? JSON.stringify(val) : String(val ?? "Not specified")));
+    }
+  });
+}
+
+function appendDocxPersonaCards(paragraphs, value) {
+  if (!Array.isArray(value) || !value.length) {
+    paragraphs.push(docxPara("Not specified"));
+    return;
+  }
+  value.forEach((persona, index) => {
+    paragraphs.push(
+      docxHeading(persona?.persona_name || `Persona ${index + 1}`, HeadingLevel.HEADING_3, {
+        spacing: { before: 200, after: 60 },
+      })
+    );
+    if (persona?.role) paragraphs.push(docxPara(persona.role, { italics: true }));
+    Object.entries(persona || {})
+      .filter(([k]) => k !== "persona_name" && k !== "role")
+      .forEach(([k, v]) => {
+        paragraphs.push(docxHeading(formatKeyLabel(k), HeadingLevel.HEADING_4, { spacing: { before: 100, after: 40 } }));
+        if (Array.isArray(v)) {
+          if (!v.length) paragraphs.push(docxPara("Not specified"));
+          v.forEach((item) => paragraphs.push(docxBullet(typeof item === "object" ? JSON.stringify(item) : String(item))));
+        } else {
+          paragraphs.push(docxPara(String(v ?? "Not specified")));
+        }
+      });
+  });
+}
+
+function appendDocxFunctionalScope(paragraphs, value) {
+  if (!value || typeof value !== "object") {
+    appendDocxJsonPanel(paragraphs, value);
+    return;
+  }
+
+  if (value.workflow_description) {
+    paragraphs.push(docxHeading("Workflow Description", HeadingLevel.HEADING_3));
+    paragraphs.push(docxPara(value.workflow_description));
+  }
+
+  const inScope = Array.isArray(value.in_scope) ? value.in_scope : [];
+  const outScope = Array.isArray(value.out_of_scope) ? value.out_of_scope : [];
+
+  paragraphs.push(docxHeading("In Scope", HeadingLevel.HEADING_3));
+  if (inScope.length) inScope.forEach((item) => paragraphs.push(docxBullet(String(item))));
+  else paragraphs.push(docxPara("Not specified"));
+
+  paragraphs.push(docxHeading("Out Of Scope", HeadingLevel.HEADING_3));
+  if (outScope.length) outScope.forEach((item) => paragraphs.push(docxBullet(String(item))));
+  else paragraphs.push(docxPara("Not specified"));
+
+  const requirements = Array.isArray(value.business_requirements) ? value.business_requirements : [];
+  if (requirements.length) {
+    paragraphs.push(docxHeading("Business Requirements", HeadingLevel.HEADING_3));
+    const table = docxTable(
+      ["Requirement ID", "Requirement", "Priority"],
+      requirements.map((item, idx) => [
+        item?.id || `BR-${String(idx + 1).padStart(3, "0")}`,
+        item?.requirement || item?.statement || "-",
+        item?.priority || "N/A",
+      ])
+    );
+    if (table) paragraphs.push(table);
+    paragraphs.push(docxPara(""));
+  }
+}
+
+function appendDocxObjectList(paragraphs, value) {
+  if (!Array.isArray(value) || !value.length) {
+    paragraphs.push(docxPara("Not specified"));
+    return;
+  }
+  value.forEach((item, index) => {
+    paragraphs.push(docxHeading(`Item ${index + 1}`, HeadingLevel.HEADING_3, { spacing: { before: 160, after: 60 } }));
+    Object.entries(item || {}).forEach(([k, v]) => {
+      if (Array.isArray(v)) {
+        paragraphs.push(docxHeading(formatKeyLabel(k), HeadingLevel.HEADING_4, { spacing: { before: 80, after: 40 } }));
+        v.forEach((sub) => paragraphs.push(docxBullet(typeof sub === "object" ? JSON.stringify(sub) : String(sub))));
+      } else {
+        paragraphs.push(docxLabelValue(k, v && typeof v === "object" ? JSON.stringify(v) : v));
+      }
+    });
+  });
+}
+
+function appendDocxRolePeople(paragraphs, value) {
+  if (!Array.isArray(value) || !value.length) {
+    paragraphs.push(docxPara("Not specified"));
+    return;
+  }
+  const table = docxTable(
+    ["Role", "Name", "Status"],
+    value.map((item) => [item?.role || "Role", item?.name || "Not specified", item?.status || "-"])
+  );
+  if (table) paragraphs.push(table);
+}
+
+function appendDocxBulletList(paragraphs, value) {
+  if (!Array.isArray(value) || !value.length) {
+    paragraphs.push(docxPara("Not specified"));
+    return;
+  }
+  value.forEach((item) => paragraphs.push(docxBullet(String(item))));
+}
+
+function appendDocxTags(paragraphs, value) {
+  if (!Array.isArray(value) || !value.length) {
+    paragraphs.push(docxPara("Not specified"));
+    return;
+  }
+  value.forEach((item) => {
+    let text = String(item ?? "");
+    if (item && typeof item === "object") {
+      if (item.name && item.description) text = `${item.name}: ${item.description}`;
+      else if (item.name) text = item.name;
+      else if (item.description) text = item.description;
+      else text = JSON.stringify(item);
+    }
+    paragraphs.push(docxBullet(text));
+  });
+}
+
+function appendDocxRequirementsTable(paragraphs, value) {
+  if (!Array.isArray(value) || !value.length) {
+    paragraphs.push(docxPara("Not specified"));
+    return;
+  }
+  const rows = value.map((item, index) => {
+    let id = `BR-${String(index + 1).padStart(3, "0")}`;
+    let desc = String(item ?? "");
+    let pri = "";
+
+    if (item && typeof item === "object") {
+      if (item.id && item.statement) {
+        id = item.id;
+        desc = item.statement;
+        pri = item.priority || "";
+      } else if (item.requirement_id && item.requirement_statement) {
+        id = item.requirement_id;
+        desc = item.requirement_statement;
+        pri = item.priority || "";
+      }
+    } else if (typeof item === "string" && item.includes("|")) {
+      const parts = item.split("|").map((p) => p.trim());
+      id = parts[0] || id;
+      desc = parts[1] || desc;
+      pri = (parts[2] || "").replace(/priority:/i, "").trim();
+    }
+    return [id, desc || "-", pri || "-"];
+  });
+  const table = docxTable(["Requirement ID", "Requirement Statement", "Priority"], rows);
+  if (table) paragraphs.push(table);
+}
+
+function appendDocxRegexTable(paragraphs, value, cols) {
+  if (!Array.isArray(value) || !value.length) {
+    paragraphs.push(docxPara("Not specified"));
+    return;
+  }
+  const rows = value.map((item) => {
+    const str = String(item || "");
+    return cols.map((label) => {
+      const match = str.match(new RegExp(`${label}:\\s*([^\\n.]+)`, "i"));
+      return match ? match[1].trim() : "-";
+    });
+  });
+  const table = docxTable(cols, rows);
+  if (table) paragraphs.push(table);
+}
+
+function appendDocxCostTable(paragraphs, value) {
+  if (!Array.isArray(value) || !value.length) {
+    paragraphs.push(docxPara("Not specified"));
+    return;
+  }
+  const costItems = value.filter(
+    (item) =>
+      typeof item === "string" &&
+      item.includes("Cost:") &&
+      item.includes("Benefit:") &&
+      !item.toLowerCase().includes("total cost") &&
+      !item.toLowerCase().includes("expected roi")
+  );
+  const totalCost = value.find(
+    (item) =>
+      typeof item === "string" &&
+      (item.toLowerCase().includes("total cost") || item.toLowerCase().includes("expected roi"))
+  );
+
+  const rows = costItems.map((item) => [
+    item.match(/Cost:\s*([^|]+)/)?.[1]?.trim() || "-",
+    item.match(/Benefit:\s*([^|]+)/)?.[1]?.trim() || "-",
+  ]);
+  if (totalCost) {
+    rows.push([
+      totalCost.match(/Total Cost:\s*([^|]+)/i)?.[1]?.trim() ||
+        totalCost.match(/Cost:\s*([^|]+)/i)?.[1]?.trim() ||
+        "-",
+      totalCost.match(/Expected ROI:\s*([^|]+)/i)?.[1]?.trim() ||
+        totalCost.match(/Benefit:\s*([^|]+)/i)?.[1]?.trim() ||
+        "-",
+    ]);
+  }
+  const table = docxTable(["Cost", "Benefit"], rows.length ? rows : [["-", "-"]]);
+  if (table) paragraphs.push(table);
+}
+
+function appendDocxEditable(paragraphs, value) {
+  if (!Array.isArray(value) || !value.length) {
+    paragraphs.push(docxPara("Not specified"));
+    return;
+  }
+  value.forEach((item) => {
+    let text = String(item || "-");
+    const nameMatch = text.match(/Name:\s*([^.]+)\./i);
+    const roleMatch = text.match(/Role:\s*([^.]+)\./i);
+    if (nameMatch && roleMatch) text = `${nameMatch[1].trim()} — ${roleMatch[1].trim()}`;
+    else if (nameMatch) text = nameMatch[1].trim();
+    paragraphs.push(docxBullet(text));
+  });
+}
+
+function appendDocxProse(paragraphs, value) {
+  const text = normalizeBrdDisplayValue(value);
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+
+  const keyValueLines = lines
+    .map((line) => {
+      const divider = line.indexOf(":");
+      if (divider < 1) return null;
+      return { key: line.slice(0, divider).trim(), val: line.slice(divider + 1).trim() };
+    })
+    .filter((item) => item && item.key && item.val);
+
+  if (keyValueLines.length >= 2) {
+    keyValueLines.forEach((row) => paragraphs.push(docxLabelValue(row.key, row.val)));
+    return;
+  }
+
+  const paras = text.split(/\n\n+/).filter((p) => p.trim());
+  if (!paras.length) {
+    paragraphs.push(docxPara("Not specified"));
+    return;
+  }
+  paras.forEach((p) => paragraphs.push(docxPara(p.trim())));
+}
+
+// Dispatch a BRD section value into docx nodes based on its declared type.
+function appendBrdSectionToDocx(paragraphs, value, type) {
+  switch (type) {
+    case "object_story":
+      return appendDocxObjectStory(paragraphs, value);
+    case "prose":
+      return appendDocxProse(paragraphs, value);
+    case "persona_cards":
+      return appendDocxPersonaCards(paragraphs, value);
+    case "functional_scope":
+      return appendDocxFunctionalScope(paragraphs, value);
+    case "object_list":
+      return appendDocxObjectList(paragraphs, value);
+    case "metrics_objects":
+      return appendDocxRegexTable(paragraphs, value, ["Metric", "Measure Of Success", "Target", "Source"]);
+    case "role_people":
+    case "approvals":
+      return appendDocxRolePeople(paragraphs, value);
+    case "bullet_list":
+      return appendDocxBulletList(paragraphs, value);
+    case "tags":
+      return appendDocxTags(paragraphs, value);
+    case "requirements":
+      return appendDocxRequirementsTable(paragraphs, value);
+    case "metrics_table":
+      return appendDocxRegexTable(paragraphs, value, ["Metric", "Baseline", "Target", "Measurement", "Review"]);
+    case "constraints_table":
+      return appendDocxRegexTable(paragraphs, value, ["Constraint", "Description", "Impact", "Mitigation"]);
+    case "costtable":
+      return appendDocxCostTable(paragraphs, value);
+    case "editable":
+      return appendDocxEditable(paragraphs, value);
+    default:
+      return appendDocxJsonPanel(paragraphs, value);
+  }
+}
+
+// ---------- UPDATED DOWNLOAD HANDLER ----------
+
 const handleDownloadBrdDoc = async () => {
   if (!brdDoc || isDownloadingBrd) return;
 
@@ -2718,32 +3104,22 @@ const handleDownloadBrdDoc = async () => {
       }),
     ];
 
-    if (brdMeta) {
-      paragraphs.push(
-        new Paragraph({ text: "Document Meta", heading: HeadingLevel.HEADING_1, spacing: { after: 160 } })
-      );
+    if (brdMeta && Object.keys(brdMeta).length) {
+      paragraphs.push(docxHeading("Document Meta", HeadingLevel.HEADING_1, { spacing: { after: 160 } }));
       Object.entries(brdMeta).forEach(([key, value]) => {
-        paragraphs.push(
-          new Paragraph({
-            children: [
-              new TextRun({ text: `${formatKeyLabel(key)}: `, bold: true }),
-              new TextRun({ text: String(value ?? "") }),
-            ],
-            spacing: { after: 120 },
-          })
-        );
+        paragraphs.push(docxLabelValue(key, value));
       });
     }
 
     brdActiveSections.forEach((section) => {
       paragraphs.push(
         new Paragraph({
-          text: section.title,
+          text: `${section.num ? `${section.num}. ` : ""}${section.title}`,
           heading: HeadingLevel.HEADING_1,
-          spacing: { before: 220, after: 140 },
+          spacing: { before: 280, after: 140 },
         })
       );
-      appendWordValue(paragraphs, brdDoc[section.key], 0);
+      appendBrdSectionToDocx(paragraphs, brdDoc[section.key], section.type);
     });
 
     const doc = new Document({ sections: [{ children: paragraphs }] });

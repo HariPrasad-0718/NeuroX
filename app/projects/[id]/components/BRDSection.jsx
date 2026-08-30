@@ -145,24 +145,24 @@ export default function BRDSection({
 
       {isBrdModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 px-4 pb-10 pt-8"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           onClick={onCloseBrdModal}
         >
           <div
-            className="w-full max-w-6xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
+            className="w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
+            <div className="flex-shrink-0 border-b border-slate-200 bg-gradient-to-r from-[#1a3a52] to-[#2d5a7b] px-6 py-5 text-white flex items-center justify-between">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-indigo-500">Generated Document</p>
-                <h3 className="text-sm font-semibold text-gray-900">Business Requirements Document</h3>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-300">Generated Document</p>
+                <h3 className="mt-1 text-xl font-bold">Business Requirements Document</h3>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={onRegenerateBrd}
                   disabled={brdLoading}
-                  className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-emerald-600 px-4 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
                 >
                   {brdLoading ? "Regenerating..." : "Regenerate"}
                 </button>
@@ -170,15 +170,15 @@ export default function BRDSection({
                   type="button"
                   onClick={onDownloadBrdDoc}
                   disabled={!brdDoc || isDownloadingBrd}
-                  className="inline-flex h-9 items-center gap-2 rounded-md border border-indigo-600 bg-indigo-600 px-3 text-xs font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-emerald-600 px-4 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Download className="h-4 w-4" />
-                  {isDownloadingBrd ? "Preparing..." : "Download Word"}
+                  {isDownloadingBrd ? "Preparing..." : "Download"}
                 </button>
                 <button
                   type="button"
                   onClick={onCloseBrdModal}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-600 transition hover:bg-gray-50"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/20 bg-white/10 text-white hover:bg-white/20"
                   aria-label="Close BRD modal"
                 >
                   <X className="h-4 w-4" />
@@ -186,7 +186,7 @@ export default function BRDSection({
               </div>
             </div>
 
-            <div className="max-h-[84vh] overflow-y-auto bg-[#e8ebf0] px-6 py-6">
+            <div className="flex-1 overflow-y-auto bg-white px-6 py-6">
               {brdLoading ? (
                 <div className="premium-loader relative overflow-hidden rounded-2xl border border-[#3730a3] bg-[#172554] px-6 py-8 text-white shadow-[0_24px_70px_rgba(49,46,129,0.3)] sm:px-10">
                   <div className="premium-loader-glow premium-loader-glow-one" />
@@ -214,7 +214,7 @@ export default function BRDSection({
               ) : brdError ? (
                 <div className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">{brdError}</div>
               ) : brdDoc ? (
-                <article className="formal-doc mx-auto w-full max-w-[980px] overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.18)]">
+                <article className="formal-doc mx-auto w-full max-w-4xl overflow-hidden bg-white">
                   <header className="doc-cover border-b border-slate-200 bg-white px-6 py-8 sm:px-10 sm:py-10">
                     <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Business Requirements Document</p>
                     <h2 className="text-[30px] font-bold leading-tight text-slate-900 sm:text-[34px]">{brdMeta?.project_name || "Untitled Project"}</h2>
@@ -229,7 +229,7 @@ export default function BRDSection({
                   </header>
 
                   {brdMeta && (
-                    <section className="border-b border-slate-200 bg-slate-50 px-6 py-6 sm:px-10">
+                    <section className="border-b border-slate-200 bg-white px-6 py-6 sm:px-10">
                       <h4 className="mb-4 text-[12px] font-semibold uppercase tracking-[0.16em] text-slate-500">Document Metadata</h4>
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         {[
@@ -281,7 +281,7 @@ export default function BRDSection({
                     )}
                   </div>
 
-                  <div className="border-t border-slate-200 bg-slate-50 px-6 py-4 text-xs text-slate-500 sm:px-10">
+                  <div className="border-t border-slate-200 bg-white px-6 py-4 text-xs text-slate-500 sm:px-10">
                     Structured BRD view for stakeholder review and sign-off.
                   </div>
                 </article>
