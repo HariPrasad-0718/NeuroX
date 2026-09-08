@@ -9,6 +9,7 @@ export function CreateProjectModal({
   onCreateProject,
   editingProject,
   isUpdating = false,
+  isLoading = false,
 }) {
   const [projectName, setProjectName] = useState("");
   const [clientName, setClientName] = useState("");
@@ -257,15 +258,20 @@ export function CreateProjectModal({
               <div className="sticky bottom-0 mt-5 flex justify-end gap-3 border-t border-slate-200 bg-white/95 py-4 backdrop-blur">
                 <button
                   onClick={onClose}
-                  className="rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                  disabled={isUpdating || isLoading}
+                  className="rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSubmit}
-                  className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700"
+                  disabled={isUpdating || isLoading}
+                  className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  {editingProject ? "Update" : "Create"}
+                  {(isUpdating || isLoading) && (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  )}
+                  <span>{isUpdating || isLoading ? (editingProject ? "Updating..." : "Creating...") : (editingProject ? "Update" : "Create")}</span>
                 </button>
               </div>
 

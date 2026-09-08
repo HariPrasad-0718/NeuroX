@@ -2021,12 +2021,14 @@ const BRD_SECTIONS = [
   { key: "workflow_challenges", num: "04", title: "Workflow Challenges", type: "object_story" },
   { key: "functional_scope", num: "05", title: "Functional Scope", type: "functional_scope" },
   { key: "non_functional_expectations", num: "06", title: "Non Functional Expectations", type: "object_list" },
-  { key: "integrations", num: "07", title: "Integrations", type: "object_list" },
+  { key: "integrations", num: "07", title: "Integrations", type: "bullet_list" },
   { key: "compliance_and_security", num: "08", title: "Compliance & Security", type: "object_story" },
+  { key: "success_metrics", num: "09", title: "Success Metrics", type: "bullet_list" },
   { key: "key_stakeholders", num: "10", title: "Key Stakeholders", type: "role_people" },
   { key: "project_constraints", num: "11", title: "Project Constraints", type: "bullet_list" },
   { key: "cost_benefit_analysis", num: "12", title: "Cost Benefit Analysis", type: "object_story" },
   { key: "document_approval", num: "13", title: "Document Approval", type: "approvals" },
+  { key: "draft_assumptions", num: "14", title: "Draft Assumptions", type: "bullet_list" },
 ];
 
 const brdDoc = (() => {
@@ -2101,12 +2103,22 @@ const normalizeBrdDisplayValue = (input) => {
 };
 
 const renderBrdJsonPanel = (data) => {
-  if (!data || typeof data !== "object") return null;
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    const text = normalizeBrdDisplayValue(data);
+    if (!text || text.trim().length === 0) {
+      return <p className="text-slate-400 text-sm">No data available</p>;
+    }
+    return (
+      <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm leading-7 text-slate-700 shadow-sm">
+        {text}
+      </div>
+    );
+  }
 
-  const entries = Object.entries(data);
+  const entries = Object.entries(data).filter(([_, val]) => val !== null && val !== undefined && val !== "");
   if (!entries.length) {
     return (
-      <p className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
+      <p className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500 shadow-sm">
         No structured fields available.
       </p>
     );
@@ -2114,41 +2126,58 @@ const renderBrdJsonPanel = (data) => {
 
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      {entries.map(([key, val]) => (
-        <div key={key} className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{formatKeyLabel(key)}</p>
-          <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">{normalizeBrdDisplayValue(val)}</p>
-        </div>
-      ))}
+      {entries.map(([key, val]) => {
+        const displayVal = normalizeBrdDisplayValue(val);
+        return (
+          <div key={key} className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{formatKeyLabel(key)}</p>
+            <p className="mt-1 text-sm leading-6 text-slate-700">{displayVal || "—"}</p>
+          </div>
+        );
+      })}
     </div>
   );
 };
 
 const renderObjectStory = (data) => {
-  if (!data || typeof data !== "object") return null;
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return renderBrdJsonPanel(data);
+  }
+
+  const entries = Object.entries(data).filter(([_, val]) => val !== null && val !== undefined && val !== "");
+  if (!entries.length) {
+    return <p className="text-slate-400 text-sm">No data available</p>;
+  }
 
   return (
     <div className="space-y-4">
-      {Object.entries(data).map(([key, val]) => {
-        if (Array.isArray(val)) {
+      {entries.map(([key, val]) => {
+        if (Array.isArray(val) && val.length > 0) {
           return (
             <section key={key} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <h5 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{formatKeyLabel(key)}</h5>
               <ul className="mt-3 space-y-2">
-                {val.map((item, idx) => (
-                  <li key={`${key}-${idx}`} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-700">
-                    {typeof item === "object" ? normalizeBrdDisplayValue(item) : String(item)}
-                  </li>
-                ))}
+                {val.map((item, idx) => {
+                  const displayItem = typeof item === "object" ? normalizeBrdDisplayValue(item) : String(item || "");
+                  if (!displayItem) return null;
+                  return (
+                    <li key={`${key}-${idx}`} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-700">
+                      {displayItem}
+                    </li>
+                  );
+                })}
               </ul>
             </section>
           );
         }
 
+        const displayVal = normalizeBrdDisplayValue(val);
+        if (!displayVal) return null;
+
         return (
           <section key={key} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h5 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{formatKeyLabel(key)}</h5>
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">{normalizeBrdDisplayValue(val)}</p>
+            <p className="mt-2 text-sm leading-7 text-slate-700">{displayVal}</p>
           </section>
         );
       })}
@@ -2156,13 +2185,43 @@ const renderObjectStory = (data) => {
   );
 };
 
+// ========== IMPROVED BRD RENDERING WITH BETTER FALLBACKS ==========
+const safeSplitByDouble = (text) => {
+  if (!text || typeof text !== "string") return [];
+  return text.split(/\n\s*\n+/).filter(p => p && p.trim());
+};
+
+const renderPlainTextFallback = (text) => {
+  if (!text || typeof text !== "string" || text.trim().length === 0) {
+    return <p className="text-slate-500">No content available</p>;
+  }
+
+  const paragraphs = safeSplitByDouble(text);
+  if (paragraphs.length === 0) return <p className="text-slate-500">No content available</p>;
+
+  return (
+    <div className="space-y-4">
+      {paragraphs.map((para, idx) => (
+        <div key={idx} className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm leading-7 text-slate-700 shadow-sm">
+          {para.trim()}
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const renderBrdContent = (value, type) => {
+  // Fallback for any null/undefined value
+  if (value === null || value === undefined) {
+    return <p className="text-slate-400 text-sm">No data available</p>;
+  }
+
   if (type === "object_story") {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       return (
-        <p className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm leading-7 text-slate-700">
-          {normalizeBrdDisplayValue(value)}
-        </p>
+        <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm leading-7 text-slate-700">
+          {renderPlainTextFallback(normalizeBrdDisplayValue(value))}
+        </div>
       );
     }
     return renderObjectStory(value);
@@ -2335,15 +2394,29 @@ const renderBrdContent = (value, type) => {
   }
 
   if (type === "bullet_list") {
-    if (!Array.isArray(value) || value.length === 0) return null;
+    if (!Array.isArray(value) || value.length === 0) {
+      return <p className="text-slate-400 text-sm">No items available</p>;
+    }
+
     return (
-      <ul className="space-y-2">
-        {value.map((item, idx) => (
-          <li key={idx} className="rounded-md border border-slate-200 bg-white px-4 py-3 text-sm leading-7 text-slate-700 shadow-sm">
-            • {String(item)}
-          </li>
-        ))}
-      </ul>
+      <div className="space-y-3">
+        {value.map((item, idx) => {
+          const displayText = String(item || "").trim();
+          if (!displayText) return null;
+          return (
+            <div key={idx} className="flex gap-3 items-start">
+              <div className="shrink-0">
+                <div className="flex items-center justify-center h-5 w-5 rounded-full bg-emerald-100 mt-1">
+                  <span className="text-emerald-700 text-xs font-bold">•</span>
+                </div>
+              </div>
+              <div className="flex-1 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm leading-7 text-slate-700 shadow-sm">
+                {displayText}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     );
   }
 
@@ -2353,43 +2426,58 @@ const renderBrdContent = (value, type) => {
 
   if (type === "prose") {
     const text = normalizeBrdDisplayValue(value);
+    if (!text || typeof text !== "string" || text.trim().length === 0) {
+      return <p className="text-slate-400 text-sm">No content available</p>;
+    }
 
+    // Try key-value parsing first
     const lines = text
       .split("\n")
       .map((line) => line.trim())
-      .filter(Boolean);
+      .filter((line) => line.length > 0);
 
-    const keyValueLines = lines
-      .map((line) => {
-        const divider = line.indexOf(":");
-        if (divider < 1) return null;
-        return {
-          key: line.slice(0, divider).trim(),
-          val: line.slice(divider + 1).trim(),
-        };
-      })
-      .filter((item) => item && item.key && item.val);
+    if (lines.length > 0 && lines.length <= 50) {
+      const keyValueLines = lines
+        .map((line) => {
+          const divider = line.indexOf(":");
+          if (divider < 1 || divider > line.length - 2) return null;
+          const key = line.slice(0, divider).trim();
+          const val = line.slice(divider + 1).trim();
+          if (!key || !val || key.length > 100) return null; // Sanity check
+          return { key, val };
+        })
+        .filter(Boolean);
 
-    if (keyValueLines.length >= 2) {
+      if (keyValueLines.length >= 2 && keyValueLines.length === lines.length) {
+        return (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {keyValueLines.map((row, index) => (
+              <div key={`${row.key}-${index}`} className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{row.key}</p>
+                <p className="mt-1 text-sm leading-6 text-slate-700">{row.val}</p>
+              </div>
+            ))}
+          </div>
+        );
+      }
+    }
+
+    // Fallback to paragraph rendering
+    const paragraphs = safeSplitByDouble(text);
+    if (paragraphs.length === 0) {
       return (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {keyValueLines.map((row, index) => (
-            <div key={`${row.key}-${index}`} className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{row.key}</p>
-              <p className="mt-1 text-sm leading-6 text-slate-700">{row.val}</p>
-            </div>
-          ))}
+        <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm leading-7 text-slate-700 shadow-sm">
+          {text}
         </div>
       );
     }
 
-    const paragraphs = text.split(/\n\n+/).filter(p => p.trim());
     return (
       <div className="space-y-4">
         {paragraphs.map((paragraph, index) => (
-          <p key={index} className="rounded-lg border border-slate-200 bg-white px-4 py-3 whitespace-pre-wrap text-[15px] leading-8 text-slate-700 shadow-sm">
+          <div key={index} className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm leading-7 text-slate-700 shadow-sm">
             {paragraph.trim()}
-          </p>
+          </div>
         ))}
       </div>
     );
@@ -2692,10 +2780,34 @@ const renderBrdContent = (value, type) => {
   );
 }
 
+  // Catch-all fallback for unhandled types
+  const displayText = normalizeBrdDisplayValue(value);
+
+  if (!displayText || displayText.trim().length === 0) {
+    return <p className="text-slate-400 text-sm">No content available</p>;
+  }
+
+  // If it's a very long string, split by paragraphs
+  if (displayText.length > 500) {
+    const paragraphs = safeSplitByDouble(displayText);
+    if (paragraphs.length > 1) {
+      return (
+        <div className="space-y-4">
+          {paragraphs.map((para, idx) => (
+            <div key={idx} className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm leading-7 text-slate-700 shadow-sm">
+              {para.trim()}
+            </div>
+          ))}
+        </div>
+      );
+    }
+  }
+
+  // For short content, render as a single box
   return (
-    <p className="rounded-lg border border-slate-200 bg-white px-4 py-3 whitespace-pre-wrap text-[15px] leading-8 text-slate-700 shadow-sm">
-      {normalizeBrdDisplayValue(value)}
-    </p>
+    <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm leading-7 text-slate-700 shadow-sm">
+      {displayText}
+    </div>
   );
 };
 // ---------- DOCX BRD HELPERS (mirror renderBrdContent, but emit docx nodes) ----------

@@ -190,11 +190,24 @@ function extractQuotedFieldValue(text, fieldName) {
 
 function looksLikeBrdObject(value) {
   if (!value || typeof value !== "object") return false;
-  return (
-    Boolean(value.document_meta) ||
-    typeof value.business_problem === "string" ||
-    Array.isArray(value.business_requirements)
+
+  // More comprehensive checks for BRD structure
+  const hasBrdFields = Boolean(
+    value.document_meta ||
+    value.business_problem ||
+    value.objectives_and_outcomes ||
+    value.users_and_personas ||
+    value.functional_scope ||
+    value.integrations ||
+    value.compliance_and_security
   );
+
+  const hasBusinessRequirements = Boolean(
+    Array.isArray(value.business_requirements) ||
+    (value.functional_scope && Array.isArray(value.functional_scope.business_requirements))
+  );
+
+  return hasBrdFields || hasBusinessRequirements;
 }
 
 function scoreBrdCandidate(brdDoc) {
@@ -242,6 +255,7 @@ function extractBrdDocument(result) {
   const addCandidate = (payload, source) => {
     if (!payload) return;
 
+    // Check for nested brd_document field
     if (payload && typeof payload === "object" && payload.brd_document) {
       const brdData = parseBrdDocument(payload.brd_document);
       if (brdData) {
@@ -249,14 +263,52 @@ function extractBrdDocument(result) {
       }
     }
 
+    // Check for direct BRD object
     if (looksLikeBrdObject(payload)) {
       const brdData = parseBrdDocument(payload);
       if (brdData) {
         candidates.push({ source: `${source}:direct`, score: scoreBrdCandidate(brdData), brd: brdData });
       }
     }
+
+    // Check for nested brd field (common in agent responses)
+    if (payload?.brd && typeof payload.brd === "object") {
+      if (looksLikeBrdObject(payload.brd)) {
+        const brdData = parseBrdDocument(payload.brd);
+        if (brdData) {
+          candidates.push({ source: `${source}:nested-brd`, score: scoreBrdCandidate(brdData), brd: brdData });
+        }
+      }
+    }
+
+    // Check for data.brd structure (API response wrapper)
+    if (payload?.data && typeof payload.data === "object" && payload.data.brd) {
+      if (looksLikeBrdObject(payload.data.brd)) {
+        const brdData = parseBrdDocument(payload.data.brd);
+        if (brdData) {
+          candidates.push({ source: `${source}:data.brd`, score: scoreBrdCandidate(brdData), brd: brdData });
+        }
+      }
+    }
   };
 
+  // Check all possible locations in order of likelihood
+
+  // 1. Check top-level message first
+  const topMessage = result?.message;
+  if (topMessage) {
+    const parsedTop = tryExtractBrdPayloadFromMessageString(topMessage);
+    addCandidate(parsedTop, "message");
+  }
+
+  // 2. Check response.final_response
+  const finalResponse = result?.response?.final_response;
+  if (typeof finalResponse === "string" && finalResponse.trim()) {
+    const fromFinal = tryExtractBrdPayloadFromMessageString(finalResponse);
+    addCandidate(fromFinal, "response.final_response");
+  }
+
+  // 3. Check response.messages array (newest first)
   const messages = result?.response?.messages || [];
   if (Array.isArray(messages)) {
     for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -265,18 +317,12 @@ function extractBrdDocument(result) {
     }
   }
 
-  const finalResponse = result?.response?.final_response;
-  if (typeof finalResponse === "string" && finalResponse.trim()) {
-    const fromFinal = tryExtractBrdPayloadFromMessageString(finalResponse);
-    addCandidate(fromFinal, "response.final_response");
+  // 4. Check data.brd structure directly
+  if (result?.data && typeof result.data === "object") {
+    addCandidate(result.data, "data");
   }
 
-  const topMessage = result?.message;
-  if (topMessage) {
-    const parsedTop = tryExtractBrdPayloadFromMessageString(topMessage);
-    addCandidate(parsedTop, "message");
-  }
-
+  // 5. Check entire result as fallback
   addCandidate(result, "result");
 
   if (!candidates.length) return null;
@@ -1252,6 +1298,12 @@ console.log("Password present:", Boolean(PASSWORD));
 console.log("Final payload:", JSON.stringify(agentInput, null, 2));
 console.log("======================================");
 
+    // BRD generation can take time due to:
+    // - Complex data analysis
+    // - Multiple constraint processing
+    // - Persona generation
+    // - Document compilation
+    // Using 10 minutes to ensure completion without timeout
     const response = await fetch(WEBHOOK_URL, {
       method: "POST",
       headers: {
@@ -1259,7 +1311,7 @@ console.log("======================================");
         Accept: "application/json",
       },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(180_000),
+      signal: AbortSignal.timeout(600_000), // 10 minutes
     });
 
     console.log("========== AGENT RESPONDED ==========");
@@ -1309,23 +1361,80 @@ console.log("========================================");
     const brdData = extractBrdDocument(data);
     if (!brdData) {
       const extractionDiagnostics = collectBrdExtractionDiagnostics(data);
-      const topMessage = data?.message;
-      const brdDocFromMessage = topMessage ? tryExtractBrdPayloadFromMessageString(topMessage)?.brd_document : null;
-      const previewBrd = typeof brdDocFromMessage === "string" ? brdDocFromMessage.slice(0, 500) : JSON.stringify(brdDocFromMessage)?.slice(0, 500);
 
-      logger.error("POST /api/generate-brd failed to extract brd_document", {
+      // More comprehensive diagnostics
+      const diagnostics = {
         hasTopMessage: Boolean(data?.message),
+        hasResponseField: Boolean(data?.response),
         hasMessages: Array.isArray(data?.response?.messages),
-        brdDocumentPreview: previewBrd,
+        messageCount: Array.isArray(data?.response?.messages) ? data.response.messages.length : 0,
+        hasFinalResponse: Boolean(data?.response?.final_response),
+        hasDataBrd: Boolean(data?.data?.brd),
+        hasDataField: Boolean(data?.data),
+        hasDirectBrd: Boolean(data?.brd),
         extractionDiagnostics,
-      });
+      };
+
+      // Try to extract from data.brd as fallback for debugging
+      let fallbackBrd = null;
+      if (data?.data?.brd && looksLikeBrdObject(data.data.brd)) {
+        fallbackBrd = data.data.brd;
+      } else if (data?.brd && looksLikeBrdObject(data.brd)) {
+        fallbackBrd = data.brd;
+      }
+
+      logger.error("POST /api/generate-brd failed to extract brd_document", diagnostics);
+
+      // If we found potential BRD data, try to use it anyway
+      if (fallbackBrd) {
+        logger.warn("Using fallback BRD extraction", { source: data?.data?.brd ? "data.brd" : "brd" });
+        const enrichedBrdData = enrichBrdWithStakeholderInput(fallbackBrd, input);
+
+        await pool
+          .request()
+          .input("projectId", sql.Int, projectId)
+          .input("brdOutput", sql.NVarChar(sql.MAX), JSON.stringify(enrichedBrdData))
+          .query(`
+            IF EXISTS (
+              SELECT 1
+              FROM BusinessRequirementsDocuments
+              WHERE project_id = @projectId
+            )
+            BEGIN
+              UPDATE BusinessRequirementsDocuments
+              SET
+                brd_content = @brdOutput,
+                updated_at = SYSUTCDATETIME()
+              WHERE project_id = @projectId
+            END
+            ELSE
+            BEGIN
+              INSERT INTO BusinessRequirementsDocuments
+              (
+                project_id,
+                brd_content
+              )
+              VALUES
+              (
+                @projectId,
+                @brdOutput
+              )
+            END
+          `);
+
+        return NextResponse.json({
+          success: true,
+          source: "agent",
+          data: { brd: enrichedBrdData },
+          note: "BRD extracted using fallback method"
+        });
+      }
+
       return NextResponse.json(
         {
           success: false,
           error: { message: "Could not extract brd_document from agent response." },
-          raw_response: data,
-          extraction_diagnostics: extractionDiagnostics,
-          brd_document_preview: previewBrd,
+          diagnostics,
           agent_input: agentInput,
           agent_response: agentResponse,
         },
@@ -1370,22 +1479,39 @@ console.log("========================================");
     return NextResponse.json({ success: true, source: "agent", data: { brd: enrichedBrdData } });
   } catch (error) {
     if (error?.name === "AbortError") {
-      logger.error("POST /api/generate-brd timeout", { error });
+      logger.error("POST /api/generate-brd timeout", {
+        error,
+        timeout_ms: 600000,
+        message: "BRD generation exceeded 10-minute timeout limit"
+      });
       return NextResponse.json(
         {
           success: false,
-          error: { message: "Request timed out. The agent took too long to respond." },
+          error: {
+            message: "BRD generation took longer than expected (10+ minutes). This can happen with complex projects. Please try again or contact support if the issue persists.",
+            code: "GENERATION_TIMEOUT",
+            retry_after: 60
+          },
           agent_input: agentInput,
           agent_response: null,
+          recommendation: "Try again - the agent may complete on retry, or the project may need data simplification"
         },
         { status: 504 }
       );
     }
 
-    logger.error("POST /api/generate-brd error", { error });
+    logger.error("POST /api/generate-brd error", { error, message: error?.message });
 
     return NextResponse.json(
-      { success: false, error: { message: error?.message || "Internal server error" }, agent_input: agentInput, agent_response: null },
+      {
+        success: false,
+        error: {
+          message: error?.message || "Internal server error",
+          code: "GENERATION_ERROR"
+        },
+        agent_input: agentInput,
+        agent_response: null
+      },
       { status: 500 }
     );
   }

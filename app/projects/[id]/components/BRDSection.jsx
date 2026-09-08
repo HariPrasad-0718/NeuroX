@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Download, Loader2, X } from "lucide-react";
 
 export default function BRDSection({
@@ -43,6 +43,22 @@ export default function BRDSection({
   renderBrdContent,
   formatKeyLabel,
 }) {
+  const [brdElapsedSeconds, setBrdElapsedSeconds] = useState(0);
+
+  // Track elapsed time during BRD loading
+  useEffect(() => {
+    if (!brdLoading) {
+      setBrdElapsedSeconds(0);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setBrdElapsedSeconds((prev) => prev + 1);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [brdLoading]);
+
   const brdDoc = useMemo(() => {
     if (!brdData) return null;
     if (typeof brdData === "object") return brdData;
@@ -209,7 +225,28 @@ export default function BRDSection({
                     </div>
                   </div>
 
-                  {brdProgress.length < brdSteps.length && <p className="relative mt-4 text-xs text-slate-400">AI is structuring your document<span className="premium-loader-dots">...</span></p>}
+                  <div className="mt-6 space-y-3">
+                    {brdProgress.length < brdSteps.length && (
+                      <p className="relative text-xs text-slate-400">
+                        AI is structuring your document<span className="premium-loader-dots">...</span>
+                      </p>
+                    )}
+
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-slate-400">Elapsed time: {Math.floor(brdElapsedSeconds / 60)}m {brdElapsedSeconds % 60}s</p>
+                      {brdElapsedSeconds > 120 && (
+                        <p className="text-xs text-amber-300">⏱️ Taking longer than usual... Please wait</p>
+                      )}
+                    </div>
+
+                    {brdElapsedSeconds > 300 && (
+                      <div className="rounded-lg border border-amber-300/30 bg-amber-500/10 p-3">
+                        <p className="text-xs leading-5 text-amber-200">
+                          ⚠️ This is taking longer than expected (5+ minutes). Complex projects or large datasets can require more processing time. The system will continue trying to generate your BRD. If this persists, you can refresh and try again.
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : brdError ? (
                 <div className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">{brdError}</div>

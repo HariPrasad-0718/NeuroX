@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 
 // Utility functions for parsing fields
 function parseHeader(text) {
@@ -63,6 +64,7 @@ function themeList(text, dotCls) {
 }
 
 function FinalPersonaContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const projectId = searchParams.get("projectId");
 
@@ -118,6 +120,15 @@ function FinalPersonaContent() {
 
   return (
     <div className="min-h-screen bg-[#f0f0f5] py-10 px-2">
+      <div className="max-w-5xl mx-auto mb-6">
+        <button
+          onClick={() => projectId ? router.push(`/projects/${projectId}`) : router.back()}
+          className="w-10 h-10 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-50 bg-white"
+          aria-label="Go back"
+        >
+          <ArrowLeft className="w-5 h-5 text-gray-700" />
+        </button>
+      </div>
       <div className="max-w-5xl mx-auto persona-card rounded-2xl overflow-hidden shadow-2xl">
         {/* HEADER */}
         <div className="p-header flex items-center gap-6 bg-[#1a1a2e] text-white px-8 py-7">

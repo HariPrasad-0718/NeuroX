@@ -30,6 +30,7 @@ export default function AppShell({ children }) {
   const [showProfileModal,   setShowProfileModal]   = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [projectProgressData, setProjectProgressData] = useState(null);
+  const [isCreatingProject,  setIsCreatingProject]  = useState(false);
 
   // Derive projectId from URL — either /projects/[id]/... or ?projectId=
   const _pathProjectId =
@@ -100,52 +101,58 @@ export default function AppShell({ children }) {
   };
 
   const handleCreateProject = async (projectData) => {
-    if (editingProject?.projectId) {
-      try {
+    setIsCreatingProject(true);
+    try {
+      if (editingProject?.projectId) {
         const result = await api.updateProjectById(editingProject.projectId, projectData);
         if (result.success) {
           refetchProjects();
           window.dispatchEvent(new Event("neurox:projects-updated"));
+          // Scroll to top after update
+          setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 300);
+          setShowCreateModal(false);
+          setEditingProject(null);
         } else {
           alert(`Failed to update: ${result.error?.message || result.error}`);
         }
-      } catch (err) {
-        alert(`Failed to update: ${err.message}`);
-      }
-    } else {
-      try {
-       const apiData = {
-  projectName: projectData.title,
-  projectDescription: projectData.description,
-  clientName: projectData.company,
-  startDate: projectData.startDate,
-  endDate: projectData.targetDate,
-  domain: projectData.domain || "",
+      } else {
+        const apiData = {
+          projectName: projectData.title,
+          projectDescription: projectData.description,
+          clientName: projectData.company,
+          startDate: projectData.startDate,
+          endDate: projectData.targetDate,
+          domain: projectData.domain || "",
+          personas: projectData.personas.map((persona) => ({
+            persona_name: persona.name,
+            persona_description: persona.description,
+          })),
+        };
 
-  personas: projectData.personas.map((persona) => ({
-    persona_name: persona.name,
-    persona_description: persona.description,
-  })),
-};
+        console.log("Project payload:", apiData);
+        console.log(
+          "Personas formatted:",
+          JSON.stringify(apiData.personas, null, 2)
+        );
 
-console.log("Project payload:", apiData);
-console.log(
-  "Personas formatted:",
-  JSON.stringify(apiData.personas, null, 2)
-);
-        
         const response = await api.createProject(apiData, userId);
         if (response.success) {
           refetchProjects();
+          // Dispatch event for all instances of useProjects to refetch
           window.dispatchEvent(new Event("neurox:projects-updated"));
+          // Scroll to top after a short delay to show newly created project
+          setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 300);
+          setShowCreateModal(false);
+          setEditingProject(null);
+        } else {
+          alert(`Failed to create project: ${response.error?.message || response.error}`);
         }
-      } catch (error) {
-        alert(`Error creating project: ${error.message}`);
       }
+    } catch (error) {
+      alert(`Error: ${error.message}`);
+    } finally {
+      setIsCreatingProject(false);
     }
-
-    setShowCreateModal(false);
-    setEditingProject(null);
   };
 
   // ─── Don't render shell on auth pages ─────────────────────────────────────
@@ -189,6 +196,7 @@ console.log(
         }}
         onCreateProject={handleCreateProject}
         editingProject={editingProject}
+        isLoading={isCreatingProject}
       />
 
       <ProfileModal

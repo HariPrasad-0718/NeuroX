@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { parsePersonaOutput, buildPersonaOutput } from "@/utils/documentParsers";
 import {
   AlignmentType,
@@ -649,6 +650,17 @@ export default function EmpathyMapPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto w-full max-w-screen-2xl px-3 py-2">
+
+        {/* Back Button */}
+        <div className="mb-4">
+          <button
+            onClick={() => router.push(`/projects/${projectId}`)}
+            className="w-10 h-10 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-50 bg-white"
+            aria-label="Go back"
+          >
+            <ArrowLeft className="w-5 h-5 text-gray-700" />
+          </button>
+        </div>
 
         {/* ── Persona Tabs ────────────────────────────────────────────────────── */}
         <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
