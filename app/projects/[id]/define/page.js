@@ -6,6 +6,7 @@ import { ArrowLeft, AlertTriangle, Loader2, Sparkles } from "lucide-react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { generatePersonaCard } from "@/services/personaService";
+import { generateProblemStatement } from "@/services/problemStructuringService";
 import { generateInformationArchitecture } from "@/services/informationArchitectureService";
 import { useProgressSteps } from "@/hooks/useProgressSteps";
 
@@ -467,23 +468,31 @@ export default function DefinePhasePage() {
     }
 
     setGenerating(true);
+    setLoadedFromDb(false);
     setError("");
     setIaError("");
 
     try {
       const personaContext = buildFullProjectContext(personas, projectName);
-      const { data } = await generatePersonaCard({ empathyDataAndContext: personaContext });
-      if (!data.success) {
-        throw new Error(data.error || "Agent generation failed");
+      const [{ data: personaData }, { data: problemData }] = await Promise.all([
+        generatePersonaCard({ empathyDataAndContext: personaContext }),
+        generateProblemStatement({ empathyDataAndContext: personaContext }),
+      ]);
+
+      if (!personaData?.success) {
+        throw new Error(personaData?.error || "Persona Creation Agent failed");
+      }
+      if (!problemData?.success) {
+        throw new Error(problemData?.error || "Problem Structuring Agent failed");
       }
 
       const nextCards = {};
-      (data.persona_cards || []).forEach((raw) => {
+      (personaData.persona_cards || []).forEach((raw) => {
         nextCards[raw.persona_id] = normalizeAgentCard(raw);
       });
 
       setAgentCardsByPersona(nextCards);
-      setProblemStatement(data.problem_statement || "");
+      setProblemStatement(problemData.problem_statement || "");
       setGenerated(true);
 
       await fetch("/api/save-generated-persona", {
@@ -491,7 +500,7 @@ export default function DefinePhasePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectId,
-          problemStatement: data.problem_statement || "",
+          problemStatement: problemData.problem_statement || "",
           personas: Object.values(nextCards).map((card) => ({
             personaId: card.personaId,
             personaName:
@@ -651,10 +660,11 @@ export default function DefinePhasePage() {
             {projectName ? <p className="text-sm text-gray-500 mt-0.5">{projectName}</p> : null}
           </div>
 
-          {!loading && !loadedFromDb ? (
+          {!loading && personas.length ? (
             <button
               onClick={handleGenerate}
               disabled={generating || !personas.length}
+              aria-label={generated ? "Regenerate problem definition" : "Generate problem definition"}
               className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {generating ? (
@@ -716,7 +726,7 @@ export default function DefinePhasePage() {
                 <div className="space-y-10">
                   <section id="problem-definition-card">
                     <div className="mb-4">
-                      <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500">Define Phase · AI-Generated</p>
+                      <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500">Problem Structuring Agent · AI-Generated</p>
                       <h2 className="text-2xl font-bold text-gray-900 mt-1">Problem Statement</h2>
                     </div>
 
